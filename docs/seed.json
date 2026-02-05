@@ -5,7 +5,6 @@
     "currency": "BRL",
     "timezone": "America/Sao_Paulo"
   },
-
   "usuarios": [
     {
       "id": "usr_admin_01",
@@ -18,7 +17,6 @@
     }
   ],
   "sessao": [],
-
   "tipos_cafe": [
     {
       "id": "tc_001",
@@ -29,7 +27,6 @@
       "ativo": true
     }
   ],
-
   "clientes": [
     {
       "id": "cli_001",
@@ -59,7 +56,6 @@
       "criado_em": "2026-01-15T10:00:00-03:00"
     }
   ],
-
   "fornecedores": [
     {
       "id": "for_001",
@@ -89,7 +85,6 @@
       "criado_em": "2026-01-06T09:00:00-03:00"
     }
   ],
-
   "insumos": [
     {
       "id": "ins_001",
