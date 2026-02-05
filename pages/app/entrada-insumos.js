@@ -1,7 +1,6 @@
 import {
   Box,
   Button,
-  Divider,
   Grid,
   MenuItem,
   Paper,
@@ -9,49 +8,97 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
+
+const parseNumber = (value) => Number(String(value).replace(",", ".")) || 0;
 
 const EntradaInsumosPage = () => {
   const fornecedores = useDataStore((state) => state.fornecedores);
   const insumos = useDataStore((state) => state.insumos);
   const entradas = useDataStore((state) => state.entradasInsumos);
   const addEntradaInsumos = useDataStore((state) => state.addEntradaInsumos);
+
   const [fornecedorId, setFornecedorId] = useState("");
-  const [parcelas, setParcelas] = useState(1);
+  const [insumoId, setInsumoId] = useState("");
+  const [quantidade, setQuantidade] = useState("");
+  const [valorTotal, setValorTotal] = useState("");
+  const [parcelasQtd, setParcelasQtd] = useState(1);
+  const [parcelasValores, setParcelasValores] = useState([""]);
   const [obs, setObs] = useState("");
-  const [item, setItem] = useState({ insumo_id: "", quantidade: "", custo_unit: "" });
-  const [itens, setItens] = useState([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const total = itens.reduce(
-    (acc, current) => acc + current.quantidade * current.custo_unit,
-    0
+  const totalParcelas = useMemo(
+    () =>
+      parcelasValores.reduce(
+        (total, parcela) => total + parseNumber(parcela),
+        0,
+      ),
+    [parcelasValores],
   );
+  const totalValor = parseNumber(valorTotal);
+  const parcelasDivergentes = Math.abs(totalParcelas - totalValor) > 0.009;
 
-  const addItem = () => {
-    if (!item.insumo_id || !item.quantidade || !item.custo_unit) return;
-    setItens((prev) => [
-      ...prev,
-      {
-        ...item,
-        quantidade: Number(item.quantidade),
-        custo_unit: Number(item.custo_unit),
-      },
-    ]);
-    setItem({ insumo_id: "", quantidade: "", custo_unit: "" });
+  const handleChangeParcelasQtd = (event) => {
+    const nextQtd = Math.max(1, Number(event.target.value) || 1);
+    setParcelasQtd(nextQtd);
+    setParcelasValores((prev) => {
+      const next = Array.from(
+        { length: nextQtd },
+        (_, index) => prev[index] || "",
+      );
+      return next;
+    });
   };
 
-  const handleSubmit = (event) => {
+  const handleChangeParcela = (index, value) => {
+    setParcelasValores((prev) =>
+      prev.map((parcela, currentIndex) =>
+        currentIndex === index ? value : parcela,
+      ),
+    );
+  };
+
+  const canSubmit =
+    fornecedorId &&
+    insumoId &&
+    parseNumber(quantidade) > 0 &&
+    totalValor > 0 &&
+    parcelasValores.every((parcela) => parseNumber(parcela) > 0) &&
+    !parcelasDivergentes;
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!fornecedorId || !itens.length) return;
-    addEntradaInsumos({ fornecedor_id: fornecedorId, itens, parcelas_qtd: Number(parcelas), obs });
+
+    if (!canSubmit) {
+      setErrorMessage(
+        "A soma das parcelas deve ser igual ao valor total para registrar a entrada.",
+      );
+      return;
+    }
+
+    setErrorMessage("");
+
+    await addEntradaInsumos({
+      fornecedor_id: fornecedorId,
+      insumo_id: insumoId,
+      quantidade: parseNumber(quantidade),
+      valor_total: totalValor,
+      parcelas_qtd: parcelasQtd,
+      parcelas_valores: parcelasValores.map(parseNumber),
+      obs,
+    });
+
     setFornecedorId("");
-    setParcelas(1);
+    setInsumoId("");
+    setQuantidade("");
+    setValorTotal("");
+    setParcelasQtd(1);
+    setParcelasValores([""]);
     setObs("");
-    setItens([]);
   };
 
   return (
@@ -84,8 +131,9 @@ const EntradaInsumosPage = () => {
                 <TextField
                   select
                   label="Insumo"
-                  value={item.insumo_id}
-                  onChange={(event) => setItem((prev) => ({ ...prev, insumo_id: event.target.value }))}
+                  value={insumoId}
+                  onChange={(event) => setInsumoId(event.target.value)}
+                  required
                 >
                   {insumos.map((insumo) => (
                     <MenuItem key={insumo.id} value={insumo.id}>
@@ -96,57 +144,75 @@ const EntradaInsumosPage = () => {
                 <TextField
                   label="Quantidade"
                   type="number"
-                  value={item.quantidade}
-                  onChange={(event) => setItem((prev) => ({ ...prev, quantidade: event.target.value }))}
+                  value={quantidade}
+                  onChange={(event) => setQuantidade(event.target.value)}
+                  inputProps={{ min: 0, step: "0.01" }}
+                  required
                 />
                 <TextField
-                  label="Custo unitário"
+                  label="Valor total"
                   type="number"
-                  value={item.custo_unit}
-                  onChange={(event) => setItem((prev) => ({ ...prev, custo_unit: event.target.value }))}
+                  value={valorTotal}
+                  onChange={(event) => setValorTotal(event.target.value)}
+                  inputProps={{ min: 0, step: "0.01" }}
+                  required
                 />
-                <Button variant="outlined" onClick={addItem}>
-                  Adicionar item
-                </Button>
-                <Divider />
                 <TextField
-                  label="Parcelas"
+                  label="Quantidade de Parcelas"
                   type="number"
-                  value={parcelas}
-                  onChange={(event) => setParcelas(event.target.value)}
+                  value={parcelasQtd}
+                  onChange={handleChangeParcelasQtd}
+                  inputProps={{ min: 1, step: 1 }}
+                  required
                 />
+
+                <Stack spacing={1}>
+                  {parcelasValores.map((parcela, index) => (
+                    <TextField
+                      key={`parcela-${index + 1}`}
+                      label={`Valor da parcela ${index + 1}`}
+                      type="number"
+                      value={parcela}
+                      onChange={(event) =>
+                        handleChangeParcela(index, event.target.value)
+                      }
+                      inputProps={{ min: 0, step: "0.01" }}
+                      required
+                    />
+                  ))}
+                </Stack>
+
+                <Typography
+                  variant="body2"
+                  color={parcelasDivergentes ? "error.main" : "text.secondary"}
+                >
+                  Soma das parcelas: {formatCurrency(totalParcelas)} • Total
+                  informado: {formatCurrency(totalValor)}
+                </Typography>
+
                 <TextField
                   label="Observações"
+                  placeholder="Observações, notas fiscais, etc..."
                   value={obs}
                   onChange={(event) => setObs(event.target.value)}
                   multiline
                   rows={2}
                 />
-                <Button type="submit" variant="contained">
-                  Registrar entrada ({formatCurrency(total)})
+
+                {errorMessage ? (
+                  <Typography variant="body2" color="error.main">
+                    {errorMessage}
+                  </Typography>
+                ) : null}
+
+                <Button type="submit" variant="contained" disabled={!canSubmit}>
+                  Registrar entrada ({formatCurrency(totalValor)})
                 </Button>
               </Stack>
             </Box>
           </Paper>
         </Grid>
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Itens da entrada
-            </Typography>
-            <Stack spacing={1}>
-              {itens.map((current, index) => (
-                <Typography key={`${current.insumo_id}-${index}`} variant="body2">
-                  {insumos.find((insumo) => insumo.id === current.insumo_id)?.nome} • {current.quantidade} x {formatCurrency(current.custo_unit)}
-                </Typography>
-              ))}
-              {!itens.length ? (
-                <Typography variant="body2" color="text.secondary">
-                  Adicione insumos para compor a entrada.
-                </Typography>
-              ) : null}
-            </Stack>
-          </Paper>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
               Entradas recentes
@@ -154,9 +220,12 @@ const EntradaInsumosPage = () => {
             <Stack spacing={2}>
               {entradas.map((entrada) => (
                 <Paper key={entrada.id} variant="outlined" sx={{ p: 2 }}>
-                  <Typography fontWeight={600}>Entrada #{entrada.id.slice(0, 6)}</Typography>
+                  <Typography fontWeight={600}>
+                    Entrada #{entrada.id.slice(0, 6)}
+                  </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Total: {formatCurrency(entrada.valor_total)} • Parcelas: {entrada.parcelas_qtd}
+                    Total: {formatCurrency(entrada.valor_total)} • Parcelas:{" "}
+                    {entrada.parcelas_qtd}
                   </Typography>
                 </Paper>
               ))}
