@@ -249,7 +249,7 @@ const AppLayout = ({ title, children }) => {
                 borderRadius: 1,
               }}
             />
-            <Typography variant="h6" fontWeight={700}>
+            <Typography variant="h6" fontWeight={700} color="primary.main">
               MVP Coffee System
             </Typography>
           </Box>
@@ -260,8 +260,16 @@ const AppLayout = ({ title, children }) => {
                 {session?.perfil}
               </Typography>
             </Box>
-            <Avatar>{session?.nome?.charAt(0)}</Avatar>
-            <Button color="inherit" onClick={handleLogout}>
+            <Avatar
+              sx={{
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                fontWeight: 700,
+              }}
+            >
+              {session?.nome?.charAt(0)}
+            </Avatar>
+            <Button color="primary" variant="outlined" onClick={handleLogout}>
               Sair
             </Button>
           </Box>
@@ -275,6 +283,7 @@ const AppLayout = ({ title, children }) => {
           [`& .MuiDrawer-paper`]: {
             width: drawerWidth,
             boxSizing: "border-box",
+            backgroundColor: "#0C1E1A",
           },
         }}
       >
@@ -288,6 +297,12 @@ const AppLayout = ({ title, children }) => {
                     <ListItem disablePadding>
                       <ListItemButton
                         onClick={() => handleToggleGroup(group.id)}
+                        sx={{
+                          borderRadius: 2,
+                          mx: 1,
+                          my: 0.5,
+                          "&:hover": { backgroundColor: "#1F4A3F" },
+                        }}
                       >
                         <ListItemIcon>
                           <group.icon />
@@ -312,6 +327,19 @@ const AppLayout = ({ title, children }) => {
                               component={Link}
                               href={item.href}
                               selected={router.pathname === item.href}
+                              sx={{
+                                borderRadius: 2,
+                                mx: 1,
+                                my: 0.25,
+                                "&.Mui-selected": {
+                                  backgroundColor: "rgba(242, 183, 5, 0.16)",
+                                  color: "primary.main",
+                                  "& .MuiListItemIcon-root": {
+                                    color: "primary.main",
+                                  },
+                                },
+                                "&:hover": { backgroundColor: "#1F4A3F" },
+                              }}
                             >
                               <ListItemIcon sx={{ minWidth: 36 }}>
                                 <item.icon fontSize="small" />
@@ -329,6 +357,17 @@ const AppLayout = ({ title, children }) => {
                       component={Link}
                       href={group.href}
                       selected={router.pathname === group.href}
+                      sx={{
+                        borderRadius: 2,
+                        mx: 1,
+                        my: 0.5,
+                        "&.Mui-selected": {
+                          backgroundColor: "rgba(242, 183, 5, 0.16)",
+                          color: "primary.main",
+                          "& .MuiListItemIcon-root": { color: "primary.main" },
+                        },
+                        "&:hover": { backgroundColor: "#1F4A3F" },
+                      }}
                     >
                       <ListItemIcon>
                         <group.icon />
@@ -348,7 +387,10 @@ const AppLayout = ({ title, children }) => {
           </Typography>
         </Box>
       </Drawer>
-      <Box component="main" sx={{ flexGrow: 1, p: 4 }}>
+      <Box
+        component="main"
+        sx={{ flexGrow: 1, p: 4, backgroundColor: "background.default" }}
+      >
         <Toolbar />
         {title ? (
           <Typography variant="h4" fontWeight={700} gutterBottom>
