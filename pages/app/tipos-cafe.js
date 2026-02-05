@@ -2,7 +2,6 @@ import {
   Alert,
   Box,
   Button,
-  Divider,
   Drawer,
   Grid,
   IconButton,
@@ -29,7 +28,6 @@ const TiposCafePage = () => {
     nome: "",
     rendimento_percent: "",
     margem_lucro_percent: "",
-    kg_saco_venda: "",
     insumo_id: "",
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -46,7 +44,6 @@ const TiposCafePage = () => {
       nome: "",
       rendimento_percent: "",
       margem_lucro_percent: "",
-      kg_saco_venda: "",
       insumo_id: "",
     });
     setIsEditing(false);
@@ -63,7 +60,6 @@ const TiposCafePage = () => {
       nome: tipo.nome || "",
       rendimento_percent: tipo.rendimento_percent || "",
       margem_lucro_percent: tipo.margem_lucro_percent || "",
-      kg_saco_venda: tipo.kg_saco_venda || "",
       insumo_id: tipo.insumo_id || "",
     });
     setIsEditing(true);
@@ -76,24 +72,16 @@ const TiposCafePage = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (
-      !form.nome.trim() ||
-      !form.insumo_id ||
-      Number(form.kg_saco_venda) <= 0
-    ) {
+    if (!form.nome.trim() || !form.insumo_id) {
       setFeedback({
         open: true,
-        message:
-          "Preencha nome, insumo base e quantos kg há no saco para venda.",
+        message: "Preencha nome e insumo base.",
         severity: "error",
       });
       return;
     }
 
-    const payload = {
-      ...form,
-      kg_saco_venda: Number(form.kg_saco_venda),
-    };
+    const payload = { ...form };
 
     if (isEditing) {
       await updateTipoCafe(payload);
@@ -155,8 +143,7 @@ const TiposCafePage = () => {
                     {insumos.find((insumo) => insumo.id === tipo.insumo_id)
                       ?.nome || "-"}
                     {" • "}Rendimento: {tipo.rendimento_percent || "-"}%{" • "}
-                    Margem: {tipo.margem_lucro_percent || "-"}%{" • "}
-                    Saco: {tipo.kg_saco_venda || "-"} kg
+                    Margem: {tipo.margem_lucro_percent || "-"}%
                   </Typography>
                 </Paper>
               ))}
@@ -224,16 +211,6 @@ const TiposCafePage = () => {
               label="Margem de lucro (%)"
               value={form.margem_lucro_percent}
               onChange={handleChange("margem_lucro_percent")}
-            />
-            <Divider sx={{ mt: 1 }} />
-            <TextField
-              type="number"
-              label="A venda do saco tem quantos kg"
-              value={form.kg_saco_venda}
-              onChange={handleChange("kg_saco_venda")}
-              required
-              inputProps={{ min: 0.01, step: "any" }}
-              helperText="Campo obrigatório, deve ser maior que 0."
             />
             <Button type="submit" variant="contained">
               {isEditing ? "Salvar alterações" : "Salvar tipo"}
