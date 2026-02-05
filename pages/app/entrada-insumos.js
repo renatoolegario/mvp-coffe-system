@@ -20,6 +20,7 @@ const EntradaInsumosPage = () => {
   const fornecedores = useDataStore((state) => state.fornecedores);
   const insumos = useDataStore((state) => state.insumos);
   const entradas = useDataStore((state) => state.entradasInsumos);
+  const movInsumos = useDataStore((state) => state.movInsumos);
   const addEntradaInsumos = useDataStore((state) => state.addEntradaInsumos);
 
   const [fornecedorId, setFornecedorId] = useState("");
@@ -41,6 +42,37 @@ const EntradaInsumosPage = () => {
   );
   const totalValor = parseNumber(valorTotal);
   const parcelasDivergentes = Math.abs(totalParcelas - totalValor) > 0.009;
+
+  const entradasComMovimento = useMemo(
+    () =>
+      entradas.map((entrada) => {
+        const movimentosDaEntrada = movInsumos.filter(
+          (movimento) =>
+            movimento.referencia_tipo === "entrada_insumos" &&
+            movimento.referencia_id === entrada.id,
+        );
+
+        const quantidadeMovimentada = movimentosDaEntrada.reduce(
+          (total, movimento) => total + parseNumber(movimento.quantidade),
+          0,
+        );
+        const custoTotalMovimentado = movimentosDaEntrada.reduce(
+          (total, movimento) => total + parseNumber(movimento.custo_total),
+          0,
+        );
+        const custoUnitarioMovimentado = quantidadeMovimentada
+          ? custoTotalMovimentado / quantidadeMovimentada
+          : 0;
+
+        return {
+          ...entrada,
+          quantidadeMovimentada,
+          custoUnitarioMovimentado,
+          custoTotalMovimentado,
+        };
+      }),
+    [entradas, movInsumos],
+  );
 
   const handleChangeParcelasQtd = (event) => {
     const nextQtd = Math.max(1, Number(event.target.value) || 1);
@@ -218,14 +250,20 @@ const EntradaInsumosPage = () => {
               Entradas recentes
             </Typography>
             <Stack spacing={2}>
-              {entradas.map((entrada) => (
+              {entradasComMovimento.map((entrada) => (
                 <Paper key={entrada.id} variant="outlined" sx={{ p: 2 }}>
                   <Typography fontWeight={600}>
                     Entrada #{entrada.id.slice(0, 6)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Total: {formatCurrency(entrada.valor_total)} • Parcelas:{" "}
-                    {entrada.parcelas_qtd}
+                    Quantidade: {entrada.quantidadeMovimentada} • Custo
+                    unitário: {formatCurrency(entrada.custoUnitarioMovimentado)}
+                    • Custo total:{" "}
+                    {formatCurrency(entrada.custoTotalMovimentado)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Total da compra: {formatCurrency(entrada.valor_total)} •
+                    Parcelas: {entrada.parcelas_qtd}
                   </Typography>
                 </Paper>
               ))}
