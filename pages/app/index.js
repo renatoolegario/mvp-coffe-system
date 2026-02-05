@@ -1,22 +1,40 @@
 import { Grid, Stack, Typography } from "@mui/material";
+import { useEffect, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import InfoCard from "../../components/atomic/InfoCard";
-import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
 
-const AppHome = () => {
-  const clientes = useDataStore((state) => state.clientes);
-  const fornecedores = useDataStore((state) => state.fornecedores);
-  const vendas = useDataStore((state) => state.vendas);
-  const contasReceber = useDataStore((state) => state.contasReceber);
-  const contasPagar = useDataStore((state) => state.contasPagar);
+const emptyResumo = {
+  clientesAtivos: 0,
+  fornecedoresAtivos: 0,
+  totalVendas: 0,
+  totalReceberEmAberto: 0,
+  totalPagarEmAberto: 0,
+};
 
-  const totalVendas = vendas.reduce((total, venda) => total + venda.valor_total, 0);
-  const totalReceber = contasReceber.reduce(
-    (total, conta) => total + conta.valor_total,
-    0
-  );
-  const totalPagar = contasPagar.reduce((total, conta) => total + conta.valor_total, 0);
+const AppHome = () => {
+  const [resumo, setResumo] = useState(emptyResumo);
+
+  useEffect(() => {
+    const carregarResumo = async () => {
+      try {
+        const response = await fetch("/api/v1/dashboard/resumo");
+        if (!response.ok) return;
+        const result = await response.json();
+        setResumo({
+          clientesAtivos: Number(result.clientesAtivos) || 0,
+          fornecedoresAtivos: Number(result.fornecedoresAtivos) || 0,
+          totalVendas: Number(result.totalVendas) || 0,
+          totalReceberEmAberto: Number(result.totalReceberEmAberto) || 0,
+          totalPagarEmAberto: Number(result.totalPagarEmAberto) || 0,
+        });
+      } catch (error) {
+        return;
+      }
+    };
+
+    carregarResumo();
+  }, []);
 
   return (
     <AppLayout>
@@ -26,25 +44,41 @@ const AppHome = () => {
         </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <InfoCard title="Clientes" value={clientes.length} subtitle="cadastros ativos" />
+            <InfoCard
+              title="Clientes"
+              value={resumo.clientesAtivos}
+              subtitle="cadastros ativos"
+            />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <InfoCard
               title="Fornecedores"
-              value={fornecedores.length}
+              value={resumo.fornecedoresAtivos}
               subtitle="parceiros cadastrados"
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <InfoCard title="Vendas" value={formatCurrency(totalVendas)} subtitle="total" />
+            <InfoCard
+              title="Vendas"
+              value={formatCurrency(resumo.totalVendas)}
+              subtitle="total"
+            />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <InfoCard title="Recebíveis" value={formatCurrency(totalReceber)} subtitle="em aberto" />
+            <InfoCard
+              title="Recebíveis"
+              value={formatCurrency(resumo.totalReceberEmAberto)}
+              subtitle="em aberto"
+            />
           </Grid>
         </Grid>
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
-            <InfoCard title="Contas a pagar" value={formatCurrency(totalPagar)} subtitle="em aberto" />
+            <InfoCard
+              title="Contas a pagar"
+              value={formatCurrency(resumo.totalPagarEmAberto)}
+              subtitle="em aberto"
+            />
           </Grid>
           <Grid item xs={12} md={6}>
             <InfoCard
