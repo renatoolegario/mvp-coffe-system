@@ -40,26 +40,46 @@ const drawerWidth = 260;
 
 const menuGroups = [
   {
-    id: "geral",
-    label: "Geral",
+    id: "visao-geral",
+    label: "Visão Geral",
     icon: Dashboard,
-    items: [{ label: "Visão Geral", href: "/app", icon: Dashboard }],
+    href: "/app",
   },
   {
     id: "cadastros",
     label: "Cadastros",
     icon: Groups,
     items: [
-      { label: "Usuários", href: "/app/usuarios", roles: ["admin"], icon: Group },
-      { label: "Clientes", href: "/app/clientes", roles: ["admin", "vendas"], icon: Handshake },
+      {
+        label: "Usuários",
+        href: "/app/usuarios",
+        roles: ["admin"],
+        icon: Group,
+      },
+      {
+        label: "Clientes",
+        href: "/app/clientes",
+        roles: ["admin", "vendas"],
+        icon: Handshake,
+      },
       {
         label: "Fornecedores",
         href: "/app/fornecedores",
         roles: ["admin", "financeiro"],
         icon: LocalShipping,
       },
-      { label: "Insumos", href: "/app/insumos", roles: ["admin", "producao"], icon: Inventory2 },
-      { label: "Tipos de Café", href: "/app/tipos-cafe", roles: ["admin", "producao"], icon: LocalCafe },
+      {
+        label: "Insumos",
+        href: "/app/insumos",
+        roles: ["admin", "producao"],
+        icon: Inventory2,
+      },
+      {
+        label: "Tipos de Café",
+        href: "/app/tipos-cafe",
+        roles: ["admin", "producao"],
+        icon: LocalCafe,
+      },
     ],
   },
   {
@@ -98,9 +118,24 @@ const menuGroups = [
     label: "Vendas",
     icon: PointOfSale,
     items: [
-      { label: "Nova Venda", href: "/app/nova-venda", roles: ["admin", "vendas"], icon: PointOfSale },
-      { label: "Gestão de Vendas", href: "/app/vendas", roles: ["admin", "vendas"], icon: ReceiptLong },
-      { label: "Detalhe do Cliente", href: "/app/detalhe-cliente", roles: ["admin", "vendas"], icon: Handshake },
+      {
+        label: "Nova Venda",
+        href: "/app/nova-venda",
+        roles: ["admin", "vendas"],
+        icon: PointOfSale,
+      },
+      {
+        label: "Gestão de Vendas",
+        href: "/app/vendas",
+        roles: ["admin", "vendas"],
+        icon: ReceiptLong,
+      },
+      {
+        label: "Detalhe do Cliente",
+        href: "/app/detalhe-cliente",
+        roles: ["admin", "vendas"],
+        icon: Handshake,
+      },
     ],
   },
   {
@@ -155,13 +190,16 @@ const AppLayout = ({ title, children }) => {
   const filteredGroups = useMemo(() => {
     if (!session) return [];
     return menuGroups
-      .map((group) => ({
-        ...group,
-        items: group.items.filter((item) =>
-          item.roles ? item.roles.includes(session.perfil) : true
-        ),
-      }))
-      .filter((group) => group.items.length > 0);
+      .map((group) => {
+        if (!group.items) return group;
+        return {
+          ...group,
+          items: group.items.filter((item) =>
+            item.roles ? item.roles.includes(session.perfil) : true,
+          ),
+        };
+      })
+      .filter((group) => (group.items ? group.items.length > 0 : true));
   }, [session]);
 
   useEffect(() => {
@@ -169,7 +207,10 @@ const AppLayout = ({ title, children }) => {
     setOpenGroups((prev) => {
       const next = {};
       filteredGroups.forEach((group, index) => {
-        const hasActive = group.items.some((item) => item.href === router.pathname);
+        if (!group.items) return;
+        const hasActive = group.items.some(
+          (item) => item.href === router.pathname,
+        );
         next[group.id] = prev[group.id] ?? (hasActive || index === 0);
       });
       return next;
@@ -191,14 +232,22 @@ const AppLayout = ({ title, children }) => {
 
   return (
     <Box sx={{ display: "flex" }}>
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+      <AppBar
+        position="fixed"
+        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
+      >
         <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
           <Box display="flex" alignItems="center" gap={2}>
             <Box
               component="img"
               src="/logotipo.jpg"
               alt="Logotipo MVP Coffee"
-              sx={{ height: 36, width: 36, objectFit: "contain", borderRadius: 1 }}
+              sx={{
+                height: 36,
+                width: 36,
+                objectFit: "contain",
+                borderRadius: 1,
+              }}
             />
             <Typography variant="h6" fontWeight={700}>
               MVP Coffee System
@@ -234,29 +283,60 @@ const AppLayout = ({ title, children }) => {
           <List>
             {filteredGroups.map((group) => (
               <Box key={group.id}>
-                <ListItem disablePadding>
-                  <ListItemButton onClick={() => handleToggleGroup(group.id)}>
-                    <ListItemIcon>
-                      <group.icon />
-                    </ListItemIcon>
-                    <ListItemText primary={group.label} />
-                    {openGroups[group.id] ? <ExpandLess /> : <ExpandMore />}
-                  </ListItemButton>
-                </ListItem>
-                <Collapse in={openGroups[group.id]} timeout="auto" unmountOnExit>
-                  <List component="div" disablePadding>
-                    {group.items.map((item) => (
-                      <ListItem key={item.href} disablePadding sx={{ pl: 2 }}>
-                        <ListItemButton component={Link} href={item.href} selected={router.pathname === item.href}>
-                          <ListItemIcon sx={{ minWidth: 36 }}>
-                            <item.icon fontSize="small" />
-                          </ListItemIcon>
-                          <ListItemText primary={item.label} />
-                        </ListItemButton>
-                      </ListItem>
-                    ))}
-                  </List>
-                </Collapse>
+                {group.items ? (
+                  <>
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        onClick={() => handleToggleGroup(group.id)}
+                      >
+                        <ListItemIcon>
+                          <group.icon />
+                        </ListItemIcon>
+                        <ListItemText primary={group.label} />
+                        {openGroups[group.id] ? <ExpandLess /> : <ExpandMore />}
+                      </ListItemButton>
+                    </ListItem>
+                    <Collapse
+                      in={openGroups[group.id]}
+                      timeout="auto"
+                      unmountOnExit
+                    >
+                      <List component="div" disablePadding>
+                        {group.items.map((item) => (
+                          <ListItem
+                            key={item.href}
+                            disablePadding
+                            sx={{ pl: 2 }}
+                          >
+                            <ListItemButton
+                              component={Link}
+                              href={item.href}
+                              selected={router.pathname === item.href}
+                            >
+                              <ListItemIcon sx={{ minWidth: 36 }}>
+                                <item.icon fontSize="small" />
+                              </ListItemIcon>
+                              <ListItemText primary={item.label} />
+                            </ListItemButton>
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Collapse>
+                  </>
+                ) : (
+                  <ListItem disablePadding>
+                    <ListItemButton
+                      component={Link}
+                      href={group.href}
+                      selected={router.pathname === group.href}
+                    >
+                      <ListItemIcon>
+                        <group.icon />
+                      </ListItemIcon>
+                      <ListItemText primary={group.label} />
+                    </ListItemButton>
+                  </ListItem>
+                )}
               </Box>
             ))}
           </List>
