@@ -20,6 +20,28 @@ const SystemPage = () => {
 
   const [status, setStatus] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
+  const [databaseJson, setDatabaseJson] = useState("");
+
+  const getSeedData = () => {
+    const dataSnapshot = useDataStore.getState();
+    return serializeSeedData({
+      usuarios: dataSnapshot.usuarios,
+      clientes: dataSnapshot.clientes,
+      fornecedores: dataSnapshot.fornecedores,
+      insumos: dataSnapshot.insumos,
+      tiposCafe: dataSnapshot.tiposCafe,
+      lotes: dataSnapshot.lotes,
+      movInsumos: dataSnapshot.movInsumos,
+      movLotes: dataSnapshot.movLotes,
+      entradasInsumos: dataSnapshot.entradasInsumos,
+      ordensProducao: dataSnapshot.ordensProducao,
+      vendas: dataSnapshot.vendas,
+      contasPagar: dataSnapshot.contasPagar,
+      contasPagarParcelas: dataSnapshot.contasPagarParcelas,
+      contasReceber: dataSnapshot.contasReceber,
+      contasReceberParcelas: dataSnapshot.contasReceberParcelas,
+    });
+  };
 
   const handleSeedDatabase = async () => {
     setLoadingSeed(true);
@@ -84,6 +106,12 @@ const SystemPage = () => {
     });
   };
 
+  const handleShowDatabaseJson = () => {
+    setStatus(null);
+    const seedData = getSeedData();
+    setDatabaseJson(JSON.stringify(seedData, null, 2));
+  };
+
   return (
     <Box sx={{ backgroundColor: "#f9f5f1", minHeight: "100vh", py: 10 }}>
       <Container maxWidth="sm">
@@ -121,7 +149,31 @@ const SystemPage = () => {
               >
                 Gerar seed.json
               </Button>
+
+              <Button
+                variant="text"
+                size="large"
+                onClick={handleShowDatabaseJson}
+              >
+                Mostrar dados em JSON
+              </Button>
             </Stack>
+
+            {databaseJson && (
+              <Box
+                sx={{
+                  backgroundColor: "#f5f5f5",
+                  borderRadius: 2,
+                  maxHeight: 320,
+                  overflow: "auto",
+                  p: 2,
+                  fontFamily: "monospace",
+                  fontSize: "0.85rem",
+                }}
+              >
+                <pre style={{ margin: 0 }}>{databaseJson}</pre>
+              </Box>
+            )}
           </Stack>
         </Paper>
       </Container>
