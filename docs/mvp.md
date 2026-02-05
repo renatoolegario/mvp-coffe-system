@@ -4,7 +4,7 @@
 ## Objetivo
 Entregar um MVP demonstrável (sem backend e sem banco externo), rodando 100% no navegador, com:
 - Estoque de Insumos (matérias-primas)
-- Produção/Fabricação de Lotes
+- Produção/Fabricação de Café
 - Vendas e Controle de Recebíveis
 - Compras e Controle de Pagáveis
 - Dashboards macro (estoque, produção, vendas, inadimplência, fornecedores)
@@ -35,37 +35,35 @@ Funções
   - Fornecedores
   - Insumos
   - Tipos de Café
-  - Lotes (produtos finais)
 
 Telas
 - Gestão de Clientes (dashboard + listagem + cadastro)
 - Gestão de Fornecedores (dashboard + listagem + cadastro)
 - Gestão de Insumos (listagem + cadastro)
 - Gestão de Tipos de Café (listagem + cadastro)
-- Gestão de Lotes (listagem + cadastro)
 
 ---
 
 ### 3) Gestão de Café (Estoque + Produção)
 Funções
 - Entradas de Insumos (compra): aumenta estoque e gera contas a pagar.
-- Fabricação de Lotes: baixa insumos, calcula custo, aumenta estoque do lote.
+- Fabricação de Café: baixa insumo base, calcula custo, aumenta estoque por tipo.
 - Painéis:
   - Estoque de insumos: saldo, custo médio, valor em estoque (R$), histórico.
-  - Estoque de lotes: saldo, custo médio, valor em estoque (R$), histórico.
+  - Estoque por tipo: saldo, custo médio, valor em estoque (R$), histórico.
 
 Telas
 - Entrada de Insumos (novo lançamento + itens + parcelas)
-- Fabricação de Lotes (novo lançamento + insumos consumidos)
+- Fabricação de Café (novo lançamento + resumo de consumo)
 - Dashboard Insumos
-- Dashboard Lotes
+- Dashboard Estoque
 
 ---
 
 ### 4) Gestão Comercial (Vendas + Clientes)
 Funções
-- Nova venda: seleciona cliente, lote, quantidade, valor negociado, parcelas.
-- Baixa estoque do lote (saída venda).
+- Nova venda: seleciona cliente, tipo de café, quantidade, valor negociado, parcelas.
+- Baixa estoque do tipo (saída venda).
 - Gera contas a receber (macro + parcelas).
 - Histórico do cliente:
   - Compras
@@ -112,7 +110,7 @@ Telas
 
 ### Estoque (por movimentação)
 - Saldo insumo = soma(ENTRADAS) - soma(SAIDAS)
-- Saldo lote = soma(ENTRADAS) - soma(SAIDAS)
+- Saldo tipo de café = soma(ENTRADAS) - soma(SAIDAS)
 
 ### Custos
 - Entrada de insumo:
@@ -120,14 +118,14 @@ Telas
   - custo_total = quantidade * custo_unit
 
 - Fabricação:
-  - custo_base = soma(custo_total dos insumos consumidos)
-  - overhead = custo_base * (overhead_percent do tipo de café / 100)
-  - custo_total_producao = custo_base + overhead
-  - custo_unit_lote = custo_total_producao / quantidade_gerada
-  - movimento de lote (ENTRADA_FABRICACAO) grava custo_unit_lote
+  - custo_base = quantidade_insumo * custo_unit_insumo
+  - margem_lucro = custo_base * (margem_lucro_percent do tipo de café / 100)
+  - custo_total_producao = custo_base + margem_lucro
+  - custo_unit_tipo = custo_total_producao / quantidade_gerada
+  - movimento de estoque (ENTRADA_FABRICACAO) grava custo_unit_tipo
 
 - Venda:
-  - movimentação de lote (SAIDA_VENDA) usa custo_unit atual do lote (médio calculado por entradas)
+  - movimentação de estoque (SAIDA_VENDA) usa custo_unit atual do tipo (médio calculado por entradas)
   - lucro pode ser exibido: receita - custo (MVP opcional)
 
 ### Parcelas

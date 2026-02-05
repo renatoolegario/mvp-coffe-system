@@ -15,7 +15,7 @@ Controla permissões por perfil (admin, financeiro, produção, vendedor).
 
 O que faz
 
-Mantém os dados mestres do sistema (clientes, fornecedores, insumos, produtos/lotes, tipos de café).
+Mantém os dados mestres do sistema (clientes, fornecedores, insumos e tipos de café).
 
 Tudo que os outros módulos referenciam.
 
@@ -25,9 +25,9 @@ O que faz
 
 Controle de estoque de insumos (matéria-prima).
 
-Cadastro e controle de lotes/produtos.
+Cadastro e controle de tipos de café (produto final).
 
-Fabricação: baixa insumos e dá entrada no estoque de lotes.
+Fabricação: baixa insumos e dá entrada no estoque por tipo de café.
 
 Cálculo de custo médio e valor em estoque (R$).
 
@@ -35,7 +35,7 @@ Cálculo de custo médio e valor em estoque (R$).
 
 O que faz
 
-Nova venda: baixa lote do estoque e gera contas a receber (com parcelas).
+Nova venda: baixa tipo de café do estoque e gera contas a receber (com parcelas).
 
 Dashboard de vendas, recebíveis e inadimplência.
 
@@ -115,24 +115,13 @@ id, nome, unidade (kg, saca, un), estoque_minimo (opcional), ativo, criado_em
 
 Função
 
-Define “receitas/regras” do produto: conversão e % de custo indireto.
+Define “receitas/regras” do produto: conversão, insumo base e margem de lucro.
 Campos típicos
 
-id, nome, rendimento_percent (conversão), overhead_percent (% sobre custo fabricação), ativo
-
-7. lotes
-
-Função
-
-Representa o estoque do produto final (ex: Lote Catuaí Torra Média).
-
-Pode estar ligado a um tipo_cafe.
-Campos típicos
-
-id, nome, tipo_cafe_id, unidade (kg/saca), ativo, criado_em
+id, nome, insumo_id, rendimento_percent (conversão), margem_lucro_percent, ativo
 
 C) Estoque e Movimentações
-8. mov_insumos
+7. mov_insumos
 
 Função
 
@@ -146,20 +135,20 @@ Campos típicos
 
 id, insumo_id, tipo, quantidade, custo_unit, custo_total, data, referencia_tipo, referencia_id, obs
 
-9. mov_lotes
+8. mov_lotes
 
 Função
 
-Histórico oficial do estoque de lotes (entrada por fabricação e saída por venda).
+Histórico oficial do estoque por tipo de café (entrada por fabricação e saída por venda).
 Tipos
 
 ENTRADA_FABRICACAO, SAIDA_VENDA, AJUSTE
 Campos típicos
 
-id, lote_id, tipo, quantidade, custo_unit, custo_total, data, referencia_tipo, referencia_id, obs
+id, tipo_cafe_id, tipo, quantidade, custo_unit, custo_total, data, referencia_tipo, referencia_id, obs
 
 D) Compras / Entrada de Insumos
-10. entrada_insumos
+9. entrada_insumos
 
 Função
 
@@ -170,7 +159,7 @@ Campos típicos
 
 id, fornecedor_id, data_entrada, valor_total, forma_pagamento, parcelas_qtd, obs, status
 
-11. entrada_insumos_itens
+10. entrada_insumos_itens
 
 Função
 
@@ -182,38 +171,27 @@ Campos típicos
 id, entrada_id, insumo_id, quantidade, custo_unit, custo_total
 
 E) Produção / Fabricação
-12. ordem_producao
+11. ordem_producao
 
 Função
 
-Documento macro da fabricação (data, lote produzido, quantidade).
+Documento macro da fabricação (data, tipo produzido, quantidade).
 
-Responsável por gerar entrada no lote.
+Responsável por gerar entrada no estoque do tipo.
 Campos típicos
 
-id, data_fabricacao, lote_id, quantidade_gerada, custo_total, status, obs
-
-13. ordem_producao_itens
-
-Função
-
-Quais insumos foram consumidos e quanto.
-
-Gera mov_insumos (SAIDA_PRODUCAO).
-Campos típicos
-
-id, ordem_id, insumo_id, quantidade_baixada, custo_unit_no_momento, custo_total
+id, data_fabricacao, tipo_cafe_id, quantidade_gerada, quantidade_insumo, insumo_id, custo_total, status, obs
 
 (A própria ordem_producao gera mov_lotes ENTRADA_FABRICACAO com custo unit calculado.)
 
 F) Vendas / Contas a Receber
-14. vendas
+12. vendas
 
 Função
 
 Documento macro da venda: cliente, total, condições.
 
-Dispara baixa do estoque de lote.
+Dispara baixa do estoque de tipo de café.
 Campos típicos
 
 id, cliente_id, data_venda, valor_total, parcelas_qtd, valor_negociado, status, obs
@@ -222,12 +200,12 @@ id, cliente_id, data_venda, valor_total, parcelas_qtd, valor_negociado, status, 
 
 Função
 
-Itens vendidos: lote, quantidade, preço.
+Itens vendidos: tipo de café, quantidade, preço.
 
 Gera mov_lotes (SAIDA_VENDA).
 Campos típicos
 
-id, venda_id, lote_id, quantidade, preco_unit, subtotal
+id, venda_id, tipo_cafe_id, quantidade, preco_unit, subtotal
 
 G) Financeiro (macro + parcelas)
 16. contas_pagar
@@ -285,7 +263,7 @@ Cria contas_pagar + contas_pagar_parcelas
 
 Fabricação
 
-Cria ordem_producao + ordem_producao_itens
+Cria ordem_producao
 
 Gera mov_insumos (saída produção)
 

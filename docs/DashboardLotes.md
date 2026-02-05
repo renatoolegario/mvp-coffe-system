@@ -1,7 +1,7 @@
-# Página Dashboard de Lotes
+# Página Dashboard de Tipos de Café
 
 ## Descrição
-Painel de saldo, custo médio e valor em estoque dos lotes de café.
+Painel de saldo, custo médio e valor em estoque por tipo de café.
 
 ## Props utilizadas
 - Nenhuma.
@@ -11,4 +11,4 @@ Painel de saldo, custo médio e valor em estoque dos lotes de café.
 - Calcula custo médio e valor total em estoque.
 
 ## Resultado esperado
-- Visão rápida do estoque de lotes.
+- Visão rápida do estoque por tipo.

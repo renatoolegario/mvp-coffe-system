@@ -1,6 +1,6 @@
 {
   "meta": {
-    "seed_version": "1.1.0",
+    "seed_version": "1.2.0",
     "generated_at": "2026-02-04T12:00:00-03:00",
     "currency": "BRL",
     "timezone": "America/Sao_Paulo"
@@ -23,36 +23,10 @@
     {
       "id": "tc_001",
       "nome": "Café em Grão",
-      "rendimento_percent": 100,
-      "overhead_percent": 0,
+      "insumo_id": "ins_001",
+      "rendimento_percent": 92,
+      "margem_lucro_percent": 20,
       "ativo": true
-    }
-  ],
-
-  "lotes": [
-    {
-      "id": "lot_001",
-      "nome": "Café em Grão - Tradicional (1kg)",
-      "tipo_cafe_id": "tc_001",
-      "unidade": "kg",
-      "ativo": true,
-      "criado_em": "2026-01-08T10:00:00-03:00"
-    },
-    {
-      "id": "lot_002",
-      "nome": "Café em Grão - Premium (1kg)",
-      "tipo_cafe_id": "tc_001",
-      "unidade": "kg",
-      "ativo": true,
-      "criado_em": "2026-01-08T10:01:00-03:00"
-    },
-    {
-      "id": "lot_003",
-      "nome": "Café em Grão - Microlote Especial (250g)",
-      "tipo_cafe_id": "tc_001",
-      "unidade": "kg",
-      "ativo": true,
-      "criado_em": "2026-01-08T10:02:00-03:00"
     }
   ],
 
@@ -116,17 +90,38 @@
     }
   ],
 
-  "insumos": [],
+  "insumos": [
+    {
+      "id": "ins_001",
+      "nome": "Café Verde",
+      "unidade": "kg",
+      "estoque_minimo": 50,
+      "ativo": true,
+      "criado_em": "2026-01-04T08:30:00-03:00"
+    }
+  ],
   "entrada_insumos": [],
   "entrada_insumos_itens": [],
   "ordem_producao": [],
-  "ordem_producao_itens": [],
   "vendas": [],
   "vendas_itens": [],
   "contas_pagar": [],
   "contas_pagar_parcelas": [],
   "contas_receber": [],
   "contas_receber_parcelas": [],
-  "mov_insumos": [],
+  "mov_insumos": [
+    {
+      "id": "mov_ins_001",
+      "insumo_id": "ins_001",
+      "tipo": "ENTRADA_COMPRA",
+      "quantidade": 500,
+      "custo_unit": 12.5,
+      "custo_total": 6250,
+      "data": "2026-01-04T09:00:00-03:00",
+      "referencia_tipo": "entrada_insumos",
+      "referencia_id": "entrada_001",
+      "obs": "Estoque inicial"
+    }
+  ],
   "mov_lotes": []
 }

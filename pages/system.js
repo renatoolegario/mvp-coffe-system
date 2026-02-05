@@ -56,7 +56,6 @@ const SystemPage = () => {
       fornecedores: dataSnapshot.fornecedores,
       insumos: dataSnapshot.insumos,
       tiposCafe: dataSnapshot.tiposCafe,
-      lotes: dataSnapshot.lotes,
       movInsumos: dataSnapshot.movInsumos,
       movLotes: dataSnapshot.movLotes,
       entradasInsumos: dataSnapshot.entradasInsumos,
