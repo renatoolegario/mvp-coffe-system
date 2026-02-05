@@ -1,5 +1,6 @@
 
 Módulos do MVP
+Este resumo complementa a documentação completa em `docs/mvp.md`.
 1) Autenticação e Acesso
 
 O que faz
@@ -297,3 +298,7 @@ Cria vendas + vendas_itens
 Gera mov_lotes (saída venda)
 
 Cria contas_receber + contas_receber_parcelas
+
+---
+
+Para detalhes completos de módulos, regras de negócio e fluxo do MVP, consulte `docs/mvp.md`.
