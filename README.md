@@ -1,6 +1,6 @@
 # MVP – Sistema de Gestão de Café (8k) – README
 
-Este repositório contém um **MVP 100% front-end**, feito para demonstração/apresentação, com **banco local no navegador** (IndexedDB).  
+Este repositório contém um **MVP com API e banco PostgreSQL**, feito para demonstração/apresentação.  
 O objetivo é simular um mini-ERP de café com **estoque (insumos + tipos de café)**, **produção**, **vendas** e **financeiro (contas a pagar/receber com parcelas)**.
 
 ---
@@ -20,9 +20,8 @@ O objetivo é simular um mini-ERP de café com **estoque (insumos + tipos de caf
   - Fornecedores: compras, status (devendo), histórico de pagamentos.
 
 ### O que NÃO é objetivo do MVP (por design)
-- Não há backend, API externa ou banco externo.
-- Segurança real (login/sessão) **não é objetivo** — é apenas controle de acesso para demonstração.
-- Multiusuário real e concorrência não são suportados (cada navegador tem seus dados).
+- Não há preocupações de segurança real (login/sessão) — é apenas controle de acesso para demonstração.
+- Multiusuário real e concorrência não são suportados (controle simplificado via API).
 
 ---
 
@@ -77,7 +76,7 @@ CRUD completo:
 
 ---
 
-## 🗃️ Estrutura de “Tabelas” (Collections no banco local)
+## 🗃️ Estrutura de Tabelas (PostgreSQL)
 
 ### A) Acesso
 - `usuarios`
@@ -119,7 +118,6 @@ O arquivo de seed popula:
 - 3 fornecedores
 - 1 insumo
 - 1 tipo de café
-- contas a pagar/receber + parcelas
 - movimentações de insumos e estoque por tipo coerentes
 
 > O seed é importante para abrir a aplicação e já ter dashboards “vivos” na apresentação.
@@ -159,28 +157,21 @@ O arquivo de seed popula:
 ---
 
 ## 🧪 Como rodar (genérico)
-- Instale dependências do projeto (se aplicável)
-- Rode o front localmente
+- Instale dependências do projeto.
+- Configure `DATABASE_URL` no ambiente.
+- Rode migrations com `npm run migration:up`.
+- Rode o front localmente.
 - No primeiro acesso:
-  - Clique em **Importar Seed** (ou execute a action equivalente no menu)
+  - Acesse **/system** e clique em **Alimentar banco de dados**.
   - Faça login com:
     - **Email:** `admin@cafemvp.com`
     - **Senha:** `mvp_admin_123`
-
-> Caso o projeto tenha um script de “reset”, ele deve apagar IndexedDB e recarregar o seed.
-
----
-
-## 🧹 Reset do Banco Local
-Para recomeçar uma demo:
-- Botão “Resetar Banco” apaga as collections no IndexedDB
-- Reimporta o seed automaticamente (opcional)
 
 ---
 
 ## 📌 Observações importantes (para apresentação)
 - Este MVP é uma prova de conceito para validar o modelo de dados, fluxos e dashboards.
-- Persistência local permite demonstração offline e velocidade.
-- A migração para backend (API + DB) é direta, pois as tabelas já estão normalizadas.
+- O backend é minimalista e focado em suportar as telas do MVP.
+- A migração para integrações mais complexas pode reutilizar as mesmas tabelas.
 
 ---

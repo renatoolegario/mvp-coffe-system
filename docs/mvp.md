@@ -1,15 +1,14 @@
-
-# MVP – Sistema de Gestão de Café (8k) – Banco no Navegador
+# MVP – Sistema de Gestão de Café (8k) – PostgreSQL
 
 ## Objetivo
-Entregar um MVP demonstrável (sem backend e sem banco externo), rodando 100% no navegador, com:
+Entregar um MVP demonstrável com backend e banco PostgreSQL, rodando com:
 - Estoque de Insumos (matérias-primas)
 - Produção/Fabricação de Café
 - Vendas e Controle de Recebíveis
 - Compras e Controle de Pagáveis
 - Dashboards macro (estoque, produção, vendas, inadimplência, fornecedores)
 
-Armazenamento: IndexedDB (persistência local).
+Armazenamento: PostgreSQL (persistência via API).
 
 ---
 
@@ -118,21 +117,13 @@ Telas
   - custo_total = quantidade * custo_unit
 
 - Fabricação:
-  - custo_base = quantidade_insumo * custo_unit_insumo
-  - margem_lucro = custo_base * (margem_lucro_percent do tipo de café / 100)
-  - custo_total_producao = custo_base + margem_lucro
-  - custo_unit_tipo = custo_total_producao / quantidade_gerada
-  - movimento de estoque (ENTRADA_FABRICACAO) grava custo_unit_tipo
+  - custo_base = quantidade_insumo * custo_unit
+  - custo_total = custo_base + margem_lucro
 
 - Venda:
-  - movimentação de estoque (SAIDA_VENDA) usa custo_unit atual do tipo (médio calculado por entradas)
-  - lucro pode ser exibido: receita - custo (MVP opcional)
-
-### Parcelas
-- Se parcelas_qtd = 1: gera 1 parcela (num=1)
-- Se parcelas_qtd > 1: gera N parcelas, valores iguais ou ajuste na última (MVP pode dividir igual)
-
-### Status Inadimplência (Cliente)
-- inadimplente = existe parcela_receber vencida (vencimento < hoje) e status = ABERTA
+  - custo_unit = custo médio do tipo
+  - valor_total = quantidade * custo_unit
 
 ---
+
+Para detalhes completos de módulos, regras de negócio e fluxo do MVP, consulte `docs/description.md`.
