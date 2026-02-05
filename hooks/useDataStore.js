@@ -150,17 +150,22 @@ export const useDataStore = create((set, get) => ({
     fornecedor_id,
     insumo_id,
     quantidade,
+    unidade_entrada,
+    kg_por_saco_entrada,
     valor_total,
     parcelas_qtd,
     parcelas_valores,
     parcelas_vencimentos,
+    parcelas_status,
+    custos_extras,
     obs,
   }) => {
     const entradaId = uuidv4();
     const dataEntrada = nowIso();
     const insumo = get().insumos.find((item) => item.id === insumo_id);
-    const unidadeEntrada = insumo?.unidade === "saco" ? "saco" : "kg";
-    const kgPorSaco = Number(insumo?.kg_por_saco) || 1;
+    const unidadeEntrada = unidade_entrada === "saco" ? "saco" : "kg";
+    const kgPorSaco =
+      Number(kg_por_saco_entrada) || Number(insumo?.kg_por_saco) || 1;
     const quantidadeEmKg =
       unidadeEntrada === "saco" ? quantidade * kgPorSaco : quantidade;
     const custoUnit = quantidadeEmKg ? valor_total / quantidadeEmKg : 0;
@@ -172,7 +177,7 @@ export const useDataStore = create((set, get) => ({
       quantidade_entrada: quantidadeEmKg,
       quantidade_saida: 0,
       data_movimentacao: dataEntrada,
-      referencia_tipo: "entrada_insumo",
+      referencia_tipo: "entrada_insumos",
       referencia_id: entradaId,
       obs: obs || "",
     };
@@ -199,20 +204,80 @@ export const useDataStore = create((set, get) => ({
       parcela_num: parcela.parcela_num,
       vencimento: parcela.vencimento || dataEntrada,
       valor: parcela.valor,
-      status: "ABERTA",
-      data_pagamento: null,
-      forma_pagamento: null,
+      status:
+        (parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") === "PAGO"
+          ? "PAGA"
+          : "ABERTA",
+      data_pagamento:
+        (parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") === "PAGO"
+          ? dataEntrada
+          : null,
+      forma_pagamento:
+        (parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") === "PAGO"
+          ? "Entrada manual"
+          : null,
     }));
+    const custosExtras = (custos_extras || []).map((item) => {
+      const contaPagarExtraId = uuidv4();
+      const valorTotalExtra = Number(item.valor_total) || 0;
+      const parcelasQtdExtra = Math.max(1, Number(item.parcelas_qtd) || 1);
+      const parcelasBaseExtra = getParcelas(valorTotalExtra, parcelasQtdExtra);
+
+      const contaPagarExtra = {
+        id: contaPagarExtraId,
+        fornecedor_id: item.fornecedor_id,
+        origem_tipo: "entrada_insumos_custo_extra",
+        origem_id: entradaId,
+        valor_total: valorTotalExtra,
+        data_emissao: dataEntrada,
+        status: "ABERTO",
+      };
+
+      const parcelasExtra = parcelasBaseExtra.map((parcela) => {
+        const statusPagamento =
+          item.status_pagamento === "PAGO" ? "PAGO" : "A_PRAZO";
+        return {
+          id: uuidv4(),
+          conta_pagar_id: contaPagarExtraId,
+          parcela_num: parcela.parcela_num,
+          vencimento:
+            item.parcelas_vencimentos?.[parcela.parcela_num - 1] || dataEntrada,
+          valor: parcela.valor,
+          status: statusPagamento === "PAGO" ? "PAGA" : "ABERTA",
+          data_pagamento: statusPagamento === "PAGO" ? dataEntrada : null,
+          forma_pagamento: statusPagamento === "PAGO" ? "Entrada manual" : null,
+        };
+      });
+
+      return {
+        contaPagar: contaPagarExtra,
+        parcelas: parcelasExtra,
+      };
+    });
     try {
       await sendCommand("addEntradaInsumos", {
         movimento,
-        contaPagar,
-        parcelas,
+        contasPagar: [
+          contaPagar,
+          ...custosExtras.map((item) => item.contaPagar),
+        ],
+        parcelas: [
+          ...parcelas,
+          ...custosExtras.flatMap((item) => item.parcelas),
+        ],
       });
       set((state) => ({
-        movimentoProducao: [...state.movimentoProducao, movimento],
-        contasPagar: [...state.contasPagar, contaPagar],
-        contasPagarParcelas: [...state.contasPagarParcelas, ...parcelas],
+        movInsumos: [...state.movInsumos, movimento],
+        contasPagar: [
+          ...state.contasPagar,
+          contaPagar,
+          ...custosExtras.map((item) => item.contaPagar),
+        ],
+        contasPagarParcelas: [
+          ...state.contasPagarParcelas,
+          ...parcelas,
+          ...custosExtras.flatMap((item) => item.parcelas),
+        ],
       }));
     } catch (error) {
       return;
