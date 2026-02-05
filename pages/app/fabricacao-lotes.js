@@ -14,7 +14,7 @@ import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
-import { getCustoMedio, getSaldoInsumo } from "../../utils/stock";
+import { getCustoConsumoFifo, getSaldoInsumo } from "../../utils/stock";
 
 const FabricacaoLotesPage = () => {
   const tiposCafe = useDataStore((state) => state.tiposCafe);
@@ -28,7 +28,7 @@ const FabricacaoLotesPage = () => {
 
   const tipoSelecionado = tiposCafe.find((tipo) => tipo.id === tipoCafeId);
   const insumoSelecionado = insumos.find(
-    (insumo) => insumo.id === tipoSelecionado?.insumo_id
+    (insumo) => insumo.id === tipoSelecionado?.insumo_id,
   );
   const rendimento = Number(tipoSelecionado?.rendimento_percent ?? 100);
   const quantidadeGerada = Number(quantidade) || 0;
@@ -37,10 +37,11 @@ const FabricacaoLotesPage = () => {
   const saldoInsumo = insumoSelecionado
     ? getSaldoInsumo(movInsumos, insumoSelecionado.id)
     : 0;
-  const custoUnitInsumo = insumoSelecionado
-    ? getCustoMedio(movInsumos, (mov) => mov.insumo_id === insumoSelecionado.id)
-    : 0;
-  const custoBase = quantidadeInsumo * custoUnitInsumo;
+  const custoConsumo = insumoSelecionado
+    ? getCustoConsumoFifo(movInsumos, insumoSelecionado.id, quantidadeInsumo)
+    : { custoTotal: 0, custoUnitario: 0 };
+  const custoUnitInsumo = custoConsumo.custoUnitario;
+  const custoBase = custoConsumo.custoTotal;
   const margemLucro = tipoSelecionado
     ? custoBase * (Number(tipoSelecionado.margem_lucro_percent) / 100)
     : 0;
@@ -48,8 +49,8 @@ const FabricacaoLotesPage = () => {
   const statusProducao = !tipoSelecionado
     ? "Selecione um tipo de café."
     : quantidadeInsumo > saldoInsumo
-    ? "Estoque insuficiente para produzir."
-    : "Liberado para produzir.";
+      ? "Estoque insuficiente para produzir."
+      : "Liberado para produzir.";
   const podeProduzir =
     tipoSelecionado &&
     quantidadeGerada > 0 &&
@@ -111,7 +112,11 @@ const FabricacaoLotesPage = () => {
                   multiline
                   rows={2}
                 />
-                <Button type="submit" variant="contained" disabled={!podeProduzir}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={!podeProduzir}
+                >
                   Registrar fabricação (custo {formatCurrency(custoTotal)})
                 </Button>
               </Stack>
@@ -128,15 +133,22 @@ const FabricacaoLotesPage = () => {
                 Insumo: {insumoSelecionado?.nome || "-"}
               </Typography>
               <Typography variant="body2">
-                Quantidade do insumo: {quantidadeInsumo ? quantidadeInsumo.toFixed(2) : "-"}
+                Quantidade do insumo:{" "}
+                {quantidadeInsumo ? quantidadeInsumo.toFixed(2) : "-"}
               </Typography>
               <Typography variant="body2">
                 Custo unitário do insumo: {formatCurrency(custoUnitInsumo)}
               </Typography>
               <Typography variant="body2">
+                Custo total do consumo (FIFO): {formatCurrency(custoBase)}
+              </Typography>
+              <Typography variant="body2">
                 Saldo disponível: {insumoSelecionado ? saldoInsumo : "-"}
               </Typography>
-              <Typography variant="body2" color={podeProduzir ? "success.main" : "warning.main"}>
+              <Typography
+                variant="body2"
+                color={podeProduzir ? "success.main" : "warning.main"}
+              >
                 Status: {statusProducao}
               </Typography>
             </Stack>
@@ -148,12 +160,17 @@ const FabricacaoLotesPage = () => {
             <Stack spacing={2}>
               {ordens.map((ordem) => (
                 <Paper key={ordem.id} variant="outlined" sx={{ p: 2 }}>
-                  <Typography fontWeight={600}>Ordem #{ordem.id.slice(0, 6)}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Tipo: {tiposCafe.find((tipo) => tipo.id === ordem.tipo_cafe_id)?.nome || "-"}
+                  <Typography fontWeight={600}>
+                    Ordem #{ordem.id.slice(0, 6)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Quantidade: {ordem.quantidade_gerada} • Custo total: {formatCurrency(ordem.custo_total)}
+                    Tipo:{" "}
+                    {tiposCafe.find((tipo) => tipo.id === ordem.tipo_cafe_id)
+                      ?.nome || "-"}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Quantidade: {ordem.quantidade_gerada} • Custo total:{" "}
+                    {formatCurrency(ordem.custo_total)}
                   </Typography>
                 </Paper>
               ))}
