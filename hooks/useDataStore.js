@@ -311,6 +311,15 @@ export const useDataStore = create((set, get) => ({
       return;
     }
   },
+  deleteProducao: async (producaoId) => {
+    if (!producaoId) return;
+    try {
+      await sendCommand("deleteProducao", { producao_id: producaoId });
+      await get().loadData();
+    } catch (error) {
+      return;
+    }
+  },
   addVenda: async ({ cliente_id, itens, parcelas_qtd, obs }) => {
     const vendaId = uuidv4();
     const dataVenda = nowIso();

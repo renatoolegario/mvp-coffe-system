@@ -105,6 +105,7 @@ export default async function handler(req, res) {
               "data_movimentacao",
               "referencia_tipo",
               "referencia_id",
+              "producao_id",
               "obs",
             ],
             payload.movimento,
@@ -196,6 +197,7 @@ export default async function handler(req, res) {
                 "data_movimentacao",
                 "referencia_tipo",
                 "referencia_id",
+                "producao_id",
                 "obs",
               ],
               {
@@ -208,6 +210,7 @@ export default async function handler(req, res) {
                 data_movimentacao: payload.producao.data_producao,
                 referencia_tipo: "producao",
                 referencia_id: payload.producao.id,
+                producao_id: payload.producao.id,
                 obs: payload.producao.obs || "",
               },
             );
@@ -289,6 +292,7 @@ export default async function handler(req, res) {
                   "fornecedor_id",
                   "origem_tipo",
                   "origem_id",
+                  "producao_id",
                   "valor_total",
                   "data_emissao",
                   "status",
@@ -298,6 +302,7 @@ export default async function handler(req, res) {
                   fornecedor_id: custo.fornecedor_id,
                   origem_tipo: "custo_adicional_producao",
                   origem_id: payload.producao_id,
+                  producao_id: payload.producao_id,
                   valor_total: custo.valor,
                   data_emissao: payload.data_confirmacao,
                   status:
@@ -352,6 +357,7 @@ export default async function handler(req, res) {
               "data_movimentacao",
               "referencia_tipo",
               "referencia_id",
+              "producao_id",
               "obs",
             ],
             {
@@ -364,6 +370,7 @@ export default async function handler(req, res) {
               data_movimentacao: payload.data_confirmacao,
               referencia_tipo: "producao",
               referencia_id: payload.producao_id,
+              producao_id: payload.producao_id,
               obs: payload.obs || "",
             },
           );
@@ -388,6 +395,13 @@ export default async function handler(req, res) {
           await client.query("UPDATE insumos SET preco_kg = $2 WHERE id = $1", [
             producao.insumo_final_id,
             precoMedioNovo,
+          ]);
+        });
+        break;
+      case "deleteProducao":
+        await withTransaction(async (client) => {
+          await client.query("DELETE FROM producao WHERE id = $1", [
+            payload.producao_id,
           ]);
         });
         break;
