@@ -38,6 +38,18 @@ const getStore = async (mode) => {
   return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME);
 };
 
+export const ensureIndexedDb = async () => {
+  if (!isBrowser) return false;
+  try {
+    await openDatabase();
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+export const getIndexedDb = async () => openDatabase();
+
 export const indexedDbStorage = {
   getItem: async (key) => {
     if (!isBrowser) return null;

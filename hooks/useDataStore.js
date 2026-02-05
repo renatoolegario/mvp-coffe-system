@@ -32,6 +32,10 @@ export const useDataStore = create(
           ...baseState,
           ...payload,
         })),
+      resetStore: () =>
+        set(() => ({
+          ...baseState,
+        })),
       addUsuario: (payload) =>
         set((state) => ({
           usuarios: [

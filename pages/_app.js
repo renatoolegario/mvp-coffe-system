@@ -1,4 +1,6 @@
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { useEffect } from "react";
+import { ensureIndexedDb } from "../utils/indexedDb";
 
 const theme = createTheme({
   palette: {
@@ -18,11 +20,17 @@ const theme = createTheme({
   },
 });
 
-const App = ({ Component, pageProps }) => (
-  <ThemeProvider theme={theme}>
-    <CssBaseline />
-    <Component {...pageProps} />
-  </ThemeProvider>
-);
+const App = ({ Component, pageProps }) => {
+  useEffect(() => {
+    ensureIndexedDb();
+  }, []);
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Component {...pageProps} />
+    </ThemeProvider>
+  );
+};
 
 export default App;
