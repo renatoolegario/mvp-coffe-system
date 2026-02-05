@@ -94,6 +94,7 @@ export default async function handler(req, res) {
             "nome",
             "unidade",
             "estoque_minimo",
+            "estoque_minimo_unidade",
             "kg_por_saco",
             "ativo",
             "criado_em",

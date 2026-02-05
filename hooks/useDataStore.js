@@ -119,8 +119,10 @@ export const useDataStore = create((set, get) => ({
     }
   },
   addInsumo: async (payload) => {
-    const unidade = payload.unidade === "saco" ? "saco" : "kg";
-    const kgPorSaco = unidade === "saco" ? Number(payload.kg_por_saco) || 1 : 1;
+    const unidade = "kg";
+    const kgPorSaco = Number(payload.kg_por_saco) || 1;
+    const estoqueMinimoUnidade =
+      payload.estoque_minimo_unidade === "saco" ? "saco" : "kg";
 
     const insumo = {
       id: uuidv4(),
@@ -129,6 +131,7 @@ export const useDataStore = create((set, get) => ({
       ...payload,
       unidade,
       kg_por_saco: kgPorSaco,
+      estoque_minimo_unidade: estoqueMinimoUnidade,
     };
     try {
       await sendCommand("addInsumo", insumo);

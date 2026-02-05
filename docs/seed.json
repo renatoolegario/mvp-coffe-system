@@ -96,6 +96,8 @@
       "nome": "Café Verde",
       "unidade": "kg",
       "estoque_minimo": 50,
+      "estoque_minimo_unidade": "kg",
+      "kg_por_saco": 1,
       "ativo": true,
       "criado_em": "2026-01-04T08:30:00-03:00"
     }

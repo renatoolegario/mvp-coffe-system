@@ -2,10 +2,11 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Drawer,
+  FormControlLabel,
   Grid,
   IconButton,
-  MenuItem,
   Paper,
   Snackbar,
   Stack,
@@ -23,9 +24,9 @@ const InsumosPage = () => {
   const addInsumo = useDataStore((state) => state.addInsumo);
   const [form, setForm] = useState({
     nome: "",
-    unidade: "kg",
     kg_por_saco: "1",
     estoque_minimo: "",
+    estoque_minimo_unidade: "kg",
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [feedback, setFeedback] = useState({
@@ -36,17 +37,12 @@ const InsumosPage = () => {
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
-    setForm((prev) => {
-      if (field === "unidade") {
-        return {
-          ...prev,
-          unidade: value,
-          kg_por_saco: value === "saco" ? prev.kg_por_saco || "1" : "1",
-        };
-      }
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
 
-      return { ...prev, [field]: value };
-    });
+  const handleToggleEstoqueMinimoUnidade = (event) => {
+    const value = event.target.checked ? "saco" : "kg";
+    setForm((prev) => ({ ...prev, estoque_minimo_unidade: value }));
   };
 
   const handleSubmit = async (event) => {
@@ -60,7 +56,7 @@ const InsumosPage = () => {
       return;
     }
 
-    if (form.unidade === "saco" && Number(form.kg_por_saco) <= 0) {
+    if (Number(form.kg_por_saco) <= 0) {
       setFeedback({
         open: true,
         message: "Informe quantos kg vêm em cada saco.",
@@ -71,10 +67,17 @@ const InsumosPage = () => {
 
     await addInsumo({
       ...form,
+      unidade: "kg",
       estoque_minimo: Number(form.estoque_minimo) || 0,
-      kg_por_saco: form.unidade === "saco" ? Number(form.kg_por_saco) : 1,
+      estoque_minimo_unidade: form.estoque_minimo_unidade,
+      kg_por_saco: Number(form.kg_por_saco) || 1,
     });
-    setForm({ nome: "", unidade: "kg", kg_por_saco: "1", estoque_minimo: "" });
+    setForm({
+      nome: "",
+      kg_por_saco: "1",
+      estoque_minimo: "",
+      estoque_minimo_unidade: "kg",
+    });
     setDrawerOpen(false);
     setFeedback({
       open: true,
@@ -114,7 +117,7 @@ const InsumosPage = () => {
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Estoque mínimo: {insumo.estoque_minimo || "-"}{" "}
-                    {insumo.unidade}
+                    {insumo.estoque_minimo_unidade || "kg"}
                   </Typography>
                 </Paper>
               ))}
@@ -154,27 +157,24 @@ const InsumosPage = () => {
               required
             />
             <TextField
-              select
-              label="Tipo de cadastro"
-              value={form.unidade}
-              onChange={handleChange("unidade")}
+              label="Kg por saco"
+              type="number"
+              value={form.kg_por_saco}
+              onChange={handleChange("kg_por_saco")}
+              inputProps={{ min: 0.01, step: "0.01" }}
               required
-            >
-              <MenuItem value="kg">Kg</MenuItem>
-              <MenuItem value="saco">Saco</MenuItem>
-            </TextField>
-            {form.unidade === "saco" ? (
-              <TextField
-                label="Kg por saco"
-                type="number"
-                value={form.kg_por_saco}
-                onChange={handleChange("kg_por_saco")}
-                inputProps={{ min: 0.01, step: "0.01" }}
-                required
-              />
-            ) : null}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={form.estoque_minimo_unidade === "saco"}
+                  onChange={handleToggleEstoqueMinimoUnidade}
+                />
+              }
+              label={`Estoque mínimo em saco (${Number(form.kg_por_saco) || 1} kg/saco)`}
+            />
             <TextField
-              label={`Estoque mínimo (${form.unidade})`}
+              label={`Estoque mínimo (${form.estoque_minimo_unidade})`}
               type="number"
               value={form.estoque_minimo}
               onChange={handleChange("estoque_minimo")}
