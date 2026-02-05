@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
-import { getCustoConsumoFifo, getParcelas } from "../utils/stock";
+import { getParcelas } from "../utils/stock";
 
 const nowIso = () => new Date().toISOString();
 
@@ -19,6 +19,10 @@ const baseState = {
   contasPagarParcelas: [],
   contasReceber: [],
   contasReceberParcelas: [],
+  producoes: [],
+  detalhesProducao: [],
+  custosAdicionaisProducao: [],
+  movimentoProducao: [],
 };
 
 const apiFetch = async (path, options) => {
@@ -132,38 +136,12 @@ export const useDataStore = create((set, get) => ({
       unidade,
       kg_por_saco: kgPorSaco,
       estoque_minimo_unidade: estoqueMinimoUnidade,
+      preco_kg: Number(payload.preco_kg) || 0,
+      tipo: payload.tipo || "MATERIA_PRIMA",
     };
     try {
       await sendCommand("addInsumo", insumo);
       set((state) => ({ insumos: [...state.insumos, insumo] }));
-    } catch (error) {
-      return;
-    }
-  },
-  addTipoCafe: async (payload) => {
-    const tipoCafe = {
-      id: uuidv4(),
-      ativo: true,
-      ...payload,
-    };
-    try {
-      await sendCommand("addTipoCafe", tipoCafe);
-      set((state) => ({ tiposCafe: [...state.tiposCafe, tipoCafe] }));
-    } catch (error) {
-      return;
-    }
-  },
-  updateTipoCafe: async (payload) => {
-    const tipoCafe = {
-      ...payload,
-    };
-    try {
-      await sendCommand("updateTipoCafe", tipoCafe);
-      set((state) => ({
-        tiposCafe: state.tiposCafe.map((item) =>
-          item.id === tipoCafe.id ? { ...item, ...tipoCafe } : item,
-        ),
-      }));
     } catch (error) {
       return;
     }
@@ -186,30 +164,18 @@ export const useDataStore = create((set, get) => ({
     const quantidadeEmKg =
       unidadeEntrada === "saco" ? quantidade * kgPorSaco : quantidade;
     const custoUnit = quantidadeEmKg ? valor_total / quantidadeEmKg : 0;
-    const entrada = {
-      id: entradaId,
-      fornecedor_id,
-      data_entrada: dataEntrada,
-      valor_total,
-      forma_pagamento: "Boleto",
-      parcelas_qtd,
-      obs,
-      status: "ABERTO",
+    const movimento = {
+      id: uuidv4(),
+      insumo_id,
+      tipo_movimento: "ENTRADA_INSUMO",
+      custo_unitario: custoUnit,
+      quantidade_entrada: quantidadeEmKg,
+      quantidade_saida: 0,
+      data_movimentacao: dataEntrada,
+      referencia_tipo: "entrada_insumo",
+      referencia_id: entradaId,
+      obs: obs || "",
     };
-    const movimentos = [
-      {
-        id: uuidv4(),
-        insumo_id,
-        tipo: "ENTRADA_COMPRA",
-        quantidade: quantidadeEmKg,
-        custo_unit: custoUnit,
-        custo_total: valor_total,
-        data: dataEntrada,
-        referencia_tipo: "entrada_insumos",
-        referencia_id: entradaId,
-        obs: obs || "",
-      },
-    ];
     const contaPagarId = uuidv4();
     const contaPagar = {
       id: contaPagarId,
@@ -239,14 +205,12 @@ export const useDataStore = create((set, get) => ({
     }));
     try {
       await sendCommand("addEntradaInsumos", {
-        entrada,
-        movimentos,
+        movimento,
         contaPagar,
         parcelas,
       });
       set((state) => ({
-        entradasInsumos: [...state.entradasInsumos, entrada],
-        movInsumos: [...state.movInsumos, ...movimentos],
+        movimentoProducao: [...state.movimentoProducao, movimento],
         contasPagar: [...state.contasPagar, contaPagar],
         contasPagarParcelas: [...state.contasPagarParcelas, ...parcelas],
       }));
@@ -254,69 +218,95 @@ export const useDataStore = create((set, get) => ({
       return;
     }
   },
-  addOrdemProducao: async ({ tipo_cafe_id, quantidade_gerada, obs }) => {
-    const ordemId = uuidv4();
-    const dataFabricacao = nowIso();
-    const tipo = get().tiposCafe.find((item) => item.id === tipo_cafe_id);
-    const rendimento = Number(tipo?.rendimento_percent ?? 100);
-    const quantidadeInsumo =
-      rendimento > 0 ? quantidade_gerada / (rendimento / 100) : 0;
-    const insumoId = tipo?.insumo_id;
-    const custoConsumo = insumoId
-      ? getCustoConsumoFifo(get().movInsumos, insumoId, quantidadeInsumo)
-      : { custoTotal: 0, custoUnitario: 0 };
-    const custoUnitInsumo = custoConsumo.custoUnitario;
-    const custoBase = custoConsumo.custoTotal;
-    const custo_total = custoBase;
-    const custo_unit_tipo = quantidade_gerada
-      ? custo_total / quantidade_gerada
-      : 0;
-    const ordem = {
-      id: ordemId,
-      data_fabricacao: dataFabricacao,
-      tipo_cafe_id,
-      quantidade_gerada,
-      quantidade_insumo: quantidadeInsumo,
-      insumo_id: insumoId,
-      custo_total,
-      status: "FINALIZADA",
-      obs,
-    };
-    const movInsumos = insumoId
-      ? [
-          {
-            id: uuidv4(),
-            insumo_id: insumoId,
-            tipo: "SAIDA_PRODUCAO",
-            quantidade: quantidadeInsumo,
-            custo_unit: custoUnitInsumo,
-            custo_total: custoBase,
-            data: dataFabricacao,
-            referencia_tipo: "ordem_producao",
-            referencia_id: ordemId,
-            obs: obs || "",
-          },
-        ]
-      : [];
-    const movLotes = {
-      id: uuidv4(),
-      tipo_cafe_id,
-      tipo: "ENTRADA_FABRICACAO",
-      quantidade: quantidade_gerada,
-      custo_unit: custo_unit_tipo,
-      custo_total,
-      data: dataFabricacao,
-      referencia_tipo: "ordem_producao",
-      referencia_id: ordemId,
+  createProducao: async ({
+    insumo_final_id,
+    modo_geracao,
+    taxa_conversao_planejada = 76,
+    peso_previsto,
+    detalhes,
+    obs,
+    anexo_base64,
+  }) => {
+    const dataProducao = nowIso();
+    const producaoId = uuidv4();
+    const detalhesProducao = (detalhes || []).map((item) => {
+      const insumo = get().insumos.find((i) => i.id === item.insumo_id);
+      const custoUnitario = Number(insumo?.preco_kg) || 0;
+      const quantidadeKg = Number(item.quantidade_kg) || 0;
+      return {
+        id: uuidv4(),
+        movimento_id: uuidv4(),
+        producao_id: producaoId,
+        insumo_id: item.insumo_id,
+        quantidade_kg: quantidadeKg,
+        custo_unitario_previsto: custoUnitario,
+        custo_total_previsto: quantidadeKg * custoUnitario,
+      };
+    });
+
+    const custo_total_previsto = detalhesProducao.reduce(
+      (acc, item) => acc + Number(item.custo_total_previsto || 0),
+      0,
+    );
+
+    const producao = {
+      id: producaoId,
+      data_producao: dataProducao,
+      insumo_final_id,
+      status: 1,
+      modo_geracao: modo_geracao || "PRODUTO_FINAL",
+      taxa_conversao_planejada,
+      peso_previsto: Number(peso_previsto) || 0,
       obs: obs || "",
+      anexo_base64: anexo_base64 || null,
+      custo_total_previsto,
     };
+
     try {
-      await sendCommand("addOrdemProducao", { ordem, movInsumos, movLotes });
+      await sendCommand("createProducao", {
+        producao,
+        detalhes: detalhesProducao,
+      });
       set((state) => ({
-        ordensProducao: [...state.ordensProducao, ordem],
-        movInsumos: [...state.movInsumos, ...movInsumos],
-        movLotes: [...state.movLotes, movLotes],
+        producoes: [...state.producoes, producao],
+        detalhesProducao: [...state.detalhesProducao, ...detalhesProducao],
       }));
+    } catch (error) {
+      return;
+    }
+  },
+  confirmarRetornoProducao: async ({
+    producao_id,
+    peso_real,
+    taxa_conversao_real,
+    custos_adicionais,
+    obs,
+    anexo_base64,
+  }) => {
+    const dataConfirmacao = nowIso();
+    const payload = {
+      producao_id,
+      peso_real,
+      taxa_conversao_real,
+      custos_adicionais: (custos_adicionais || []).map((item) => ({
+        id: uuidv4(),
+        conta_pagar_id: uuidv4(),
+        parcela_id: uuidv4(),
+        fornecedor_id: item.fornecedor_id || null,
+        descricao: item.descricao || "",
+        valor: Number(item.valor) || 0,
+        status_pagamento: item.status_pagamento || "PENDENTE",
+        forma_pagamento: item.forma_pagamento || null,
+      })),
+      data_confirmacao: dataConfirmacao,
+      movimento_entrada_id: uuidv4(),
+      obs: obs || "",
+      anexo_base64: anexo_base64 || null,
+    };
+
+    try {
+      await sendCommand("confirmarRetornoProducao", payload);
+      await get().loadData();
     } catch (error) {
       return;
     }
@@ -338,18 +328,6 @@ export const useDataStore = create((set, get) => ({
       status: "FECHADA",
       obs,
     };
-    const movLotes = itens.map((item) => ({
-      id: uuidv4(),
-      tipo_cafe_id: item.tipo_cafe_id,
-      tipo: "SAIDA_VENDA",
-      quantidade: item.quantidade,
-      custo_unit: item.custo_unit,
-      custo_total: item.quantidade * item.custo_unit,
-      data: dataVenda,
-      referencia_tipo: "venda",
-      referencia_id: vendaId,
-      obs: item.obs || "",
-    }));
     const contaReceberId = uuidv4();
     const contaReceber = {
       id: contaReceberId,
@@ -373,13 +351,11 @@ export const useDataStore = create((set, get) => ({
     try {
       await sendCommand("addVenda", {
         venda,
-        movLotes,
         contaReceber,
         parcelas,
       });
       set((state) => ({
         vendas: [...state.vendas, venda],
-        movLotes: [...state.movLotes, ...movLotes],
         contasReceber: [...state.contasReceber, contaReceber],
         contasReceberParcelas: [...state.contasReceberParcelas, ...parcelas],
       }));

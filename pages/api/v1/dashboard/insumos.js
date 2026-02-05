@@ -7,28 +7,29 @@ const normalizeNumber = (value) => {
 
 const getResumoInsumo = (insumoId, movimentos = []) => {
   const orderedMovimentos = [...movimentos].sort(
-    (a, b) => new Date(a.data).getTime() - new Date(b.data).getTime(),
+    (a, b) =>
+      new Date(a.data_movimentacao).getTime() -
+      new Date(b.data_movimentacao).getTime(),
   );
 
   let saldo = 0;
   let custoMedio = 0;
 
   orderedMovimentos.forEach((movimento) => {
-    const quantidade = normalizeNumber(movimento.quantidade);
-    const custoTotal = normalizeNumber(movimento.custo_total);
+    const quantidadeEntrada = normalizeNumber(movimento.quantidade_entrada);
+    const quantidadeSaida = normalizeNumber(movimento.quantidade_saida);
+    const custoUnitario = normalizeNumber(movimento.custo_unitario);
 
-    if (quantidade > 0) {
-      const custoUnitMovimento = quantidade ? custoTotal / quantidade : 0;
-      const novoSaldo = saldo + quantidade;
+    if (quantidadeEntrada > 0) {
+      const novoSaldo = saldo + quantidadeEntrada;
       custoMedio = novoSaldo
-        ? (saldo * custoMedio + quantidade * custoUnitMovimento) / novoSaldo
+        ? (saldo * custoMedio + quantidadeEntrada * custoUnitario) / novoSaldo
         : 0;
       saldo = novoSaldo;
-      return;
     }
 
-    if (quantidade < 0) {
-      saldo += quantidade;
+    if (quantidadeSaida > 0) {
+      saldo -= quantidadeSaida;
     }
   });
 
@@ -49,10 +50,10 @@ export default async function handler(req, res) {
   try {
     const [insumosResult, movimentosResult] = await Promise.all([
       query(
-        "SELECT id, nome, unidade, kg_por_saco FROM insumos ORDER BY nome ASC",
+        "SELECT id, nome, unidade, kg_por_saco, preco_kg, tipo FROM insumos ORDER BY nome ASC",
       ),
       query(
-        "SELECT insumo_id, quantidade, custo_total, data FROM mov_insumos ORDER BY data ASC",
+        "SELECT insumo_id, quantidade_entrada, quantidade_saida, custo_unitario, data_movimentacao FROM movimento_producao ORDER BY data_movimentacao ASC",
       ),
     ]);
 
@@ -74,8 +75,7 @@ export default async function handler(req, res) {
       return {
         ...insumo,
         ...resumo,
-        saldo_sacos:
-          insumo.unidade === "saco" ? resumo.saldo_kg / kgPorSaco : null,
+        saldo_sacos: resumo.saldo_kg / kgPorSaco,
       };
     });
 
