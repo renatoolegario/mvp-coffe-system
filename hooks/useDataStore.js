@@ -152,6 +152,7 @@ export const useDataStore = create((set, get) => ({
     valor_total,
     parcelas_qtd,
     parcelas_valores,
+    parcelas_vencimentos,
     obs,
   }) => {
     const entradaId = uuidv4();
@@ -195,13 +196,14 @@ export const useDataStore = create((set, get) => ({
       ? parcelas_valores.map((valor, index) => ({
           parcela_num: index + 1,
           valor,
+          vencimento: parcelas_vencimentos?.[index] || dataEntrada,
         }))
       : getParcelas(valor_total, parcelas_qtd);
     const parcelas = parcelasBase.map((parcela) => ({
       id: uuidv4(),
       conta_pagar_id: contaPagarId,
       parcela_num: parcela.parcela_num,
-      vencimento: dataEntrada,
+      vencimento: parcela.vencimento || dataEntrada,
       valor: parcela.valor,
       status: "ABERTA",
       data_pagamento: null,
