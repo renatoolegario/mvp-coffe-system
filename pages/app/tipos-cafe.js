@@ -2,6 +2,7 @@ import {
   Alert,
   Box,
   Button,
+  Divider,
   Drawer,
   Grid,
   IconButton,
@@ -12,7 +13,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close, PersonAdd } from "@mui/icons-material";
+import { Close, Edit, PersonAdd } from "@mui/icons-material";
 import { useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
@@ -22,45 +23,91 @@ const TiposCafePage = () => {
   const tiposCafe = useDataStore((state) => state.tiposCafe);
   const insumos = useDataStore((state) => state.insumos);
   const addTipoCafe = useDataStore((state) => state.addTipoCafe);
+  const updateTipoCafe = useDataStore((state) => state.updateTipoCafe);
   const [form, setForm] = useState({
+    id: "",
     nome: "",
     rendimento_percent: "",
     margem_lucro_percent: "",
+    kg_saco_venda: "",
     insumo_id: "",
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [feedback, setFeedback] = useState({
     open: false,
     message: "",
     severity: "success",
   });
 
+  const resetForm = () => {
+    setForm({
+      id: "",
+      nome: "",
+      rendimento_percent: "",
+      margem_lucro_percent: "",
+      kg_saco_venda: "",
+      insumo_id: "",
+    });
+    setIsEditing(false);
+  };
+
+  const handleOpenCreate = () => {
+    resetForm();
+    setDrawerOpen(true);
+  };
+
+  const handleOpenEdit = (tipo) => {
+    setForm({
+      id: tipo.id,
+      nome: tipo.nome || "",
+      rendimento_percent: tipo.rendimento_percent || "",
+      margem_lucro_percent: tipo.margem_lucro_percent || "",
+      kg_saco_venda: tipo.kg_saco_venda || "",
+      insumo_id: tipo.insumo_id || "",
+    });
+    setIsEditing(true);
+    setDrawerOpen(true);
+  };
+
   const handleChange = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!form.nome.trim() || !form.insumo_id) {
+    if (
+      !form.nome.trim() ||
+      !form.insumo_id ||
+      Number(form.kg_saco_venda) <= 0
+    ) {
       setFeedback({
         open: true,
-        message: "Preencha nome e insumo base para cadastrar o tipo de café.",
+        message:
+          "Preencha nome, insumo base e quantos kg há no saco para venda.",
         severity: "error",
       });
       return;
     }
 
-    addTipoCafe(form);
-    setForm({
-      nome: "",
-      rendimento_percent: "",
-      margem_lucro_percent: "",
-      insumo_id: "",
-    });
+    const payload = {
+      ...form,
+      kg_saco_venda: Number(form.kg_saco_venda),
+    };
+
+    if (isEditing) {
+      await updateTipoCafe(payload);
+    } else {
+      await addTipoCafe(payload);
+    }
+
+    resetForm();
     setDrawerOpen(false);
     setFeedback({
       open: true,
-      message: "Tipo de café cadastrado com sucesso.",
+      message: isEditing
+        ? "Tipo de café atualizado com sucesso."
+        : "Tipo de café cadastrado com sucesso.",
       severity: "success",
     });
   };
@@ -74,7 +121,7 @@ const TiposCafePage = () => {
           <Button
             variant="contained"
             startIcon={<PersonAdd />}
-            onClick={() => setDrawerOpen(true)}
+            onClick={handleOpenCreate}
           >
             Cadastrar tipo
           </Button>
@@ -89,13 +136,27 @@ const TiposCafePage = () => {
             <Stack spacing={2}>
               {tiposCafe.map((tipo) => (
                 <Paper key={tipo.id} variant="outlined" sx={{ p: 2 }}>
-                  <Typography fontWeight={600}>{tipo.nome}</Typography>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
+                    <Typography fontWeight={600}>{tipo.nome}</Typography>
+                    <IconButton
+                      size="small"
+                      aria-label={`Editar tipo ${tipo.nome}`}
+                      onClick={() => handleOpenEdit(tipo)}
+                    >
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </Stack>
                   <Typography variant="body2" color="text.secondary">
                     Insumo:{" "}
                     {insumos.find((insumo) => insumo.id === tipo.insumo_id)
                       ?.nome || "-"}
                     {" • "}Rendimento: {tipo.rendimento_percent || "-"}%{" • "}
-                    Margem: {tipo.margem_lucro_percent || "-"}%
+                    Margem: {tipo.margem_lucro_percent || "-"}%{" • "}
+                    Saco: {tipo.kg_saco_venda || "-"} kg
                   </Typography>
                 </Paper>
               ))}
@@ -121,8 +182,15 @@ const TiposCafePage = () => {
           justifyContent="space-between"
           mb={2}
         >
-          <Typography variant="h6">Cadastrar tipo de café</Typography>
-          <IconButton onClick={() => setDrawerOpen(false)}>
+          <Typography variant="h6">
+            {isEditing ? "Editar tipo de café" : "Cadastrar tipo de café"}
+          </Typography>
+          <IconButton
+            onClick={() => {
+              setDrawerOpen(false);
+              resetForm();
+            }}
+          >
             <Close />
           </IconButton>
         </Stack>
@@ -157,8 +225,18 @@ const TiposCafePage = () => {
               value={form.margem_lucro_percent}
               onChange={handleChange("margem_lucro_percent")}
             />
+            <Divider sx={{ mt: 1 }} />
+            <TextField
+              type="number"
+              label="A venda do saco tem quantos kg"
+              value={form.kg_saco_venda}
+              onChange={handleChange("kg_saco_venda")}
+              required
+              inputProps={{ min: 0.01, step: "any" }}
+              helperText="Campo obrigatório, deve ser maior que 0."
+            />
             <Button type="submit" variant="contained">
-              Salvar tipo
+              {isEditing ? "Salvar alterações" : "Salvar tipo"}
             </Button>
           </Stack>
         </Box>

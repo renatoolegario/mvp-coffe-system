@@ -142,10 +142,27 @@ export const useDataStore = create((set, get) => ({
       id: uuidv4(),
       ativo: true,
       ...payload,
+      kg_saco_venda: Number(payload.kg_saco_venda),
     };
     try {
       await sendCommand("addTipoCafe", tipoCafe);
       set((state) => ({ tiposCafe: [...state.tiposCafe, tipoCafe] }));
+    } catch (error) {
+      return;
+    }
+  },
+  updateTipoCafe: async (payload) => {
+    const tipoCafe = {
+      ...payload,
+      kg_saco_venda: Number(payload.kg_saco_venda),
+    };
+    try {
+      await sendCommand("updateTipoCafe", tipoCafe);
+      set((state) => ({
+        tiposCafe: state.tiposCafe.map((item) =>
+          item.id === tipoCafe.id ? { ...item, ...tipoCafe } : item,
+        ),
+      }));
     } catch (error) {
       return;
     }
