@@ -40,7 +40,8 @@ const SystemPage = () => {
     } catch (error) {
       setStatus({
         severity: "error",
-        message: "Não foi possível alimentar o banco de dados. Tente novamente.",
+        message:
+          "Não foi possível alimentar o banco de dados. Tente novamente.",
       });
     } finally {
       setLoadingSeed(false);
@@ -100,7 +101,9 @@ const SystemPage = () => {
   };
 
   return (
-    <Box sx={{ backgroundColor: "#f9f5f1", minHeight: "100vh", py: 10 }}>
+    <Box
+      sx={{ backgroundColor: "background.default", minHeight: "100vh", py: 10 }}
+    >
       <Container maxWidth="sm">
         <Paper sx={{ p: 4, borderRadius: 4 }} elevation={1}>
           <Stack spacing={3}>
@@ -109,7 +112,8 @@ const SystemPage = () => {
                 System
               </Typography>
               <Typography variant="body1" color="text.secondary">
-                Controle o banco PostgreSQL com ações rápidas de carga e exportação.
+                Controle o banco PostgreSQL com ações rápidas de carga e
+                exportação.
               </Typography>
             </Box>
 
@@ -149,7 +153,8 @@ const SystemPage = () => {
             {databaseJson && (
               <Box
                 sx={{
-                  backgroundColor: "#f5f5f5",
+                  backgroundColor: "#0C1E1A",
+                  border: "1px solid #2A3F3A",
                   borderRadius: 2,
                   maxHeight: 320,
                   overflow: "auto",

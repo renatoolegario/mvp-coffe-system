@@ -30,7 +30,7 @@ const LoginPage = () => {
     event.preventDefault();
     setError("");
     const usuario = usuarios.find(
-      (item) => item.email === email && item.senha === senha && item.ativo
+      (item) => item.email === email && item.senha === senha && item.ativo,
     );
     if (!usuario) {
       setError("Credenciais inválidas ou usuário inativo.");
@@ -46,7 +46,9 @@ const LoginPage = () => {
   };
 
   return (
-    <Box sx={{ backgroundColor: "#f9f5f1", minHeight: "100vh", py: 10 }}>
+    <Box
+      sx={{ backgroundColor: "background.default", minHeight: "100vh", py: 10 }}
+    >
       <Container maxWidth="sm">
         <Paper sx={{ p: 4, borderRadius: 4 }} elevation={1}>
           <Stack spacing={3}>
@@ -55,7 +57,8 @@ const LoginPage = () => {
                 Entrar no MVP Coffee System
               </Typography>
               <Typography variant="body1" color="text.secondary">
-                Use um dos usuários de teste ou crie novos usuários na área administrativa.
+                Use um dos usuários de teste ou crie novos usuários na área
+                administrativa.
               </Typography>
             </Box>
             {error ? <Alert severity="error">{error}</Alert> : null}
@@ -84,8 +87,9 @@ const LoginPage = () => {
             </Box>
             <Box>
               <Typography variant="body2" color="text.secondary">
-                Antes do primeiro acesso, alimente o banco em /system para carregar o
-                seed. Usuário padrão: admin@cafemvp.com (senha mvp_admin_123).
+                Antes do primeiro acesso, alimente o banco em /system para
+                carregar o seed. Usuário padrão: admin@cafemvp.com (senha
+                mvp_admin_123).
               </Typography>
             </Box>
           </Stack>
