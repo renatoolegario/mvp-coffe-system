@@ -14,34 +14,23 @@ import { normalizeSeedData, serializeSeedData } from "../utils/seed";
 
 const SystemPage = () => {
   const hydrateFromSeed = useDataStore((state) => state.hydrateFromSeed);
-  const dataSnapshot = useDataStore((state) => ({
-    usuarios: state.usuarios,
-    clientes: state.clientes,
-    fornecedores: state.fornecedores,
-    insumos: state.insumos,
-    tiposCafe: state.tiposCafe,
-    lotes: state.lotes,
-    movInsumos: state.movInsumos,
-    movLotes: state.movLotes,
-    entradasInsumos: state.entradasInsumos,
-    ordensProducao: state.ordensProducao,
-    vendas: state.vendas,
-    contasPagar: state.contasPagar,
-    contasPagarParcelas: state.contasPagarParcelas,
-    contasReceber: state.contasReceber,
-    contasReceberParcelas: state.contasReceberParcelas,
-  }));
+
+  // Option 1: Remove the subscription entirely since you only need it on-demand
+  // Just access the store when needed in handleDownloadSeed
+
   const [status, setStatus] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
 
   const handleSeedDatabase = async () => {
     setLoadingSeed(true);
     setStatus(null);
+
     try {
       await resetIndexedDb();
       const seedModule = await import("../docs/seed.json");
       const seedData = normalizeSeedData(seedModule.default ?? seedModule);
       hydrateFromSeed(seedData);
+
       setStatus({
         severity: "success",
         message: "Banco recriado no IndexedDB e dados importados do seed.json.",
@@ -58,16 +47,38 @@ const SystemPage = () => {
 
   const handleDownloadSeed = () => {
     setStatus(null);
-    const seedData = serializeSeedData(dataSnapshot);
+
+    // Get the data snapshot directly when needed
+    const dataSnapshot = useDataStore.getState();
+    const seedData = serializeSeedData({
+      usuarios: dataSnapshot.usuarios,
+      clientes: dataSnapshot.clientes,
+      fornecedores: dataSnapshot.fornecedores,
+      insumos: dataSnapshot.insumos,
+      tiposCafe: dataSnapshot.tiposCafe,
+      lotes: dataSnapshot.lotes,
+      movInsumos: dataSnapshot.movInsumos,
+      movLotes: dataSnapshot.movLotes,
+      entradasInsumos: dataSnapshot.entradasInsumos,
+      ordensProducao: dataSnapshot.ordensProducao,
+      vendas: dataSnapshot.vendas,
+      contasPagar: dataSnapshot.contasPagar,
+      contasPagarParcelas: dataSnapshot.contasPagarParcelas,
+      contasReceber: dataSnapshot.contasReceber,
+      contasReceberParcelas: dataSnapshot.contasReceberParcelas,
+    });
+
     const blob = new Blob([JSON.stringify(seedData, null, 2)], {
       type: "application/json",
     });
+
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = "seed.json";
     anchor.click();
     window.URL.revokeObjectURL(url);
+
     setStatus({
       severity: "success",
       message: "Seed.json gerado com os dados atuais do IndexedDB.",
@@ -87,7 +98,11 @@ const SystemPage = () => {
                 Controle o IndexedDB local com ações rápidas de carga e exportação.
               </Typography>
             </Box>
-            {status ? <Alert severity={status.severity}>{status.message}</Alert> : null}
+
+            {status && (
+              <Alert severity={status.severity}>{status.message}</Alert>
+            )}
+
             <Stack spacing={2}>
               <Button
                 variant="contained"
@@ -95,9 +110,16 @@ const SystemPage = () => {
                 onClick={handleSeedDatabase}
                 disabled={loadingSeed}
               >
-                {loadingSeed ? "Alimentando banco de dados..." : "Alimentar banco de dados"}
+                {loadingSeed
+                  ? "Alimentando banco de dados..."
+                  : "Alimentar banco de dados"}
               </Button>
-              <Button variant="outlined" size="large" onClick={handleDownloadSeed}>
+
+              <Button
+                variant="outlined"
+                size="large"
+                onClick={handleDownloadSeed}
+              >
                 Gerar seed.json
               </Button>
             </Stack>
