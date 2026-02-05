@@ -70,12 +70,13 @@ export default async function handler(req, res) {
         break;
       case "addInsumo":
         await query(
-          "INSERT INTO insumos (id, nome, unidade, estoque_minimo, kg_por_saco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+          "INSERT INTO insumos (id, nome, unidade, estoque_minimo, estoque_minimo_unidade, kg_por_saco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
           [
             payload.id,
             payload.nome,
             payload.unidade,
             payload.estoque_minimo,
+            payload.estoque_minimo_unidade,
             payload.kg_por_saco,
             payload.ativo,
             payload.criado_em,
