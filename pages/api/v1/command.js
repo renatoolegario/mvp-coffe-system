@@ -84,14 +84,28 @@ export default async function handler(req, res) {
         break;
       case "addTipoCafe":
         await query(
-          "INSERT INTO tipos_cafe (id, nome, insumo_id, rendimento_percent, margem_lucro_percent, ativo) VALUES ($1, $2, $3, $4, $5, $6)",
+          "INSERT INTO tipos_cafe (id, nome, insumo_id, rendimento_percent, margem_lucro_percent, kg_saco_venda, ativo) VALUES ($1, $2, $3, $4, $5, $6, $7)",
           [
             payload.id,
             payload.nome,
             payload.insumo_id,
             payload.rendimento_percent,
             payload.margem_lucro_percent,
+            payload.kg_saco_venda,
             payload.ativo,
+          ],
+        );
+        break;
+      case "updateTipoCafe":
+        await query(
+          "UPDATE tipos_cafe SET nome = $2, insumo_id = $3, rendimento_percent = $4, margem_lucro_percent = $5, kg_saco_venda = $6 WHERE id = $1",
+          [
+            payload.id,
+            payload.nome,
+            payload.insumo_id,
+            payload.rendimento_percent,
+            payload.margem_lucro_percent,
+            payload.kg_saco_venda,
           ],
         );
         break;
