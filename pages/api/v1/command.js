@@ -6,7 +6,7 @@ const insertRow = async (client, table, columns, data) => {
   const columnList = columns.join(", ");
   await client.query(
     `INSERT INTO ${table} (${columnList}) VALUES (${placeholders})`,
-    values
+    values,
   );
 };
 
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
             payload.perfil,
             payload.ativo,
             payload.criado_em,
-          ]
+          ],
         );
         break;
       case "toggleUsuario":
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
             payload.endereco,
             payload.ativo,
             payload.criado_em,
-          ]
+          ],
         );
         break;
       case "addFornecedor":
@@ -65,20 +65,21 @@ export default async function handler(req, res) {
             payload.endereco,
             payload.ativo,
             payload.criado_em,
-          ]
+          ],
         );
         break;
       case "addInsumo":
         await query(
-          "INSERT INTO insumos (id, nome, unidade, estoque_minimo, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6)",
+          "INSERT INTO insumos (id, nome, unidade, estoque_minimo, kg_por_saco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
           [
             payload.id,
             payload.nome,
             payload.unidade,
             payload.estoque_minimo,
+            payload.kg_por_saco,
             payload.ativo,
             payload.criado_em,
-          ]
+          ],
         );
         break;
       case "addTipoCafe":
@@ -91,7 +92,7 @@ export default async function handler(req, res) {
             payload.rendimento_percent,
             payload.margem_lucro_percent,
             payload.ativo,
-          ]
+          ],
         );
         break;
       case "addEntradaInsumos":
@@ -109,7 +110,7 @@ export default async function handler(req, res) {
               "obs",
               "status",
             ],
-            payload.entrada
+            payload.entrada,
           );
 
           for (const movimento of payload.movimentos) {
@@ -128,7 +129,7 @@ export default async function handler(req, res) {
                 "referencia_id",
                 "obs",
               ],
-              movimento
+              movimento,
             );
           }
 
@@ -144,7 +145,7 @@ export default async function handler(req, res) {
               "data_emissao",
               "status",
             ],
-            payload.contaPagar
+            payload.contaPagar,
           );
 
           for (const parcela of payload.parcelas) {
@@ -161,7 +162,7 @@ export default async function handler(req, res) {
                 "data_pagamento",
                 "forma_pagamento",
               ],
-              parcela
+              parcela,
             );
           }
         });
@@ -182,7 +183,7 @@ export default async function handler(req, res) {
               "status",
               "obs",
             ],
-            payload.ordem
+            payload.ordem,
           );
 
           for (const movimento of payload.movInsumos) {
@@ -201,7 +202,7 @@ export default async function handler(req, res) {
                 "referencia_id",
                 "obs",
               ],
-              movimento
+              movimento,
             );
           }
 
@@ -220,7 +221,7 @@ export default async function handler(req, res) {
               "referencia_id",
               "obs",
             ],
-            payload.movLotes
+            payload.movLotes,
           );
         });
         break;
@@ -239,7 +240,7 @@ export default async function handler(req, res) {
               "status",
               "obs",
             ],
-            payload.venda
+            payload.venda,
           );
 
           for (const movimento of payload.movLotes) {
@@ -258,7 +259,7 @@ export default async function handler(req, res) {
                 "referencia_id",
                 "obs",
               ],
-              movimento
+              movimento,
             );
           }
 
@@ -274,7 +275,7 @@ export default async function handler(req, res) {
               "data_emissao",
               "status",
             ],
-            payload.contaReceber
+            payload.contaReceber,
           );
 
           for (const parcela of payload.parcelas) {
@@ -291,7 +292,7 @@ export default async function handler(req, res) {
                 "data_recebimento",
                 "forma_recebimento",
               ],
-              parcela
+              parcela,
             );
           }
         });
@@ -304,7 +305,7 @@ export default async function handler(req, res) {
             payload.status,
             payload.data_pagamento,
             payload.forma_pagamento,
-          ]
+          ],
         );
         break;
       case "marcarParcelaRecebida":
@@ -315,7 +316,7 @@ export default async function handler(req, res) {
             payload.status,
             payload.data_recebimento,
             payload.forma_recebimento,
-          ]
+          ],
         );
         break;
       default:

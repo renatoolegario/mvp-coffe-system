@@ -39,8 +39,14 @@ const DashboardInsumosPage = () => {
                   {insumo.nome}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Saldo: {insumo.saldo} {insumo.unidade}
+                  Estoque (kg): {Number(insumo.saldo_kg).toFixed(2)} kg
                 </Typography>
+                {insumo.unidade === "saco" ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Estoque (sacos): {Number(insumo.saldo_sacos).toFixed(2)}{" "}
+                    sacos
+                  </Typography>
+                ) : null}
                 <Typography variant="body2" color="text.secondary">
                   Custo médio: {formatCurrency(insumo.custo_medio)}
                 </Typography>
