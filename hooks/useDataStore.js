@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
-import { getCustoMedio, getParcelas } from "../utils/stock";
+import { getCustoConsumoFifo, getParcelas } from "../utils/stock";
 
 const nowIso = () => new Date().toISOString();
 
@@ -232,10 +232,11 @@ export const useDataStore = create((set, get) => ({
     const quantidadeInsumo =
       rendimento > 0 ? quantidade_gerada / (rendimento / 100) : 0;
     const insumoId = tipo?.insumo_id;
-    const custoUnitInsumo = insumoId
-      ? getCustoMedio(get().movInsumos, (mov) => mov.insumo_id === insumoId)
-      : 0;
-    const custoBase = quantidadeInsumo * custoUnitInsumo;
+    const custoConsumo = insumoId
+      ? getCustoConsumoFifo(get().movInsumos, insumoId, quantidadeInsumo)
+      : { custoTotal: 0, custoUnitario: 0 };
+    const custoUnitInsumo = custoConsumo.custoUnitario;
+    const custoBase = custoConsumo.custoTotal;
     const margemLucro = tipo
       ? custoBase * (Number(tipo.margem_lucro_percent) / 100)
       : 0;
@@ -262,7 +263,7 @@ export const useDataStore = create((set, get) => ({
             tipo: "SAIDA_PRODUCAO",
             quantidade: quantidadeInsumo,
             custo_unit: custoUnitInsumo,
-            custo_total: quantidadeInsumo * custoUnitInsumo,
+            custo_total: custoBase,
             data: dataFabricacao,
             referencia_tipo: "ordem_producao",
             referencia_id: ordemId,
