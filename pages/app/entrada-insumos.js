@@ -224,7 +224,8 @@ const EntradaInsumosPage = () => {
                     Entrada #{entrada.id.slice(0, 6)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Total: {formatCurrency(entrada.valor_total)} • Parcelas:{" "}
+                    Quantidade: {entrada.quantidade} • Total:{" "}
+                    {formatCurrency(entrada.valor_total)} • Parcelas:{" "}
                     {entrada.parcelas_qtd}
                   </Typography>
                 </Paper>
