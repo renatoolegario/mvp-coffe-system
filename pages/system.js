@@ -9,17 +9,19 @@ import {
 } from "@mui/material";
 import { useState } from "react";
 import { useDataStore } from "../hooks/useDataStore";
-import { resetIndexedDb } from "../utils/indexedDb";
+import { ensureIndexedDb, resetIndexedDb } from "../utils/indexedDb";
 import { normalizeSeedData, serializeSeedData } from "../utils/seed";
 
 const SystemPage = () => {
   const hydrateFromSeed = useDataStore((state) => state.hydrateFromSeed);
+  const resetStore = useDataStore((state) => state.resetStore);
 
   // Option 1: Remove the subscription entirely since you only need it on-demand
   // Just access the store when needed in handleDownloadSeed
 
   const [status, setStatus] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
+  const [loadingReset, setLoadingReset] = useState(false);
   const [databaseJson, setDatabaseJson] = useState("");
 
   const getSeedData = () => {
@@ -49,6 +51,7 @@ const SystemPage = () => {
 
     try {
       await resetIndexedDb();
+      await ensureIndexedDb();
       const seedModule = await import("../docs/seed.json");
       const seedData = normalizeSeedData(seedModule.default ?? seedModule);
       hydrateFromSeed(seedData);
@@ -64,6 +67,28 @@ const SystemPage = () => {
       });
     } finally {
       setLoadingSeed(false);
+    }
+  };
+
+  const handleResetDatabase = async () => {
+    setLoadingReset(true);
+    setStatus(null);
+    setDatabaseJson("");
+
+    try {
+      await resetIndexedDb();
+      resetStore();
+      setStatus({
+        severity: "success",
+        message: "Banco de dados limpo com sucesso.",
+      });
+    } catch (error) {
+      setStatus({
+        severity: "error",
+        message: "Não foi possível resetar o banco de dados. Tente novamente.",
+      });
+    } finally {
+      setLoadingReset(false);
     }
   };
 
@@ -148,6 +173,18 @@ const SystemPage = () => {
                 onClick={handleDownloadSeed}
               >
                 Gerar seed.json
+              </Button>
+
+              <Button
+                variant="outlined"
+                color="warning"
+                size="large"
+                onClick={handleResetDatabase}
+                disabled={loadingReset}
+              >
+                {loadingReset
+                  ? "Resetando banco de dados..."
+                  : "Resetar banco de dados"}
               </Button>
 
               <Button
