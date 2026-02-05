@@ -71,7 +71,23 @@ const SystemPage = () => {
     setStatus(null);
 
     // Get the data snapshot directly when needed
-    const seedData = getSeedData();
+    const dataSnapshot = useDataStore.getState();
+    const seedData = serializeSeedData({
+      usuarios: dataSnapshot.usuarios,
+      clientes: dataSnapshot.clientes,
+      fornecedores: dataSnapshot.fornecedores,
+      insumos: dataSnapshot.insumos,
+      tiposCafe: dataSnapshot.tiposCafe,
+      movInsumos: dataSnapshot.movInsumos,
+      movLotes: dataSnapshot.movLotes,
+      entradasInsumos: dataSnapshot.entradasInsumos,
+      ordensProducao: dataSnapshot.ordensProducao,
+      vendas: dataSnapshot.vendas,
+      contasPagar: dataSnapshot.contasPagar,
+      contasPagarParcelas: dataSnapshot.contasPagarParcelas,
+      contasReceber: dataSnapshot.contasReceber,
+      contasReceberParcelas: dataSnapshot.contasReceberParcelas,
+    });
 
     const blob = new Blob([JSON.stringify(seedData, null, 2)], {
       type: "application/json",

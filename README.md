@@ -1,20 +1,20 @@
 # MVP – Sistema de Gestão de Café (8k) – README
 
 Este repositório contém um **MVP 100% front-end**, feito para demonstração/apresentação, com **banco local no navegador** (IndexedDB).  
-O objetivo é simular um mini-ERP de café com **estoque (insumos + lotes)**, **produção**, **vendas** e **financeiro (contas a pagar/receber com parcelas)**.
+O objetivo é simular um mini-ERP de café com **estoque (insumos + tipos de café)**, **produção**, **vendas** e **financeiro (contas a pagar/receber com parcelas)**.
 
 ---
 
 ## ✅ Visão Geral do Produto
 
 ### O que o MVP entrega
-- **Cadastro** de clientes, fornecedores, insumos, tipos de café e lotes.
+- **Cadastro** de clientes, fornecedores, insumos e tipos de café.
 - **Entrada de Insumos (compra)**: alimenta estoque e gera **contas a pagar** + **parcelas**.
-- **Fabricação de Lotes**: baixa insumos, calcula custo, dá entrada em estoque do lote.
-- **Vendas**: baixa lote do estoque, gera **contas a receber** + **parcelas**.
+- **Fabricação de Café**: baixa insumo base, calcula custo, dá entrada em estoque do tipo.
+- **Vendas**: baixa tipo do estoque, gera **contas a receber** + **parcelas**.
 - **Dashboards**:
   - Estoque de Insumos: saldo, custo médio, valor em estoque, histórico.
-  - Estoque de Lotes: saldo, custo médio, valor em estoque, histórico.
+  - Estoque por Tipo: saldo, custo médio, valor em estoque, histórico.
   - Financeiro: aberto/pago, vencidos, próximos vencimentos.
   - Clientes: compras, status (inadimplente), histórico de recebimentos.
   - Fornecedores: compras, status (devendo), histórico de pagamentos.
@@ -32,11 +32,11 @@ O objetivo é simular um mini-ERP de café com **estoque (insumos + lotes)**, **
 O saldo NÃO é salvo diretamente como “campo estoque”.
 Ele é calculado por:
 - **Insumos**: soma(entradas) − soma(saídas)
-- **Lotes**: soma(entradas) − soma(saídas)
+- **Tipos de café**: soma(entradas) − soma(saídas)
 
 Tabelas envolvidas:
 - `mov_insumos` → entradas/saídas/ajustes de insumos
-- `mov_lotes` → entradas/saídas/ajustes de lotes
+- `mov_lotes` → entradas/saídas/ajustes por tipo de café
 
 ### 2) Macro + Parcelas (Financeiro)
 Cada compra/venda cria um documento “macro” e, se necessário, várias parcelas.
@@ -59,14 +59,13 @@ CRUD completo:
 - Fornecedores (`fornecedores`)
 - Insumos (`insumos`)
 - Tipos de Café (`tipos_cafe`)
-- Lotes / Produtos (`lotes`)
 
 ### 3) Gestão de Café (Estoque + Produção)
 - Entrada de insumos (compra) → estoque + contas a pagar
-- Fabricação de lotes → baixa insumo + entrada lote + custo
+- Fabricação de café → baixa insumo + entrada por tipo + custo
 
 ### 4) Gestão Comercial (Vendas + Clientes)
-- Nova venda → baixa lote + contas a receber
+- Nova venda → baixa tipo + contas a receber
 - Status do cliente → inadimplente se existir parcela vencida em aberto
 
 ### 5) Fornecedores + Compras
@@ -89,7 +88,6 @@ CRUD completo:
 - `fornecedores`
 - `insumos`
 - `tipos_cafe`
-- `lotes`
 
 ### C) Compras / Entrada Insumos
 - `entrada_insumos` (macro)
@@ -97,7 +95,6 @@ CRUD completo:
 
 ### D) Produção
 - `ordem_producao` (macro)
-- `ordem_producao_itens` (insumos consumidos)
 
 ### E) Vendas
 - `vendas` (macro)
@@ -120,14 +117,10 @@ CRUD completo:
 O arquivo de seed popula:
 - 3 clientes
 - 3 fornecedores
-- 5 insumos
-- 3 tipos de café
-- 2 lotes
-- 2 entradas de insumos (1 parcelada, 1 à vista)
-- 2 ordens de produção
-- 2 vendas (1 à vista, 1 parcelada)
+- 1 insumo
+- 1 tipo de café
 - contas a pagar/receber + parcelas
-- movimentações de insumos e lotes coerentes
+- movimentações de insumos e estoque por tipo coerentes
 
 > O seed é importante para abrir a aplicação e já ter dashboards “vivos” na apresentação.
 
@@ -141,7 +134,7 @@ O arquivo de seed popula:
 3. Criar `contas_pagar` + `contas_pagar_parcelas`
 
 ### Fabricação
-1. Criar `ordem_producao` + `ordem_producao_itens`
+1. Criar `ordem_producao`
 2. Gerar `mov_insumos` (SAIDA_PRODUCAO)
 3. Gerar `mov_lotes` (ENTRADA_FABRICACAO) com custo unit calculado
 
@@ -158,10 +151,10 @@ O arquivo de seed popula:
 - `custo_total = quantidade * custo_unit`
 
 ### Fabricação
-- `custo_base = soma(custo_total dos insumos consumidos)`
-- `overhead = custo_base * (overhead_percent / 100)`
-- `custo_total_producao = custo_base + overhead`
-- `custo_unit_lote = custo_total_producao / quantidade_gerada`
+- `custo_base = quantidade_insumo * custo_unit_insumo`
+- `margem_lucro = custo_base * (margem_lucro_percent / 100)`
+- `custo_total_producao = custo_base + margem_lucro`
+- `custo_unit_tipo = custo_total_producao / quantidade_gerada`
 
 ---
 

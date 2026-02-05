@@ -14,51 +14,66 @@ import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
+import { getCustoMedio, getSaldoInsumo } from "../../utils/stock";
 
 const FabricacaoLotesPage = () => {
-  const lotes = useDataStore((state) => state.lotes);
+  const tiposCafe = useDataStore((state) => state.tiposCafe);
   const insumos = useDataStore((state) => state.insumos);
+  const movInsumos = useDataStore((state) => state.movInsumos);
   const ordens = useDataStore((state) => state.ordensProducao);
   const addOrdemProducao = useDataStore((state) => state.addOrdemProducao);
-  const [loteId, setLoteId] = useState("");
+  const [tipoCafeId, setTipoCafeId] = useState("");
   const [quantidade, setQuantidade] = useState("");
   const [obs, setObs] = useState("");
-  const [item, setItem] = useState({ insumo_id: "", quantidade: "", custo_unit: "" });
-  const [itens, setItens] = useState([]);
 
-  const custoBase = itens.reduce(
-    (acc, current) => acc + current.quantidade * current.custo_unit,
-    0
+  const tipoSelecionado = tiposCafe.find((tipo) => tipo.id === tipoCafeId);
+  const insumoSelecionado = insumos.find(
+    (insumo) => insumo.id === tipoSelecionado?.insumo_id
   );
-
-  const addItem = () => {
-    if (!item.insumo_id || !item.quantidade || !item.custo_unit) return;
-    setItens((prev) => [
-      ...prev,
-      {
-        ...item,
-        quantidade: Number(item.quantidade),
-        custo_unit: Number(item.custo_unit),
-      },
-    ]);
-    setItem({ insumo_id: "", quantidade: "", custo_unit: "" });
-  };
+  const rendimento = Number(tipoSelecionado?.rendimento_percent ?? 100);
+  const quantidadeGerada = Number(quantidade) || 0;
+  const quantidadeInsumo =
+    rendimento > 0 ? quantidadeGerada / (rendimento / 100) : 0;
+  const saldoInsumo = insumoSelecionado
+    ? getSaldoInsumo(movInsumos, insumoSelecionado.id)
+    : 0;
+  const custoUnitInsumo = insumoSelecionado
+    ? getCustoMedio(movInsumos, (mov) => mov.insumo_id === insumoSelecionado.id)
+    : 0;
+  const custoBase = quantidadeInsumo * custoUnitInsumo;
+  const margemLucro = tipoSelecionado
+    ? custoBase * (Number(tipoSelecionado.margem_lucro_percent) / 100)
+    : 0;
+  const custoTotal = custoBase + margemLucro;
+  const statusProducao = !tipoSelecionado
+    ? "Selecione um tipo de café."
+    : quantidadeInsumo > saldoInsumo
+    ? "Estoque insuficiente para produzir."
+    : "Liberado para produzir.";
+  const podeProduzir =
+    tipoSelecionado &&
+    quantidadeGerada > 0 &&
+    insumoSelecionado &&
+    quantidadeInsumo <= saldoInsumo;
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!loteId || !quantidade || !itens.length) return;
-    addOrdemProducao({ lote_id: loteId, quantidade_gerada: Number(quantidade), itens, obs });
-    setLoteId("");
+    if (!podeProduzir) return;
+    addOrdemProducao({
+      tipo_cafe_id: tipoCafeId,
+      quantidade_gerada: quantidadeGerada,
+      obs,
+    });
+    setTipoCafeId("");
     setQuantidade("");
     setObs("");
-    setItens([]);
   };
 
   return (
     <AppLayout>
       <PageHeader
-        title="Fabricação de Lotes"
-        subtitle="Baixe insumos e gere entrada no estoque de lotes."
+        title="Fabricação de Café"
+        subtitle="Baixe o insumo definido no tipo e gere entrada no estoque."
       />
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
@@ -70,14 +85,14 @@ const FabricacaoLotesPage = () => {
               <Stack spacing={2}>
                 <TextField
                   select
-                  label="Lote"
-                  value={loteId}
-                  onChange={(event) => setLoteId(event.target.value)}
+                  label="Tipo de café"
+                  value={tipoCafeId}
+                  onChange={(event) => setTipoCafeId(event.target.value)}
                   required
                 >
-                  {lotes.map((lote) => (
-                    <MenuItem key={lote.id} value={lote.id}>
-                      {lote.nome}
+                  {tiposCafe.map((tipo) => (
+                    <MenuItem key={tipo.id} value={tipo.id}>
+                      {tipo.nome}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -90,42 +105,14 @@ const FabricacaoLotesPage = () => {
                 />
                 <Divider />
                 <TextField
-                  select
-                  label="Insumo"
-                  value={item.insumo_id}
-                  onChange={(event) => setItem((prev) => ({ ...prev, insumo_id: event.target.value }))}
-                >
-                  {insumos.map((insumo) => (
-                    <MenuItem key={insumo.id} value={insumo.id}>
-                      {insumo.nome}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  label="Quantidade consumida"
-                  type="number"
-                  value={item.quantidade}
-                  onChange={(event) => setItem((prev) => ({ ...prev, quantidade: event.target.value }))}
-                />
-                <TextField
-                  label="Custo unitário"
-                  type="number"
-                  value={item.custo_unit}
-                  onChange={(event) => setItem((prev) => ({ ...prev, custo_unit: event.target.value }))}
-                />
-                <Button variant="outlined" onClick={addItem}>
-                  Adicionar insumo
-                </Button>
-                <Divider />
-                <TextField
                   label="Observações"
                   value={obs}
                   onChange={(event) => setObs(event.target.value)}
                   multiline
                   rows={2}
                 />
-                <Button type="submit" variant="contained">
-                  Registrar fabricação (custo base {formatCurrency(custoBase)})
+                <Button type="submit" variant="contained" disabled={!podeProduzir}>
+                  Registrar fabricação (custo {formatCurrency(custoTotal)})
                 </Button>
               </Stack>
             </Box>
@@ -134,19 +121,24 @@ const FabricacaoLotesPage = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Insumos consumidos
+              Resumo do consumo
             </Typography>
             <Stack spacing={1}>
-              {itens.map((current, index) => (
-                <Typography key={`${current.insumo_id}-${index}`} variant="body2">
-                  {insumos.find((insumo) => insumo.id === current.insumo_id)?.nome} • {current.quantidade} x {formatCurrency(current.custo_unit)}
-                </Typography>
-              ))}
-              {!itens.length ? (
-                <Typography variant="body2" color="text.secondary">
-                  Adicione insumos para compor a fabricação.
-                </Typography>
-              ) : null}
+              <Typography variant="body2">
+                Insumo: {insumoSelecionado?.nome || "-"}
+              </Typography>
+              <Typography variant="body2">
+                Quantidade do insumo: {quantidadeInsumo ? quantidadeInsumo.toFixed(2) : "-"}
+              </Typography>
+              <Typography variant="body2">
+                Custo unitário do insumo: {formatCurrency(custoUnitInsumo)}
+              </Typography>
+              <Typography variant="body2">
+                Saldo disponível: {insumoSelecionado ? saldoInsumo : "-"}
+              </Typography>
+              <Typography variant="body2" color={podeProduzir ? "success.main" : "warning.main"}>
+                Status: {statusProducao}
+              </Typography>
             </Stack>
           </Paper>
           <Paper sx={{ p: 3 }}>
@@ -157,6 +149,9 @@ const FabricacaoLotesPage = () => {
               {ordens.map((ordem) => (
                 <Paper key={ordem.id} variant="outlined" sx={{ p: 2 }}>
                   <Typography fontWeight={600}>Ordem #{ordem.id.slice(0, 6)}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Tipo: {tiposCafe.find((tipo) => tipo.id === ordem.tipo_cafe_id)?.nome || "-"}
+                  </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Quantidade: {ordem.quantidade_gerada} • Custo total: {formatCurrency(ordem.custo_total)}
                   </Typography>

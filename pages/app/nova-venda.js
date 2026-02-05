@@ -18,13 +18,13 @@ import { getCustoMedio } from "../../utils/stock";
 
 const NovaVendaPage = () => {
   const clientes = useDataStore((state) => state.clientes);
-  const lotes = useDataStore((state) => state.lotes);
+  const tiposCafe = useDataStore((state) => state.tiposCafe);
   const movimentos = useDataStore((state) => state.movLotes);
   const addVenda = useDataStore((state) => state.addVenda);
   const [clienteId, setClienteId] = useState("");
   const [parcelas, setParcelas] = useState(1);
   const [obs, setObs] = useState("");
-  const [item, setItem] = useState({ lote_id: "", quantidade: "", preco_unit: "" });
+  const [item, setItem] = useState({ tipo_cafe_id: "", quantidade: "", preco_unit: "" });
   const [itens, setItens] = useState([]);
 
   const total = itens.reduce(
@@ -33,8 +33,11 @@ const NovaVendaPage = () => {
   );
 
   const addItem = () => {
-    if (!item.lote_id || !item.quantidade || !item.preco_unit) return;
-    const custoUnit = getCustoMedio(movimentos, (mov) => mov.lote_id === item.lote_id);
+    if (!item.tipo_cafe_id || !item.quantidade || !item.preco_unit) return;
+    const custoUnit = getCustoMedio(
+      movimentos,
+      (mov) => mov.tipo_cafe_id === item.tipo_cafe_id
+    );
     setItens((prev) => [
       ...prev,
       {
@@ -44,7 +47,7 @@ const NovaVendaPage = () => {
         custo_unit: custoUnit,
       },
     ]);
-    setItem({ lote_id: "", quantidade: "", preco_unit: "" });
+    setItem({ tipo_cafe_id: "", quantidade: "", preco_unit: "" });
   };
 
   const handleSubmit = (event) => {
@@ -86,13 +89,15 @@ const NovaVendaPage = () => {
                 </TextField>
                 <TextField
                   select
-                  label="Lote"
-                  value={item.lote_id}
-                  onChange={(event) => setItem((prev) => ({ ...prev, lote_id: event.target.value }))}
+                  label="Tipo de café"
+                  value={item.tipo_cafe_id}
+                  onChange={(event) =>
+                    setItem((prev) => ({ ...prev, tipo_cafe_id: event.target.value }))
+                  }
                 >
-                  {lotes.map((lote) => (
-                    <MenuItem key={lote.id} value={lote.id}>
-                      {lote.nome}
+                  {tiposCafe.map((tipo) => (
+                    <MenuItem key={tipo.id} value={tipo.id}>
+                      {tipo.nome}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -139,13 +144,13 @@ const NovaVendaPage = () => {
             </Typography>
             <Stack spacing={1}>
               {itens.map((current, index) => (
-                <Typography key={`${current.lote_id}-${index}`} variant="body2">
-                  {lotes.find((lote) => lote.id === current.lote_id)?.nome} • {current.quantidade} x {formatCurrency(current.preco_unit)}
+                <Typography key={`${current.tipo_cafe_id}-${index}`} variant="body2">
+                  {tiposCafe.find((tipo) => tipo.id === current.tipo_cafe_id)?.nome} • {current.quantidade} x {formatCurrency(current.preco_unit)}
                 </Typography>
               ))}
               {!itens.length ? (
                 <Typography variant="body2" color="text.secondary">
-                  Adicione lotes para compor a venda.
+                  Adicione tipos de café para compor a venda.
                 </Typography>
               ) : null}
             </Stack>

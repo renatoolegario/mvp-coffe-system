@@ -1,7 +1,7 @@
 # Página Tipos de Café
 
 ## Descrição
-Cadastro de tipos de café com rendimento e overhead para cálculo de custo.
+Cadastro de tipos de café com rendimento, insumo base e margem de lucro para cálculo de custo.
 
 ## Props utilizadas
 - Nenhuma.
@@ -11,4 +11,4 @@ Cadastro de tipos de café com rendimento e overhead para cálculo de custo.
 - Lista tipos cadastrados.
 
 ## Resultado esperado
-- Tipos prontos para vincular aos lotes.
+- Tipos prontos para gerar estoque diretamente na fabricação.

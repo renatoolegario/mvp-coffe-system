@@ -8,7 +8,7 @@ Registro de novas vendas com itens, parcelas e geração de contas a receber.
 
 ## Funções internas
 - Adiciona itens de venda.
-- Gera movimentações de lotes.
+- Gera movimentações do estoque por tipo de café.
 - Cria contas a receber e parcelas.
 
 ## Resultado esperado

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import { indexedDbStorage } from "../utils/indexedDb";
-import { getParcelas } from "../utils/stock";
+import { getCustoMedio, getParcelas } from "../utils/stock";
 
 const nowIso = () => new Date().toISOString();
 
@@ -12,7 +12,6 @@ const baseState = {
   fornecedores: [],
   insumos: [],
   tiposCafe: [],
-  lotes: [],
   movInsumos: [],
   movLotes: [],
   entradasInsumos: [],
@@ -101,18 +100,6 @@ export const useDataStore = create(
             },
           ],
         })),
-      addLote: (payload) =>
-        set((state) => ({
-          lotes: [
-            ...state.lotes,
-            {
-              id: uuidv4(),
-              ativo: true,
-              criado_em: nowIso(),
-              ...payload,
-            },
-          ],
-        })),
       addEntradaInsumos: ({ fornecedor_id, itens, parcelas_qtd, obs }) => {
         const entradaId = uuidv4();
         const dataEntrada = nowIso();
@@ -169,45 +156,56 @@ export const useDataStore = create(
           contasPagarParcelas: [...state.contasPagarParcelas, ...parcelas],
         }));
       },
-      addOrdemProducao: ({ lote_id, itens, quantidade_gerada, obs }) => {
+      addOrdemProducao: ({ tipo_cafe_id, quantidade_gerada, obs }) => {
         const ordemId = uuidv4();
         const dataFabricacao = nowIso();
-        const custoBase = itens.reduce(
-          (total, item) => total + item.quantidade * item.custo_unit,
-          0
-        );
-        const lote = get().lotes.find((item) => item.id === lote_id);
-        const tipo = get().tiposCafe.find((item) => item.id === lote?.tipo_cafe_id);
-        const overhead = tipo ? custoBase * (Number(tipo.overhead_percent) / 100) : 0;
-        const custo_total = custoBase + overhead;
-        const custo_unit_lote = quantidade_gerada ? custo_total / quantidade_gerada : 0;
+        const tipo = get().tiposCafe.find((item) => item.id === tipo_cafe_id);
+        const rendimento = Number(tipo?.rendimento_percent ?? 100);
+        const quantidadeInsumo =
+          rendimento > 0 ? quantidade_gerada / (rendimento / 100) : 0;
+        const insumoId = tipo?.insumo_id;
+        const custoUnitInsumo = insumoId
+          ? getCustoMedio(get().movInsumos, (mov) => mov.insumo_id === insumoId)
+          : 0;
+        const custoBase = quantidadeInsumo * custoUnitInsumo;
+        const margemLucro = tipo
+          ? custoBase * (Number(tipo.margem_lucro_percent) / 100)
+          : 0;
+        const custo_total = custoBase + margemLucro;
+        const custo_unit_tipo = quantidade_gerada ? custo_total / quantidade_gerada : 0;
         const ordem = {
           id: ordemId,
           data_fabricacao: dataFabricacao,
-          lote_id,
+          tipo_cafe_id,
           quantidade_gerada,
+          quantidade_insumo: quantidadeInsumo,
+          insumo_id: insumoId,
           custo_total,
           status: "FINALIZADA",
           obs,
         };
-        const movInsumos = itens.map((item) => ({
-          id: uuidv4(),
-          insumo_id: item.insumo_id,
-          tipo: "SAIDA_PRODUCAO",
-          quantidade: item.quantidade,
-          custo_unit: item.custo_unit,
-          custo_total: item.quantidade * item.custo_unit,
-          data: dataFabricacao,
-          referencia_tipo: "ordem_producao",
-          referencia_id: ordemId,
-          obs: item.obs || "",
-        }));
+        const movInsumos = insumoId
+          ? [
+              {
+                id: uuidv4(),
+                insumo_id: insumoId,
+                tipo: "SAIDA_PRODUCAO",
+                quantidade: quantidadeInsumo,
+                custo_unit: custoUnitInsumo,
+                custo_total: quantidadeInsumo * custoUnitInsumo,
+                data: dataFabricacao,
+                referencia_tipo: "ordem_producao",
+                referencia_id: ordemId,
+                obs: obs || "",
+              },
+            ]
+          : [];
         const movLotes = {
           id: uuidv4(),
-          lote_id,
+          tipo_cafe_id,
           tipo: "ENTRADA_FABRICACAO",
           quantidade: quantidade_gerada,
-          custo_unit: custo_unit_lote,
+          custo_unit: custo_unit_tipo,
           custo_total,
           data: dataFabricacao,
           referencia_tipo: "ordem_producao",
@@ -239,7 +237,7 @@ export const useDataStore = create(
         };
         const movLotes = itens.map((item) => ({
           id: uuidv4(),
-          lote_id: item.lote_id,
+          tipo_cafe_id: item.tipo_cafe_id,
           tipo: "SAIDA_VENDA",
           quantidade: item.quantidade,
           custo_unit: item.custo_unit,

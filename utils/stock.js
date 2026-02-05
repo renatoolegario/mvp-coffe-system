@@ -11,12 +11,12 @@ export const getSaldoInsumo = (movimentos, insumoId) => {
   return sumBy(entradas, (mov) => mov.quantidade) - sumBy(saidas, (mov) => mov.quantidade);
 };
 
-export const getSaldoLote = (movimentos, loteId) => {
+export const getSaldoTipoCafe = (movimentos, tipoCafeId) => {
   const entradas = movimentos.filter(
-    (mov) => mov.lote_id === loteId && mov.tipo.startsWith("ENTRADA")
+    (mov) => mov.tipo_cafe_id === tipoCafeId && mov.tipo.startsWith("ENTRADA")
   );
   const saidas = movimentos.filter(
-    (mov) => mov.lote_id === loteId && mov.tipo.startsWith("SAIDA")
+    (mov) => mov.tipo_cafe_id === tipoCafeId && mov.tipo.startsWith("SAIDA")
   );
   return sumBy(entradas, (mov) => mov.quantidade) - sumBy(saidas, (mov) => mov.quantidade);
 };
