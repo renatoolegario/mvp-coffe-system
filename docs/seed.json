@@ -1,0 +1,132 @@
+{
+  "meta": {
+    "seed_version": "1.1.0",
+    "generated_at": "2026-02-04T12:00:00-03:00",
+    "currency": "BRL",
+    "timezone": "America/Sao_Paulo"
+  },
+
+  "usuarios": [
+    {
+      "id": "usr_admin_01",
+      "nome": "Administrador",
+      "email": "admin@cafemvp.com",
+      "senha_hash": "mvp_admin_123",
+      "perfil": "admin",
+      "ativo": true,
+      "criado_em": "2026-01-01T09:00:00-03:00"
+    }
+  ],
+  "sessao": [],
+
+  "tipos_cafe": [
+    {
+      "id": "tc_001",
+      "nome": "Café em Grão",
+      "rendimento_percent": 100,
+      "overhead_percent": 0,
+      "ativo": true
+    }
+  ],
+
+  "lotes": [
+    {
+      "id": "lot_001",
+      "nome": "Café em Grão - Tradicional (1kg)",
+      "tipo_cafe_id": "tc_001",
+      "unidade": "kg",
+      "ativo": true,
+      "criado_em": "2026-01-08T10:00:00-03:00"
+    },
+    {
+      "id": "lot_002",
+      "nome": "Café em Grão - Premium (1kg)",
+      "tipo_cafe_id": "tc_001",
+      "unidade": "kg",
+      "ativo": true,
+      "criado_em": "2026-01-08T10:01:00-03:00"
+    },
+    {
+      "id": "lot_003",
+      "nome": "Café em Grão - Microlote Especial (250g)",
+      "tipo_cafe_id": "tc_001",
+      "unidade": "kg",
+      "ativo": true,
+      "criado_em": "2026-01-08T10:02:00-03:00"
+    }
+  ],
+
+  "clientes": [
+    {
+      "id": "cli_001",
+      "nome": "Cafeteria Central",
+      "cpf_cnpj": "12.345.678/0001-10",
+      "telefone": "(34) 99999-1001",
+      "endereco": "Uberlândia - MG",
+      "ativo": true,
+      "criado_em": "2026-01-10T10:00:00-03:00"
+    },
+    {
+      "id": "cli_002",
+      "nome": "Empório do Café",
+      "cpf_cnpj": "45.111.222/0001-90",
+      "telefone": "(34) 99999-1002",
+      "endereco": "Patos de Minas - MG",
+      "ativo": true,
+      "criado_em": "2026-01-12T10:00:00-03:00"
+    },
+    {
+      "id": "cli_003",
+      "nome": "Mercado Santo Grão",
+      "cpf_cnpj": "09.888.777/0001-55",
+      "telefone": "(34) 99999-1003",
+      "endereco": "Araxá - MG",
+      "ativo": true,
+      "criado_em": "2026-01-15T10:00:00-03:00"
+    }
+  ],
+
+  "fornecedores": [
+    {
+      "id": "for_001",
+      "razao_social": "AgroInsumos Minas",
+      "cpf_cnpj": "11.222.333/0001-44",
+      "telefone": "(34) 99999-2001",
+      "endereco": "Uberaba - MG",
+      "ativo": true,
+      "criado_em": "2026-01-05T09:00:00-03:00"
+    },
+    {
+      "id": "for_002",
+      "razao_social": "Embalagens Brasil",
+      "cpf_cnpj": "22.333.444/0001-55",
+      "telefone": "(34) 99999-2002",
+      "endereco": "Franca - SP",
+      "ativo": true,
+      "criado_em": "2026-01-06T09:00:00-03:00"
+    },
+    {
+      "id": "for_003",
+      "razao_social": "Transportes Cerrado",
+      "cpf_cnpj": "33.444.555/0001-66",
+      "telefone": "(34) 99999-2003",
+      "endereco": "Ribeirão Preto - SP",
+      "ativo": true,
+      "criado_em": "2026-01-06T09:00:00-03:00"
+    }
+  ],
+
+  "insumos": [],
+  "entrada_insumos": [],
+  "entrada_insumos_itens": [],
+  "ordem_producao": [],
+  "ordem_producao_itens": [],
+  "vendas": [],
+  "vendas_itens": [],
+  "contas_pagar": [],
+  "contas_pagar_parcelas": [],
+  "contas_receber": [],
+  "contas_receber_parcelas": [],
+  "mov_insumos": [],
+  "mov_lotes": []
+}
