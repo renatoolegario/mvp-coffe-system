@@ -1,15 +1,26 @@
-# Página Fabricação de Café
+# Página Fabricação de Lotes
 
 ## Descrição
-Registro de produção com consumo de insumo base e entrada de estoque por tipo.
+
+Tela de produção com fluxo unificado em 2 etapas:
+
+1. Criar produção (status 1) com insumo final, taxa de conversão e consumo de N insumos.
+2. Confirmar retorno (status 2), informando peso real e custos adicionais opcionais por fornecedor.
 
 ## Props utilizadas
+
 - Nenhuma.
 
 ## Funções internas
-- Usa o insumo vinculado ao tipo de café.
-- Calcula custo base e margem de lucro.
-- Gera movimentações de insumos e estoque por tipo.
+
+- Suporta dois modos de geração:
+  - Pelo produto final (usuário define o peso final desejado).
+  - Pelos insumos usados (peso final previsto calculado automaticamente).
+- Exibe consumo em kg por linha (kg/saco), saldo de estoque e validação de saldo insuficiente.
+- Registra criação via `createProducao`.
+- Finaliza produção via `confirmarRetornoProducao`, permitindo múltiplos custos adicionais.
 
 ## Resultado esperado
-- Estoque por tipo atualizado e custos registrados.
+
+- Produção criada como pendente (status 1) sem entrada imediata no insumo final.
+- Retorno confirmado (status 2) com peso real e custos adicionais refletidos nos lançamentos financeiros e no estoque.
