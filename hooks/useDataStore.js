@@ -83,7 +83,7 @@ export const useDataStore = create((set, get) => ({
       await sendCommand("toggleUsuario", updated);
       set((state) => ({
         usuarios: state.usuarios.map((usuario) =>
-          usuario.id === id ? updated : usuario
+          usuario.id === id ? updated : usuario,
         ),
       }));
     } catch (error) {
@@ -145,13 +145,18 @@ export const useDataStore = create((set, get) => ({
       return;
     }
   },
-  addEntradaInsumos: async ({ fornecedor_id, itens, parcelas_qtd, obs }) => {
+  addEntradaInsumos: async ({
+    fornecedor_id,
+    insumo_id,
+    quantidade,
+    valor_total,
+    parcelas_qtd,
+    parcelas_valores,
+    obs,
+  }) => {
     const entradaId = uuidv4();
     const dataEntrada = nowIso();
-    const valor_total = itens.reduce(
-      (total, item) => total + item.quantidade * item.custo_unit,
-      0
-    );
+    const custoUnit = quantidade ? valor_total / quantidade : 0;
     const entrada = {
       id: entradaId,
       fornecedor_id,
@@ -162,18 +167,20 @@ export const useDataStore = create((set, get) => ({
       obs,
       status: "ABERTO",
     };
-    const movimentos = itens.map((item) => ({
-      id: uuidv4(),
-      insumo_id: item.insumo_id,
-      tipo: "ENTRADA_COMPRA",
-      quantidade: item.quantidade,
-      custo_unit: item.custo_unit,
-      custo_total: item.quantidade * item.custo_unit,
-      data: dataEntrada,
-      referencia_tipo: "entrada_insumos",
-      referencia_id: entradaId,
-      obs: item.obs || "",
-    }));
+    const movimentos = [
+      {
+        id: uuidv4(),
+        insumo_id,
+        tipo: "ENTRADA_COMPRA",
+        quantidade,
+        custo_unit: custoUnit,
+        custo_total: valor_total,
+        data: dataEntrada,
+        referencia_tipo: "entrada_insumos",
+        referencia_id: entradaId,
+        obs: obs || "",
+      },
+    ];
     const contaPagarId = uuidv4();
     const contaPagar = {
       id: contaPagarId,
@@ -184,7 +191,13 @@ export const useDataStore = create((set, get) => ({
       data_emissao: dataEntrada,
       status: "ABERTO",
     };
-    const parcelas = getParcelas(valor_total, parcelas_qtd).map((parcela) => ({
+    const parcelasBase = Array.isArray(parcelas_valores)
+      ? parcelas_valores.map((valor, index) => ({
+          parcela_num: index + 1,
+          valor,
+        }))
+      : getParcelas(valor_total, parcelas_qtd);
+    const parcelas = parcelasBase.map((parcela) => ({
       id: uuidv4(),
       conta_pagar_id: contaPagarId,
       parcela_num: parcela.parcela_num,
@@ -227,7 +240,9 @@ export const useDataStore = create((set, get) => ({
       ? custoBase * (Number(tipo.margem_lucro_percent) / 100)
       : 0;
     const custo_total = custoBase + margemLucro;
-    const custo_unit_tipo = quantidade_gerada ? custo_total / quantidade_gerada : 0;
+    const custo_unit_tipo = quantidade_gerada
+      ? custo_total / quantidade_gerada
+      : 0;
     const ordem = {
       id: ordemId,
       data_fabricacao: dataFabricacao,
@@ -283,7 +298,7 @@ export const useDataStore = create((set, get) => ({
     const dataVenda = nowIso();
     const valor_total = itens.reduce(
       (total, item) => total + item.quantidade * item.preco_unit,
-      0
+      0,
     );
     const venda = {
       id: vendaId,
@@ -328,7 +343,12 @@ export const useDataStore = create((set, get) => ({
       forma_recebimento: null,
     }));
     try {
-      await sendCommand("addVenda", { venda, movLotes, contaReceber, parcelas });
+      await sendCommand("addVenda", {
+        venda,
+        movLotes,
+        contaReceber,
+        parcelas,
+      });
       set((state) => ({
         vendas: [...state.vendas, venda],
         movLotes: [...state.movLotes, ...movLotes],
@@ -341,7 +361,7 @@ export const useDataStore = create((set, get) => ({
   },
   marcarParcelaPaga: async (id) => {
     const parcelaAtual = get().contasPagarParcelas.find(
-      (parcela) => parcela.id === id
+      (parcela) => parcela.id === id,
     );
     if (!parcelaAtual) return;
     const updated = {
@@ -354,7 +374,7 @@ export const useDataStore = create((set, get) => ({
       await sendCommand("marcarParcelaPaga", updated);
       set((state) => ({
         contasPagarParcelas: state.contasPagarParcelas.map((parcela) =>
-          parcela.id === id ? updated : parcela
+          parcela.id === id ? updated : parcela,
         ),
       }));
     } catch (error) {
@@ -363,7 +383,7 @@ export const useDataStore = create((set, get) => ({
   },
   marcarParcelaRecebida: async (id) => {
     const parcelaAtual = get().contasReceberParcelas.find(
-      (parcela) => parcela.id === id
+      (parcela) => parcela.id === id,
     );
     if (!parcelaAtual) return;
     const updated = {
@@ -376,7 +396,7 @@ export const useDataStore = create((set, get) => ({
       await sendCommand("marcarParcelaRecebida", updated);
       set((state) => ({
         contasReceberParcelas: state.contasReceberParcelas.map((parcela) =>
-          parcela.id === id ? updated : parcela
+          parcela.id === id ? updated : parcela,
         ),
       }));
     } catch (error) {
