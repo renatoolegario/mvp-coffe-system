@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Button,
   Divider,
@@ -20,27 +21,15 @@ const parseNumber = (value) => Number(String(value).replace(",", ".")) || 0;
 const buildParcelasVencimentos = (qtd, previous = []) =>
   Array.from({ length: qtd }, (_, index) => previous[index] || "");
 
-const buildParcelasValores = (total, qtd) => {
-  const totalNumber = parseNumber(total);
-  const qtdNumber = Math.max(1, Number(qtd) || 1);
-  const valorBase = totalNumber / qtdNumber;
-  return Array.from({ length: qtdNumber }, (_, index) => {
-    if (index === qtdNumber - 1) {
-      const acumulado = Number((valorBase * (qtdNumber - 1)).toFixed(2));
-      return Number((totalNumber - acumulado).toFixed(2));
-    }
-    return Number(valorBase.toFixed(2));
-  });
-};
-
 const createExtraCost = () => ({
   id: `extra-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   fornecedor_id: "",
   valor_total: "",
   descricao: "",
-  status_pagamento: "A_PRAZO",
   parcelas_qtd: 1,
+  parcelas_valores: [""],
   parcelas_vencimentos: [""],
+  parcelas_status: ["A_PRAZO"],
 });
 
 const EntradaInsumosPage = () => {
@@ -68,6 +57,12 @@ const EntradaInsumosPage = () => {
   const [custosExtras, setCustosExtras] = useState([]);
   const [obs, setObs] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+
+  const getTotalParcelasExtra = (item) =>
+    item.parcelas_valores.reduce(
+      (total, parcela) => total + parseNumber(parcela),
+      0,
+    );
 
   const insumoSelecionado = useMemo(
     () => insumos.find((insumo) => insumo.id === insumoId),
@@ -191,13 +186,36 @@ const EntradaInsumosPage = () => {
           return {
             ...item,
             parcelas_qtd: parcelasQtdNext,
+            parcelas_valores: Array.from(
+              { length: parcelasQtdNext },
+              (_, index) => item.parcelas_valores?.[index] || "",
+            ),
             parcelas_vencimentos: buildParcelasVencimentos(
               parcelasQtdNext,
               item.parcelas_vencimentos,
             ),
+            parcelas_status: Array.from(
+              { length: parcelasQtdNext },
+              (_, index) => item.parcelas_status?.[index] || "A_PRAZO",
+            ),
           };
         }
         return { ...item, [key]: value };
+      }),
+    );
+  };
+
+  const handleUpdateValorParcelaCustoExtra = (id, index, value) => {
+    setCustosExtras((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return {
+          ...item,
+          parcelas_valores: item.parcelas_valores.map(
+            (parcela, currentIndex) =>
+              currentIndex === index ? value : parcela,
+          ),
+        };
       }),
     );
   };
@@ -221,6 +239,20 @@ const EntradaInsumosPage = () => {
     setCustosExtras((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const handleUpdateStatusParcelaCustoExtra = (id, index, value) => {
+    setCustosExtras((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return {
+          ...item,
+          parcelas_status: item.parcelas_status.map((status, currentIndex) =>
+            currentIndex === index ? value : status,
+          ),
+        };
+      }),
+    );
+  };
+
   const canSubmitEntradaBase =
     fornecedorId &&
     insumoId &&
@@ -232,16 +264,16 @@ const EntradaInsumosPage = () => {
 
   const custosExtrasValidos = custosExtras.every((item) => {
     const valorExtra = parseNumber(item.valor_total);
-    const parcelasValoresExtra = buildParcelasValores(
-      valorExtra,
-      item.parcelas_qtd,
-    );
+    const totalParcelasExtra = getTotalParcelasExtra(item);
+    const parcelasDivergentesExtra =
+      Math.abs(totalParcelasExtra - valorExtra) > 0.009;
     return (
       item.fornecedor_id &&
       valorExtra > 0 &&
       Boolean(item.descricao) &&
-      parcelasValoresExtra.every((valor) => valor > 0) &&
-      item.parcelas_vencimentos.every((vencimento) => Boolean(vencimento))
+      item.parcelas_valores.every((valor) => parseNumber(valor) > 0) &&
+      item.parcelas_vencimentos.every((vencimento) => Boolean(vencimento)) &&
+      !parcelasDivergentesExtra
     );
   });
 
@@ -249,6 +281,20 @@ const EntradaInsumosPage = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    const extrasComSomaInvalida = custosExtras.some((item) => {
+      const valorExtra = parseNumber(item.valor_total);
+      const totalParcelasExtra = getTotalParcelasExtra(item);
+      return Math.abs(totalParcelasExtra - valorExtra) > 0.009;
+    });
+
+    if (parcelasDivergentes || extrasComSomaInvalida) {
+      const mensagemDivergencia =
+        "A soma das parcelas precisa bater com o valor total da compra e de cada custo extra.";
+      setErrorMessage(mensagemDivergencia);
+      window.alert(mensagemDivergencia);
+      return;
+    }
 
     if (!canSubmit) {
       setErrorMessage(
@@ -279,8 +325,12 @@ const EntradaInsumosPage = () => {
         fornecedor_id: item.fornecedor_id,
         valor_total: parseNumber(item.valor_total),
         descricao: item.descricao,
-        status_pagamento: item.status_pagamento,
         parcelas_qtd: item.parcelas_qtd,
+        parcelas_valores: item.parcelas_valores.map(parseNumber),
+        parcelas_vencimentos: item.parcelas_vencimentos.map((vencimento) =>
+          new Date(vencimento).toISOString(),
+        ),
+        parcelas_status: item.parcelas_status,
       })),
       obs,
     });
@@ -497,10 +547,10 @@ const EntradaInsumosPage = () => {
 
                 <Stack spacing={2}>
                   {custosExtras.map((item, index) => {
-                    const parcelasValoresExtra = buildParcelasValores(
-                      item.valor_total,
-                      item.parcelas_qtd,
-                    );
+                    const totalParcelasExtra = getTotalParcelasExtra(item);
+                    const totalExtra = parseNumber(item.valor_total);
+                    const parcelasDivergentesExtra =
+                      Math.abs(totalParcelasExtra - totalExtra) > 0.009;
                     return (
                       <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
                         <Stack spacing={1.5}>
@@ -550,7 +600,7 @@ const EntradaInsumosPage = () => {
                                 required
                               />
                             </Grid>
-                            <Grid item xs={12}>
+                            <Grid item xs={12} sm={6}>
                               <TextField
                                 label="Descrição"
                                 value={item.descricao}
@@ -564,27 +614,6 @@ const EntradaInsumosPage = () => {
                                 fullWidth
                                 required
                               />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                select
-                                label="Status pagamento"
-                                value={item.status_pagamento}
-                                onChange={(event) =>
-                                  handleUpdateCustoExtra(
-                                    item.id,
-                                    "status_pagamento",
-                                    event.target.value,
-                                  )
-                                }
-                                fullWidth
-                                required
-                              >
-                                <MenuItem value="A_PRAZO">
-                                  A prazo (não pago)
-                                </MenuItem>
-                                <MenuItem value="PAGO">Pago</MenuItem>
-                              </TextField>
                             </Grid>
                             <Grid item xs={12} sm={6}>
                               <TextField
@@ -605,23 +634,53 @@ const EntradaInsumosPage = () => {
                             </Grid>
                           </Grid>
 
+                          <Typography
+                            variant="body2"
+                            color={
+                              parcelasDivergentesExtra
+                                ? "error.main"
+                                : "text.secondary"
+                            }
+                          >
+                            Soma das parcelas:{" "}
+                            {formatCurrency(totalParcelasExtra)}
+                            {" • "}
+                            Total informado: {formatCurrency(totalExtra)}
+                          </Typography>
+
+                          {parcelasDivergentesExtra ? (
+                            <Alert severity="warning">
+                              Ajuste os valores das parcelas para fechar o total
+                              do custo extra.
+                            </Alert>
+                          ) : null}
+
                           <Stack spacing={1}>
-                            {parcelasValoresExtra.map(
+                            {item.parcelas_valores.map(
                               (valorParcela, parcelaIndex) => (
                                 <Grid
                                   container
                                   spacing={1}
                                   key={`${item.id}-${parcelaIndex}`}
                                 >
-                                  <Grid item xs={12} sm={5}>
+                                  <Grid item xs={12} sm={4}>
                                     <TextField
                                       label={`Valor parcela ${parcelaIndex + 1}`}
-                                      value={formatCurrency(valorParcela)}
+                                      type="number"
+                                      value={valorParcela}
+                                      onChange={(event) =>
+                                        handleUpdateValorParcelaCustoExtra(
+                                          item.id,
+                                          parcelaIndex,
+                                          event.target.value,
+                                        )
+                                      }
+                                      inputProps={{ min: 0, step: "0.01" }}
                                       fullWidth
-                                      disabled
+                                      required
                                     />
                                   </Grid>
-                                  <Grid item xs={12} sm={7}>
+                                  <Grid item xs={12} sm={4}>
                                     <TextField
                                       label={`Vencimento parcela ${parcelaIndex + 1}`}
                                       type="date"
@@ -641,6 +700,30 @@ const EntradaInsumosPage = () => {
                                       InputLabelProps={{ shrink: true }}
                                       required
                                     />
+                                  </Grid>
+                                  <Grid item xs={12} sm={4}>
+                                    <TextField
+                                      select
+                                      label="Status pagamento"
+                                      value={
+                                        item.parcelas_status[parcelaIndex] ||
+                                        "A_PRAZO"
+                                      }
+                                      onChange={(event) =>
+                                        handleUpdateStatusParcelaCustoExtra(
+                                          item.id,
+                                          parcelaIndex,
+                                          event.target.value,
+                                        )
+                                      }
+                                      fullWidth
+                                      required
+                                    >
+                                      <MenuItem value="A_PRAZO">
+                                        A prazo (não pago)
+                                      </MenuItem>
+                                      <MenuItem value="PAGO">Pago</MenuItem>
+                                    </TextField>
                                   </Grid>
                                 </Grid>
                               ),
