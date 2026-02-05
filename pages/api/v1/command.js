@@ -110,20 +110,22 @@ export default async function handler(req, res) {
             payload.movimento,
           );
 
-          await insertRow(
-            client,
-            "contas_pagar",
-            [
-              "id",
-              "fornecedor_id",
-              "origem_tipo",
-              "origem_id",
-              "valor_total",
-              "data_emissao",
-              "status",
-            ],
-            payload.contaPagar,
-          );
+          for (const contaPagar of payload.contasPagar || []) {
+            await insertRow(
+              client,
+              "contas_pagar",
+              [
+                "id",
+                "fornecedor_id",
+                "origem_tipo",
+                "origem_id",
+                "valor_total",
+                "data_emissao",
+                "status",
+              ],
+              contaPagar,
+            );
+          }
 
           for (const parcela of payload.parcelas || []) {
             await insertRow(
