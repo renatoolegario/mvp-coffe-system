@@ -1,67 +1,38 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
+import { indexedDbStorage } from "../utils/indexedDb";
 import { getParcelas } from "../utils/stock";
 
 const nowIso = () => new Date().toISOString();
 
-const seedUsers = [
-  {
-    id: uuidv4(),
-    nome: "Admin",
-    email: "admin@cafe.com",
-    senha: "123456",
-    perfil: "admin",
-    ativo: true,
-    criado_em: nowIso(),
-  },
-  {
-    id: uuidv4(),
-    nome: "Financeiro",
-    email: "financeiro@cafe.com",
-    senha: "123456",
-    perfil: "financeiro",
-    ativo: true,
-    criado_em: nowIso(),
-  },
-  {
-    id: uuidv4(),
-    nome: "Produção",
-    email: "producao@cafe.com",
-    senha: "123456",
-    perfil: "producao",
-    ativo: true,
-    criado_em: nowIso(),
-  },
-  {
-    id: uuidv4(),
-    nome: "Vendas",
-    email: "vendas@cafe.com",
-    senha: "123456",
-    perfil: "vendas",
-    ativo: true,
-    criado_em: nowIso(),
-  },
-];
+const baseState = {
+  usuarios: [],
+  clientes: [],
+  fornecedores: [],
+  insumos: [],
+  tiposCafe: [],
+  lotes: [],
+  movInsumos: [],
+  movLotes: [],
+  entradasInsumos: [],
+  ordensProducao: [],
+  vendas: [],
+  contasPagar: [],
+  contasPagarParcelas: [],
+  contasReceber: [],
+  contasReceberParcelas: [],
+};
 
 export const useDataStore = create(
   persist(
     (set, get) => ({
-      usuarios: seedUsers,
-      clientes: [],
-      fornecedores: [],
-      insumos: [],
-      tiposCafe: [],
-      lotes: [],
-      movInsumos: [],
-      movLotes: [],
-      entradasInsumos: [],
-      ordensProducao: [],
-      vendas: [],
-      contasPagar: [],
-      contasPagarParcelas: [],
-      contasReceber: [],
-      contasReceberParcelas: [],
+      ...baseState,
+      hydrateFromSeed: (payload) =>
+        set(() => ({
+          ...baseState,
+          ...payload,
+        })),
       addUsuario: (payload) =>
         set((state) => ({
           usuarios: [
@@ -332,6 +303,6 @@ export const useDataStore = create(
           ),
         })),
     }),
-    { name: "coffee-mvp-store" }
+    { name: "coffee-mvp-store", storage: indexedDbStorage }
   )
 );

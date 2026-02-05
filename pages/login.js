@@ -84,8 +84,8 @@ const LoginPage = () => {
             </Box>
             <Box>
               <Typography variant="body2" color="text.secondary">
-                Contas de demonstração: admin@cafe.com, financeiro@cafe.com,
-                producao@cafe.com, vendas@cafe.com (senha 123456).
+                Antes do primeiro acesso, alimente o banco em /system para carregar o
+                seed. Usuário padrão: admin@cafemvp.com (senha mvp_admin_123).
               </Typography>
             </Box>
           </Stack>
