@@ -221,7 +221,13 @@ export const useDataStore = create((set, get) => ({
       const contaPagarExtraId = uuidv4();
       const valorTotalExtra = Number(item.valor_total) || 0;
       const parcelasQtdExtra = Math.max(1, Number(item.parcelas_qtd) || 1);
-      const parcelasBaseExtra = getParcelas(valorTotalExtra, parcelasQtdExtra);
+      const parcelasBaseExtra = Array.isArray(item.parcelas_valores)
+        ? item.parcelas_valores.map((valor, index) => ({
+            parcela_num: index + 1,
+            valor,
+            vencimento: item.parcelas_vencimentos?.[index] || dataEntrada,
+          }))
+        : getParcelas(valorTotalExtra, parcelasQtdExtra);
 
       const contaPagarExtra = {
         id: contaPagarExtraId,
@@ -235,7 +241,10 @@ export const useDataStore = create((set, get) => ({
 
       const parcelasExtra = parcelasBaseExtra.map((parcela) => {
         const statusPagamento =
-          item.status_pagamento === "PAGO" ? "PAGO" : "A_PRAZO";
+          (item.parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") ===
+          "PAGO"
+            ? "PAGO"
+            : "A_PRAZO";
         return {
           id: uuidv4(),
           conta_pagar_id: contaPagarExtraId,
