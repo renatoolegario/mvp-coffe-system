@@ -42,10 +42,7 @@ const FabricacaoLotesPage = () => {
     : { custoTotal: 0, custoUnitario: 0 };
   const custoUnitInsumo = custoConsumo.custoUnitario;
   const custoBase = custoConsumo.custoTotal;
-  const margemLucro = tipoSelecionado
-    ? custoBase * (Number(tipoSelecionado.margem_lucro_percent) / 100)
-    : 0;
-  const custoTotal = custoBase + margemLucro;
+  const custoTotal = custoBase;
   const statusProducao = !tipoSelecionado
     ? "Selecione um tipo de café."
     : quantidadeInsumo > saldoInsumo

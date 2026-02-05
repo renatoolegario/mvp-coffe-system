@@ -239,10 +239,7 @@ export const useDataStore = create((set, get) => ({
       : { custoTotal: 0, custoUnitario: 0 };
     const custoUnitInsumo = custoConsumo.custoUnitario;
     const custoBase = custoConsumo.custoTotal;
-    const margemLucro = tipo
-      ? custoBase * (Number(tipo.margem_lucro_percent) / 100)
-      : 0;
-    const custo_total = custoBase + margemLucro;
+    const custo_total = custoBase;
     const custo_unit_tipo = quantidade_gerada
       ? custo_total / quantidade_gerada
       : 0;
