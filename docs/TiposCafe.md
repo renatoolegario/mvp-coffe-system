@@ -2,7 +2,7 @@
 
 ## Descrição
 
-Cadastro de tipos de café com rendimento, insumo base, margem de lucro e peso do saco para venda.
+Cadastro de tipos de café com rendimento, insumo base e margem de lucro.
 
 ## Props utilizadas
 
@@ -17,4 +17,3 @@ Cadastro de tipos de café com rendimento, insumo base, margem de lucro e peso d
 ## Resultado esperado
 
 - Tipos prontos para gerar estoque diretamente na fabricação.
-- Cadastro com campo obrigatório de peso (kg) por saco de venda.

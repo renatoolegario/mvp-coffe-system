@@ -142,7 +142,6 @@ export const useDataStore = create((set, get) => ({
       id: uuidv4(),
       ativo: true,
       ...payload,
-      kg_saco_venda: Number(payload.kg_saco_venda),
     };
     try {
       await sendCommand("addTipoCafe", tipoCafe);
@@ -154,7 +153,6 @@ export const useDataStore = create((set, get) => ({
   updateTipoCafe: async (payload) => {
     const tipoCafe = {
       ...payload,
-      kg_saco_venda: Number(payload.kg_saco_venda),
     };
     try {
       await sendCommand("updateTipoCafe", tipoCafe);
