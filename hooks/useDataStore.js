@@ -119,11 +119,16 @@ export const useDataStore = create((set, get) => ({
     }
   },
   addInsumo: async (payload) => {
+    const unidade = payload.unidade === "saco" ? "saco" : "kg";
+    const kgPorSaco = unidade === "saco" ? Number(payload.kg_por_saco) || 1 : 1;
+
     const insumo = {
       id: uuidv4(),
       ativo: true,
       criado_em: nowIso(),
       ...payload,
+      unidade,
+      kg_por_saco: kgPorSaco,
     };
     try {
       await sendCommand("addInsumo", insumo);
@@ -157,7 +162,12 @@ export const useDataStore = create((set, get) => ({
   }) => {
     const entradaId = uuidv4();
     const dataEntrada = nowIso();
-    const custoUnit = quantidade ? valor_total / quantidade : 0;
+    const insumo = get().insumos.find((item) => item.id === insumo_id);
+    const unidadeEntrada = insumo?.unidade === "saco" ? "saco" : "kg";
+    const kgPorSaco = Number(insumo?.kg_por_saco) || 1;
+    const quantidadeEmKg =
+      unidadeEntrada === "saco" ? quantidade * kgPorSaco : quantidade;
+    const custoUnit = quantidadeEmKg ? valor_total / quantidadeEmKg : 0;
     const entrada = {
       id: entradaId,
       fornecedor_id,
@@ -173,7 +183,7 @@ export const useDataStore = create((set, get) => ({
         id: uuidv4(),
         insumo_id,
         tipo: "ENTRADA_COMPRA",
-        quantidade,
+        quantidade: quantidadeEmKg,
         custo_unit: custoUnit,
         custo_total: valor_total,
         data: dataEntrada,

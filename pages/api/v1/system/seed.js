@@ -24,7 +24,7 @@ const insertRow = async (client, table, columns, data) => {
   const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
   await client.query(
     `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders})`,
-    values
+    values,
   );
 };
 
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
   try {
     await withTransaction(async (client) => {
       await client.query(
-        `TRUNCATE ${tableList.join(", ")} RESTART IDENTITY CASCADE`
+        `TRUNCATE ${tableList.join(", ")} RESTART IDENTITY CASCADE`,
       );
 
       for (const usuario of seedData.usuarios) {
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
           client,
           "usuarios",
           ["id", "nome", "email", "senha", "perfil", "ativo", "criado_em"],
-          usuario
+          usuario,
         );
       }
 
@@ -64,7 +64,7 @@ export default async function handler(req, res) {
             "ativo",
             "criado_em",
           ],
-          cliente
+          cliente,
         );
       }
 
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
             "ativo",
             "criado_em",
           ],
-          fornecedor
+          fornecedor,
         );
       }
 
@@ -89,8 +89,16 @@ export default async function handler(req, res) {
         await insertRow(
           client,
           "insumos",
-          ["id", "nome", "unidade", "estoque_minimo", "ativo", "criado_em"],
-          insumo
+          [
+            "id",
+            "nome",
+            "unidade",
+            "estoque_minimo",
+            "kg_por_saco",
+            "ativo",
+            "criado_em",
+          ],
+          insumo,
         );
       }
 
@@ -106,7 +114,7 @@ export default async function handler(req, res) {
             "margem_lucro_percent",
             "ativo",
           ],
-          tipoCafe
+          tipoCafe,
         );
       }
 
@@ -124,7 +132,7 @@ export default async function handler(req, res) {
             "obs",
             "status",
           ],
-          entrada
+          entrada,
         );
       }
 
@@ -144,7 +152,7 @@ export default async function handler(req, res) {
             "referencia_id",
             "obs",
           ],
-          movimento
+          movimento,
         );
       }
 
@@ -164,7 +172,7 @@ export default async function handler(req, res) {
             "referencia_id",
             "obs",
           ],
-          movimento
+          movimento,
         );
       }
 
@@ -183,7 +191,7 @@ export default async function handler(req, res) {
             "status",
             "obs",
           ],
-          ordem
+          ordem,
         );
       }
 
@@ -201,7 +209,7 @@ export default async function handler(req, res) {
             "status",
             "obs",
           ],
-          venda
+          venda,
         );
       }
 
@@ -218,7 +226,7 @@ export default async function handler(req, res) {
             "data_emissao",
             "status",
           ],
-          contaPagar
+          contaPagar,
         );
       }
 
@@ -236,7 +244,7 @@ export default async function handler(req, res) {
             "data_pagamento",
             "forma_pagamento",
           ],
-          parcela
+          parcela,
         );
       }
 
@@ -253,7 +261,7 @@ export default async function handler(req, res) {
             "data_emissao",
             "status",
           ],
-          contaReceber
+          contaReceber,
         );
       }
 
@@ -271,7 +279,7 @@ export default async function handler(req, res) {
             "data_recebimento",
             "forma_recebimento",
           ],
-          parcela
+          parcela,
         );
       }
     });

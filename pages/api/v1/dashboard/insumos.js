@@ -34,7 +34,7 @@ const getResumoInsumo = (insumoId, movimentos = []) => {
 
   return {
     insumo_id: insumoId,
-    saldo,
+    saldo_kg: saldo,
     custo_medio: custoMedio,
     valor_estoque: saldo * custoMedio,
   };
@@ -48,7 +48,9 @@ export default async function handler(req, res) {
 
   try {
     const [insumosResult, movimentosResult] = await Promise.all([
-      query("SELECT id, nome, unidade FROM insumos ORDER BY nome ASC"),
+      query(
+        "SELECT id, nome, unidade, kg_por_saco FROM insumos ORDER BY nome ASC",
+      ),
       query(
         "SELECT insumo_id, quantidade, custo_total, data FROM mov_insumos ORDER BY data ASC",
       ),
@@ -66,10 +68,16 @@ export default async function handler(req, res) {
       {},
     );
 
-    const dashboard = insumosResult.rows.map((insumo) => ({
-      ...insumo,
-      ...getResumoInsumo(insumo.id, movimentosPorInsumo[insumo.id]),
-    }));
+    const dashboard = insumosResult.rows.map((insumo) => {
+      const resumo = getResumoInsumo(insumo.id, movimentosPorInsumo[insumo.id]);
+      const kgPorSaco = normalizeNumber(insumo.kg_por_saco) || 1;
+      return {
+        ...insumo,
+        ...resumo,
+        saldo_sacos:
+          insumo.unidade === "saco" ? resumo.saldo_kg / kgPorSaco : null,
+      };
+    });
 
     return res.status(200).json({ insumos: dashboard });
   } catch (error) {

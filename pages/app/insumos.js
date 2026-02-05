@@ -5,6 +5,7 @@ import {
   Drawer,
   Grid,
   IconButton,
+  MenuItem,
   Paper,
   Snackbar,
   Stack,
@@ -23,6 +24,7 @@ const InsumosPage = () => {
   const [form, setForm] = useState({
     nome: "",
     unidade: "kg",
+    kg_por_saco: "1",
     estoque_minimo: "",
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -33,10 +35,21 @@ const InsumosPage = () => {
   });
 
   const handleChange = (field) => (event) => {
-    setForm((prev) => ({ ...prev, [field]: event.target.value }));
+    const value = event.target.value;
+    setForm((prev) => {
+      if (field === "unidade") {
+        return {
+          ...prev,
+          unidade: value,
+          kg_por_saco: value === "saco" ? prev.kg_por_saco || "1" : "1",
+        };
+      }
+
+      return { ...prev, [field]: value };
+    });
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     if (!form.nome.trim()) {
       setFeedback({
@@ -47,8 +60,21 @@ const InsumosPage = () => {
       return;
     }
 
-    addInsumo(form);
-    setForm({ nome: "", unidade: "kg", estoque_minimo: "" });
+    if (form.unidade === "saco" && Number(form.kg_por_saco) <= 0) {
+      setFeedback({
+        open: true,
+        message: "Informe quantos kg vêm em cada saco.",
+        severity: "error",
+      });
+      return;
+    }
+
+    await addInsumo({
+      ...form,
+      estoque_minimo: Number(form.estoque_minimo) || 0,
+      kg_por_saco: form.unidade === "saco" ? Number(form.kg_por_saco) : 1,
+    });
+    setForm({ nome: "", unidade: "kg", kg_por_saco: "1", estoque_minimo: "" });
     setDrawerOpen(false);
     setFeedback({
       open: true,
@@ -83,8 +109,12 @@ const InsumosPage = () => {
                 <Paper key={insumo.id} variant="outlined" sx={{ p: 2 }}>
                   <Typography fontWeight={600}>{insumo.nome}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Unidade: {insumo.unidade} • Estoque mínimo:{" "}
-                    {insumo.estoque_minimo || "-"}
+                    Unidade de cadastro: {insumo.unidade} • Kg por saco:{" "}
+                    {Number(insumo.kg_por_saco) || 1}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Estoque mínimo: {insumo.estoque_minimo || "-"}{" "}
+                    {insumo.unidade}
                   </Typography>
                 </Paper>
               ))}
@@ -124,14 +154,31 @@ const InsumosPage = () => {
               required
             />
             <TextField
-              label="Unidade"
+              select
+              label="Tipo de cadastro"
               value={form.unidade}
               onChange={handleChange("unidade")}
-            />
+              required
+            >
+              <MenuItem value="kg">Kg</MenuItem>
+              <MenuItem value="saco">Saco</MenuItem>
+            </TextField>
+            {form.unidade === "saco" ? (
+              <TextField
+                label="Kg por saco"
+                type="number"
+                value={form.kg_por_saco}
+                onChange={handleChange("kg_por_saco")}
+                inputProps={{ min: 0.01, step: "0.01" }}
+                required
+              />
+            ) : null}
             <TextField
-              label="Estoque mínimo"
+              label={`Estoque mínimo (${form.unidade})`}
+              type="number"
               value={form.estoque_minimo}
               onChange={handleChange("estoque_minimo")}
+              inputProps={{ min: 0, step: "0.01" }}
             />
             <Button type="submit" variant="contained">
               Salvar insumo

@@ -37,6 +37,18 @@ const EntradaInsumosPage = () => {
   const [obs, setObs] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  const insumoSelecionado = useMemo(
+    () => insumos.find((insumo) => insumo.id === insumoId),
+    [insumoId, insumos],
+  );
+  const unidadeEntrada = insumoSelecionado?.unidade === "saco" ? "saco" : "kg";
+  const kgPorSaco = Number(insumoSelecionado?.kg_por_saco) || 1;
+  const quantidadeInformada = parseNumber(quantidade);
+  const quantidadeConvertidaKg =
+    unidadeEntrada === "saco"
+      ? quantidadeInformada * kgPorSaco
+      : quantidadeInformada;
+
   const totalParcelas = useMemo(
     () =>
       parcelasValores.reduce(
@@ -47,6 +59,9 @@ const EntradaInsumosPage = () => {
   );
   const totalValor = parseNumber(valorTotal);
   const parcelasDivergentes = Math.abs(totalParcelas - totalValor) > 0.009;
+  const custoUnitarioEmKg = quantidadeConvertidaKg
+    ? totalValor / quantidadeConvertidaKg
+    : 0;
 
   const entradasComMovimento = useMemo(
     () =>
@@ -62,7 +77,7 @@ const EntradaInsumosPage = () => {
             movimento.referencia_id === entrada.id,
         );
 
-        const quantidadeMovimentada = movimentosDaEntrada.reduce(
+        const quantidadeMovimentadaKg = movimentosDaEntrada.reduce(
           (total, movimento) => total + parseNumber(movimento.quantidade),
           0,
         );
@@ -70,13 +85,26 @@ const EntradaInsumosPage = () => {
           (total, movimento) => total + parseNumber(movimento.custo_total),
           0,
         );
-        const custoUnitarioMovimentado = quantidadeMovimentada
-          ? custoTotalMovimentado / quantidadeMovimentada
+        const custoUnitarioMovimentado = quantidadeMovimentadaKg
+          ? custoTotalMovimentado / quantidadeMovimentadaKg
           : 0;
+        const insumoDaEntrada = insumos.find(
+          (item) => item.id === movimentosDaEntrada[0]?.insumo_id,
+        );
+        const unidadeInsumo =
+          insumoDaEntrada?.unidade === "saco" ? "saco" : "kg";
+        const kgSacoInsumo = Number(insumoDaEntrada?.kg_por_saco) || 1;
+        const quantidadeSacos =
+          unidadeInsumo === "saco" && kgSacoInsumo > 0
+            ? quantidadeMovimentadaKg / kgSacoInsumo
+            : null;
 
         return {
           ...entrada,
-          quantidadeMovimentada,
+          quantidadeMovimentadaKg,
+          quantidadeSacos,
+          unidadeInsumo,
+          kgSacoInsumo,
           custoUnitarioMovimentado,
           custoTotalMovimentado,
           parcelas: contasPagarParcelas
@@ -87,7 +115,7 @@ const EntradaInsumosPage = () => {
             .sort((a, b) => Number(a.parcela_num) - Number(b.parcela_num)),
         };
       }),
-    [contasPagar, contasPagarParcelas, entradas, movInsumos],
+    [contasPagar, contasPagarParcelas, entradas, insumos, movInsumos],
   );
 
   const handleChangeParcelasQtd = (event) => {
@@ -128,7 +156,7 @@ const EntradaInsumosPage = () => {
   const canSubmit =
     fornecedorId &&
     insumoId &&
-    parseNumber(quantidade) > 0 &&
+    quantidadeInformada > 0 &&
     totalValor > 0 &&
     parcelasValores.every((parcela) => parseNumber(parcela) > 0) &&
     parcelasVencimentos.every((vencimento) => Boolean(vencimento)) &&
@@ -149,7 +177,7 @@ const EntradaInsumosPage = () => {
     await addEntradaInsumos({
       fornecedor_id: fornecedorId,
       insumo_id: insumoId,
-      quantidade: parseNumber(quantidade),
+      quantidade: quantidadeInformada,
       valor_total: totalValor,
       parcelas_qtd: parcelasQtd,
       parcelas_valores: parcelasValores.map(parseNumber),
@@ -210,13 +238,22 @@ const EntradaInsumosPage = () => {
                   ))}
                 </TextField>
                 <TextField
-                  label="Quantidade"
+                  label={`Quantidade (${unidadeEntrada})`}
                   type="number"
                   value={quantidade}
                   onChange={(event) => setQuantidade(event.target.value)}
                   inputProps={{ min: 0, step: "0.01" }}
                   required
                 />
+                {insumoSelecionado ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Conversão para estoque: {quantidadeInformada || 0}{" "}
+                    {unidadeEntrada}
+                    {unidadeEntrada === "saco"
+                      ? ` × ${kgPorSaco} kg/saco = ${quantidadeConvertidaKg.toFixed(2)} kg`
+                      : ` = ${quantidadeConvertidaKg.toFixed(2)} kg`}
+                  </Typography>
+                ) : null}
                 <TextField
                   label="Valor total"
                   type="number"
@@ -225,6 +262,13 @@ const EntradaInsumosPage = () => {
                   inputProps={{ min: 0, step: "0.01" }}
                   required
                 />
+                {insumoSelecionado ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Cálculo do custo unitário (kg): {formatCurrency(totalValor)}{" "}
+                    ÷ {quantidadeConvertidaKg.toFixed(2)} kg ={" "}
+                    {formatCurrency(custoUnitarioEmKg)}
+                  </Typography>
+                ) : null}
                 <TextField
                   label="Quantidade de Parcelas"
                   type="number"
@@ -312,10 +356,17 @@ const EntradaInsumosPage = () => {
                     Entrada #{entrada.id.slice(0, 6)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Quantidade: {entrada.quantidadeMovimentada} • Custo
-                    unitário: {formatCurrency(entrada.custoUnitarioMovimentado)}
-                    • Custo total:{" "}
-                    {formatCurrency(entrada.custoTotalMovimentado)}
+                    Quantidade em estoque:{" "}
+                    {entrada.quantidadeMovimentadaKg.toFixed(2)} kg
+                    {entrada.unidadeInsumo === "saco" &&
+                    entrada.quantidadeSacos !== null
+                      ? ` (${entrada.quantidadeSacos.toFixed(2)} sacos)`
+                      : ""}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Custo unitário (kg):{" "}
+                    {formatCurrency(entrada.custoUnitarioMovimentado)} • Custo
+                    total: {formatCurrency(entrada.custoTotalMovimentado)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Total da compra: {formatCurrency(entrada.valor_total)} •
