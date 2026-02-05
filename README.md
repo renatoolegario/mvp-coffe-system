@@ -1,1 +1,193 @@
-# mvp-coffe-system
+# MVP – Sistema de Gestão de Café (8k) – README
+
+Este repositório contém um **MVP 100% front-end**, feito para demonstração/apresentação, com **banco local no navegador** (IndexedDB).  
+O objetivo é simular um mini-ERP de café com **estoque (insumos + lotes)**, **produção**, **vendas** e **financeiro (contas a pagar/receber com parcelas)**.
+
+---
+
+## ✅ Visão Geral do Produto
+
+### O que o MVP entrega
+- **Cadastro** de clientes, fornecedores, insumos, tipos de café e lotes.
+- **Entrada de Insumos (compra)**: alimenta estoque e gera **contas a pagar** + **parcelas**.
+- **Fabricação de Lotes**: baixa insumos, calcula custo, dá entrada em estoque do lote.
+- **Vendas**: baixa lote do estoque, gera **contas a receber** + **parcelas**.
+- **Dashboards**:
+  - Estoque de Insumos: saldo, custo médio, valor em estoque, histórico.
+  - Estoque de Lotes: saldo, custo médio, valor em estoque, histórico.
+  - Financeiro: aberto/pago, vencidos, próximos vencimentos.
+  - Clientes: compras, status (inadimplente), histórico de recebimentos.
+  - Fornecedores: compras, status (devendo), histórico de pagamentos.
+
+### O que NÃO é objetivo do MVP (por design)
+- Não há backend, API externa ou banco externo.
+- Segurança real (login/sessão) **não é objetivo** — é apenas controle de acesso para demonstração.
+- Multiusuário real e concorrência não são suportados (cada navegador tem seus dados).
+
+---
+
+## 🧠 Conceito de Dados (como o sistema funciona)
+
+### 1) Estoque baseado em movimentações
+O saldo NÃO é salvo diretamente como “campo estoque”.
+Ele é calculado por:
+- **Insumos**: soma(entradas) − soma(saídas)
+- **Lotes**: soma(entradas) − soma(saídas)
+
+Tabelas envolvidas:
+- `mov_insumos` → entradas/saídas/ajustes de insumos
+- `mov_lotes` → entradas/saídas/ajustes de lotes
+
+### 2) Macro + Parcelas (Financeiro)
+Cada compra/venda cria um documento “macro” e, se necessário, várias parcelas.
+
+- Compras → `contas_pagar` + `contas_pagar_parcelas`
+- Vendas → `contas_receber` + `contas_receber_parcelas`
+
+---
+
+## 🧩 Módulos
+
+### 1) Autenticação e Usuários
+- Login por email/senha (MVP).
+- Cria `sessao` local com token e expiração.
+- Perfis controlam menu e permissões.
+
+### 2) Cadastros Base
+CRUD completo:
+- Clientes (`clientes`)
+- Fornecedores (`fornecedores`)
+- Insumos (`insumos`)
+- Tipos de Café (`tipos_cafe`)
+- Lotes / Produtos (`lotes`)
+
+### 3) Gestão de Café (Estoque + Produção)
+- Entrada de insumos (compra) → estoque + contas a pagar
+- Fabricação de lotes → baixa insumo + entrada lote + custo
+
+### 4) Gestão Comercial (Vendas + Clientes)
+- Nova venda → baixa lote + contas a receber
+- Status do cliente → inadimplente se existir parcela vencida em aberto
+
+### 5) Fornecedores + Compras
+- Dashboard por fornecedor: quanto devo / pago
+- Histórico: compras e pagamentos por fornecedor
+
+### 6) Financeiro
+- Dash macro + listagem + baixa de parcelas
+
+---
+
+## 🗃️ Estrutura de “Tabelas” (Collections no banco local)
+
+### A) Acesso
+- `usuarios`
+- `sessao`
+
+### B) Cadastros
+- `clientes`
+- `fornecedores`
+- `insumos`
+- `tipos_cafe`
+- `lotes`
+
+### C) Compras / Entrada Insumos
+- `entrada_insumos` (macro)
+- `entrada_insumos_itens` (itens)
+
+### D) Produção
+- `ordem_producao` (macro)
+- `ordem_producao_itens` (insumos consumidos)
+
+### E) Vendas
+- `vendas` (macro)
+- `vendas_itens` (itens)
+
+### F) Financeiro
+- `contas_pagar` (macro)
+- `contas_pagar_parcelas` (parcelas)
+- `contas_receber` (macro)
+- `contas_receber_parcelas` (parcelas)
+
+### G) Estoque (histórico oficial)
+- `mov_insumos`
+- `mov_lotes`
+
+---
+
+## 📦 Seed (Dados iniciais)
+
+O arquivo de seed popula:
+- 3 clientes
+- 3 fornecedores
+- 5 insumos
+- 3 tipos de café
+- 2 lotes
+- 2 entradas de insumos (1 parcelada, 1 à vista)
+- 2 ordens de produção
+- 2 vendas (1 à vista, 1 parcelada)
+- contas a pagar/receber + parcelas
+- movimentações de insumos e lotes coerentes
+
+> O seed é importante para abrir a aplicação e já ter dashboards “vivos” na apresentação.
+
+---
+
+## 🔁 Fluxos principais
+
+### Entrada de Insumos (Compra)
+1. Criar `entrada_insumos` + `entrada_insumos_itens`
+2. Gerar `mov_insumos` (ENTRADA_COMPRA)
+3. Criar `contas_pagar` + `contas_pagar_parcelas`
+
+### Fabricação
+1. Criar `ordem_producao` + `ordem_producao_itens`
+2. Gerar `mov_insumos` (SAIDA_PRODUCAO)
+3. Gerar `mov_lotes` (ENTRADA_FABRICACAO) com custo unit calculado
+
+### Venda
+1. Criar `vendas` + `vendas_itens`
+2. Gerar `mov_lotes` (SAIDA_VENDA)
+3. Criar `contas_receber` + `contas_receber_parcelas`
+
+---
+
+## 🧮 Regras de Custo (MVP)
+
+### Insumos
+- `custo_total = quantidade * custo_unit`
+
+### Fabricação
+- `custo_base = soma(custo_total dos insumos consumidos)`
+- `overhead = custo_base * (overhead_percent / 100)`
+- `custo_total_producao = custo_base + overhead`
+- `custo_unit_lote = custo_total_producao / quantidade_gerada`
+
+---
+
+## 🧪 Como rodar (genérico)
+- Instale dependências do projeto (se aplicável)
+- Rode o front localmente
+- No primeiro acesso:
+  - Clique em **Importar Seed** (ou execute a action equivalente no menu)
+  - Faça login com:
+    - **Email:** `admin@cafemvp.com`
+    - **Senha:** `mvp_admin_123`
+
+> Caso o projeto tenha um script de “reset”, ele deve apagar IndexedDB e recarregar o seed.
+
+---
+
+## 🧹 Reset do Banco Local
+Para recomeçar uma demo:
+- Botão “Resetar Banco” apaga as collections no IndexedDB
+- Reimporta o seed automaticamente (opcional)
+
+---
+
+## 📌 Observações importantes (para apresentação)
+- Este MVP é uma prova de conceito para validar o modelo de dados, fluxos e dashboards.
+- Persistência local permite demonstração offline e velocidade.
+- A migração para backend (API + DB) é direta, pois as tabelas já estão normalizadas.
+
+---

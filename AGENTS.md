@@ -1,3 +1,7 @@
+# MVP Coffee System
+DOcumentação em docs/description.md e mvp.md
+
+
 📌 Tecnologias e Frameworks
 
 Frontend - Vercel
