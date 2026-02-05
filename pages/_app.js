@@ -1,6 +1,6 @@
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { useEffect } from "react";
-import { ensureIndexedDb } from "../utils/indexedDb";
+import { useDataStore } from "../hooks/useDataStore";
 
 const theme = createTheme({
   palette: {
@@ -21,9 +21,14 @@ const theme = createTheme({
 });
 
 const App = ({ Component, pageProps }) => {
+  const loadData = useDataStore((state) => state.loadData);
+  const hydrated = useDataStore((state) => state.hydrated);
+
   useEffect(() => {
-    ensureIndexedDb();
-  }, []);
+    if (!hydrated) {
+      loadData();
+    }
+  }, [hydrated, loadData]);
 
   return (
     <ThemeProvider theme={theme}>

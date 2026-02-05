@@ -9,56 +9,33 @@ import {
 } from "@mui/material";
 import { useState } from "react";
 import { useDataStore } from "../hooks/useDataStore";
-import { ensureIndexedDb, resetIndexedDb } from "../utils/indexedDb";
-import { normalizeSeedData, serializeSeedData } from "../utils/seed";
+import { serializeSeedData } from "../utils/seed";
 
 const SystemPage = () => {
-  const hydrateFromSeed = useDataStore((state) => state.hydrateFromSeed);
-  const resetStore = useDataStore((state) => state.resetStore);
-
-  // Option 1: Remove the subscription entirely since you only need it on-demand
-  // Just access the store when needed in handleDownloadSeed
+  const loadData = useDataStore((state) => state.loadData);
 
   const [status, setStatus] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
-  const [loadingReset, setLoadingReset] = useState(false);
   const [databaseJson, setDatabaseJson] = useState("");
-
-  const getSeedData = () => {
-    const dataSnapshot = useDataStore.getState();
-    return serializeSeedData({
-      usuarios: dataSnapshot.usuarios,
-      clientes: dataSnapshot.clientes,
-      fornecedores: dataSnapshot.fornecedores,
-      insumos: dataSnapshot.insumos,
-      tiposCafe: dataSnapshot.tiposCafe,
-      lotes: dataSnapshot.lotes,
-      movInsumos: dataSnapshot.movInsumos,
-      movLotes: dataSnapshot.movLotes,
-      entradasInsumos: dataSnapshot.entradasInsumos,
-      ordensProducao: dataSnapshot.ordensProducao,
-      vendas: dataSnapshot.vendas,
-      contasPagar: dataSnapshot.contasPagar,
-      contasPagarParcelas: dataSnapshot.contasPagarParcelas,
-      contasReceber: dataSnapshot.contasReceber,
-      contasReceberParcelas: dataSnapshot.contasReceberParcelas,
-    });
-  };
 
   const handleSeedDatabase = async () => {
     setLoadingSeed(true);
     setStatus(null);
 
     try {
-      await resetIndexedDb();
-      await ensureIndexedDb();
-      const seedModule = await import("../docs/seed.json");
-      const seedData = normalizeSeedData(seedModule.default ?? seedModule);
-      hydrateFromSeed(seedData);
+      const response = await fetch("/api/v1/system/seed", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Erro ao alimentar o banco.");
+      }
+
+      await loadData();
 
       setStatus({
         severity: "success",
-        message: "Banco recriado no IndexedDB e dados importados do seed.json.",
+        message: "Banco PostgreSQL recriado e dados importados do seed.json.",
       });
     } catch (error) {
       setStatus({
@@ -70,71 +47,56 @@ const SystemPage = () => {
     }
   };
 
-  const handleResetDatabase = async () => {
-    setLoadingReset(true);
+  const handleDownloadSeed = async () => {
     setStatus(null);
-    setDatabaseJson("");
 
     try {
-      await resetIndexedDb();
-      resetStore();
+      const response = await fetch("/api/v1/data");
+      if (!response.ok) {
+        throw new Error("Erro ao buscar dados.");
+      }
+      const dataSnapshot = await response.json();
+      const seedData = serializeSeedData(dataSnapshot);
+
+      const blob = new Blob([JSON.stringify(seedData, null, 2)], {
+        type: "application/json",
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "seed.json";
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+
       setStatus({
         severity: "success",
-        message: "Banco de dados limpo com sucesso.",
+        message: "Seed.json gerado com os dados atuais do PostgreSQL.",
       });
     } catch (error) {
       setStatus({
         severity: "error",
-        message: "Não foi possível resetar o banco de dados. Tente novamente.",
+        message: "Não foi possível gerar o seed.json. Tente novamente.",
       });
-    } finally {
-      setLoadingReset(false);
     }
   };
 
-  const handleDownloadSeed = () => {
+  const handleShowDatabaseJson = async () => {
     setStatus(null);
 
-    // Get the data snapshot directly when needed
-    const dataSnapshot = useDataStore.getState();
-    const seedData = serializeSeedData({
-      usuarios: dataSnapshot.usuarios,
-      clientes: dataSnapshot.clientes,
-      fornecedores: dataSnapshot.fornecedores,
-      insumos: dataSnapshot.insumos,
-      tiposCafe: dataSnapshot.tiposCafe,
-      movInsumos: dataSnapshot.movInsumos,
-      movLotes: dataSnapshot.movLotes,
-      entradasInsumos: dataSnapshot.entradasInsumos,
-      ordensProducao: dataSnapshot.ordensProducao,
-      vendas: dataSnapshot.vendas,
-      contasPagar: dataSnapshot.contasPagar,
-      contasPagarParcelas: dataSnapshot.contasPagarParcelas,
-      contasReceber: dataSnapshot.contasReceber,
-      contasReceberParcelas: dataSnapshot.contasReceberParcelas,
-    });
-
-    const blob = new Blob([JSON.stringify(seedData, null, 2)], {
-      type: "application/json",
-    });
-
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "seed.json";
-    anchor.click();
-    window.URL.revokeObjectURL(url);
-
-    setStatus({
-      severity: "success",
-      message: "Seed.json gerado com os dados atuais do IndexedDB.",
-    });
-  };
-
-  const handleShowDatabaseJson = () => {
-    setStatus(null);
-    const seedData = getSeedData();
-    setDatabaseJson(JSON.stringify(seedData, null, 2));
+    try {
+      const response = await fetch("/api/v1/data");
+      if (!response.ok) {
+        throw new Error("Erro ao buscar dados.");
+      }
+      const dataSnapshot = await response.json();
+      setDatabaseJson(JSON.stringify(dataSnapshot, null, 2));
+    } catch (error) {
+      setStatus({
+        severity: "error",
+        message: "Não foi possível carregar os dados em JSON.",
+      });
+    }
   };
 
   return (
@@ -147,7 +109,7 @@ const SystemPage = () => {
                 System
               </Typography>
               <Typography variant="body1" color="text.secondary">
-                Controle o IndexedDB local com ações rápidas de carga e exportação.
+                Controle o banco PostgreSQL com ações rápidas de carga e exportação.
               </Typography>
             </Box>
 
@@ -173,18 +135,6 @@ const SystemPage = () => {
                 onClick={handleDownloadSeed}
               >
                 Gerar seed.json
-              </Button>
-
-              <Button
-                variant="outlined"
-                color="warning"
-                size="large"
-                onClick={handleResetDatabase}
-                disabled={loadingReset}
-              >
-                {loadingReset
-                  ? "Resetando banco de dados..."
-                  : "Resetar banco de dados"}
               </Button>
 
               <Button
