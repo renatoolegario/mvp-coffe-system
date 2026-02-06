@@ -12,6 +12,8 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import PrecisionManufacturingIcon from "@mui/icons-material/PrecisionManufacturing";
+import ScaleIcon from "@mui/icons-material/Scale";
 import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
@@ -51,6 +53,7 @@ const ProducaoPage = () => {
   const createProducao = useDataStore((state) => state.createProducao);
 
   const [modoGeracao, setModoGeracao] = useState("PRODUTO_FINAL");
+  const [modoSelecionado, setModoSelecionado] = useState(false);
   const [insumoFinalId, setInsumoFinalId] = useState("");
   const [taxaConversao, setTaxaConversao] = useState(TAXA_PADRAO);
   const [pesoDesejado, setPesoDesejado] = useState("");
@@ -128,6 +131,7 @@ const ProducaoPage = () => {
     });
 
     setModoGeracao("PRODUTO_FINAL");
+    setModoSelecionado(false);
     setInsumoFinalId("");
     setTaxaConversao(TAXA_PADRAO);
     setPesoDesejado("");
@@ -145,191 +149,243 @@ const ProducaoPage = () => {
         <Grid item xs={12} lg={8}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Criar produção
+              {modoSelecionado ? "Criar produção" : "Modo de geração"}
             </Typography>
-            <Box component="form" onSubmit={handleCriarProducao}>
+            {!modoSelecionado ? (
               <Stack spacing={2}>
-                <TextField
-                  select
-                  label="Modo de geração"
-                  value={modoGeracao}
-                  onChange={(event) => setModoGeracao(event.target.value)}
-                >
-                  <MenuItem value="PRODUTO_FINAL">Pelo produto final</MenuItem>
-                  <MenuItem value="INSUMOS_USADOS">
-                    Pelos insumos utilizados
-                  </MenuItem>
-                </TextField>
-
-                <TextField
-                  select
-                  label="Insumo final gerado"
-                  value={insumoFinalId}
-                  onChange={(event) => setInsumoFinalId(event.target.value)}
-                  required
-                >
-                  {insumosConsumiveis.map((insumo) => (
-                    <MenuItem key={insumo.id} value={insumo.id}>
-                      {insumo.nome}
-                    </MenuItem>
-                  ))}
-                </TextField>
-
+                <Typography variant="body2" color="text.secondary">
+                  Escolha como deseja gerar a produção para ir para a próxima
+                  etapa.
+                </Typography>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      label="Taxa de conversão (%)"
-                      type="number"
-                      value={taxaConversao}
-                      onChange={(event) => setTaxaConversao(event.target.value)}
+                  <Grid item xs={12} md={6}>
+                    <Button
+                      variant="outlined"
+                      size="large"
                       fullWidth
-                    />
+                      startIcon={<ScaleIcon />}
+                      sx={{ py: 4, justifyContent: "flex-start" }}
+                      onClick={() => {
+                        setModoGeracao("PRODUTO_FINAL");
+                        setModoSelecionado(true);
+                      }}
+                    >
+                      Pelo produto final
+                    </Button>
                   </Grid>
-                  <Grid item xs={12} md={8}>
-                    <TextField
-                      label={
-                        modoGeracao === "PRODUTO_FINAL"
-                          ? "Peso final desejado (kg)"
-                          : "Peso final previsto (kg)"
-                      }
-                      type="number"
-                      value={
-                        modoGeracao === "PRODUTO_FINAL"
-                          ? pesoDesejado
-                          : pesoPrevistoGeradoPelosInsumos.toFixed(2)
-                      }
-                      onChange={(event) => setPesoDesejado(event.target.value)}
+                  <Grid item xs={12} md={6}>
+                    <Button
+                      variant="outlined"
+                      size="large"
                       fullWidth
-                      disabled={modoGeracao !== "PRODUTO_FINAL"}
-                    />
+                      startIcon={<PrecisionManufacturingIcon />}
+                      sx={{ py: 4, justifyContent: "flex-start" }}
+                      onClick={() => {
+                        setModoGeracao("INSUMOS_USADOS");
+                        setModoSelecionado(true);
+                      }}
+                    >
+                      Pelos insumos utilizados
+                    </Button>
                   </Grid>
                 </Grid>
-
-                <Divider />
-                <Typography variant="subtitle1">Insumos consumidos</Typography>
-                {detalhesComMetadados.map((item, index) => (
-                  <Paper
-                    key={`detalhe-${index}`}
-                    variant="outlined"
-                    sx={{ p: 2 }}
-                  >
-                    <Grid container spacing={1.5} alignItems="center">
-                      <Grid item xs={12} md={4}>
-                        <TextField
-                          select
-                          label="Insumo"
-                          value={item.insumo_id}
-                          onChange={(event) =>
-                            handleChangeDetalhe(
-                              index,
-                              "insumo_id",
-                              event.target.value,
-                            )
-                          }
-                          fullWidth
-                        >
-                          {insumosConsumiveis.map((insumo) => (
-                            <MenuItem key={insumo.id} value={insumo.id}>
-                              {insumo.nome}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <TextField
-                          select
-                          label="Unidade"
-                          value={item.unidade}
-                          onChange={(event) =>
-                            handleChangeDetalhe(
-                              index,
-                              "unidade",
-                              event.target.value,
-                            )
-                          }
-                          fullWidth
-                        >
-                          <MenuItem value="kg">kg</MenuItem>
-                          <MenuItem value="saco">saco</MenuItem>
-                        </TextField>
-                      </Grid>
-                      <Grid item xs={12} md={2}>
-                        <TextField
-                          label="Quantidade"
-                          type="number"
-                          value={item.quantidade}
-                          onChange={(event) =>
-                            handleChangeDetalhe(
-                              index,
-                              "quantidade",
-                              event.target.value,
-                            )
-                          }
-                          fullWidth
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        <Typography variant="body2">
-                          Consumo: {item.quantidadeKg.toFixed(2)} kg
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Saldo: {item.saldo.toFixed(2)} kg
-                        </Typography>
-                        {item.semSaldo ? (
-                          <Typography
-                            variant="caption"
-                            color="error.main"
-                            display="block"
-                          >
-                            Estoque insuficiente
-                          </Typography>
-                        ) : null}
-                      </Grid>
-                      <Grid item xs={12} md={1}>
-                        <IconButton
-                          onClick={() =>
-                            setDetalhes((prev) =>
-                              prev.length > 1
-                                ? prev.filter((_, current) => current !== index)
-                                : prev,
-                            )
-                          }
-                          disabled={detalhesComMetadados.length <= 1}
-                        >
-                          <DeleteOutlineIcon />
-                        </IconButton>
-                      </Grid>
-                    </Grid>
-                  </Paper>
-                ))}
-
-                <Button
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={() =>
-                    setDetalhes((prev) => [...prev, createDetalhe()])
-                  }
-                >
-                  Adicionar insumo
-                </Button>
-
-                <TextField
-                  label="Observações"
-                  value={obsCriacao}
-                  onChange={(event) => setObsCriacao(event.target.value)}
-                  multiline
-                  rows={2}
-                />
-
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={!podeCriarProducao}
-                >
-                  Criar produção (status 1)
-                </Button>
               </Stack>
-            </Box>
+            ) : (
+              <Box component="form" onSubmit={handleCriarProducao}>
+                <Stack spacing={2}>
+                  <Button
+                    variant="text"
+                    onClick={() => setModoSelecionado(false)}
+                    sx={{ alignSelf: "flex-start" }}
+                  >
+                    Voltar
+                  </Button>
+
+                  <Typography variant="body2" color="text.secondary">
+                    Modo selecionado:{" "}
+                    {modoGeracao === "PRODUTO_FINAL"
+                      ? "Pelo produto final"
+                      : "Pelos insumos utilizados"}
+                  </Typography>
+
+                  <TextField
+                    select
+                    label="Insumo final gerado"
+                    value={insumoFinalId}
+                    onChange={(event) => setInsumoFinalId(event.target.value)}
+                    required
+                  >
+                    {insumosConsumiveis.map((insumo) => (
+                      <MenuItem key={insumo.id} value={insumo.id}>
+                        {insumo.nome}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <TextField
+                        label="Taxa de conversão (%)"
+                        type="number"
+                        value={taxaConversao}
+                        onChange={(event) =>
+                          setTaxaConversao(event.target.value)
+                        }
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                      <TextField
+                        label={
+                          modoGeracao === "PRODUTO_FINAL"
+                            ? "Peso final desejado (kg)"
+                            : "Peso final previsto (kg)"
+                        }
+                        type="number"
+                        value={
+                          modoGeracao === "PRODUTO_FINAL"
+                            ? pesoDesejado
+                            : pesoPrevistoGeradoPelosInsumos.toFixed(2)
+                        }
+                        onChange={(event) =>
+                          setPesoDesejado(event.target.value)
+                        }
+                        fullWidth
+                        disabled={modoGeracao !== "PRODUTO_FINAL"}
+                      />
+                    </Grid>
+                  </Grid>
+
+                  <Divider />
+                  <Typography variant="subtitle1">
+                    Insumos consumidos
+                  </Typography>
+                  {detalhesComMetadados.map((item, index) => (
+                    <Paper
+                      key={`detalhe-${index}`}
+                      variant="outlined"
+                      sx={{ p: 2 }}
+                    >
+                      <Grid container spacing={1.5} alignItems="center">
+                        <Grid item xs={12} md={4}>
+                          <TextField
+                            select
+                            label="Insumo"
+                            value={item.insumo_id}
+                            onChange={(event) =>
+                              handleChangeDetalhe(
+                                index,
+                                "insumo_id",
+                                event.target.value,
+                              )
+                            }
+                            fullWidth
+                          >
+                            {insumosConsumiveis.map((insumo) => (
+                              <MenuItem key={insumo.id} value={insumo.id}>
+                                {insumo.nome}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <TextField
+                            select
+                            label="Unidade"
+                            value={item.unidade}
+                            onChange={(event) =>
+                              handleChangeDetalhe(
+                                index,
+                                "unidade",
+                                event.target.value,
+                              )
+                            }
+                            fullWidth
+                          >
+                            <MenuItem value="kg">kg</MenuItem>
+                            <MenuItem value="saco">saco</MenuItem>
+                          </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <TextField
+                            label="Quantidade"
+                            type="number"
+                            value={item.quantidade}
+                            onChange={(event) =>
+                              handleChangeDetalhe(
+                                index,
+                                "quantidade",
+                                event.target.value,
+                              )
+                            }
+                            fullWidth
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Typography variant="body2">
+                            Consumo: {item.quantidadeKg.toFixed(2)} kg
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Saldo: {item.saldo.toFixed(2)} kg
+                          </Typography>
+                          {item.semSaldo ? (
+                            <Typography
+                              variant="caption"
+                              color="error.main"
+                              display="block"
+                            >
+                              Estoque insuficiente
+                            </Typography>
+                          ) : null}
+                        </Grid>
+                        <Grid item xs={12} md={1}>
+                          <IconButton
+                            onClick={() =>
+                              setDetalhes((prev) =>
+                                prev.length > 1
+                                  ? prev.filter(
+                                      (_, current) => current !== index,
+                                    )
+                                  : prev,
+                              )
+                            }
+                            disabled={detalhesComMetadados.length <= 1}
+                          >
+                            <DeleteOutlineIcon />
+                          </IconButton>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  ))}
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() =>
+                      setDetalhes((prev) => [...prev, createDetalhe()])
+                    }
+                  >
+                    Adicionar insumo
+                  </Button>
+
+                  <TextField
+                    label="Observações"
+                    value={obsCriacao}
+                    onChange={(event) => setObsCriacao(event.target.value)}
+                    multiline
+                    rows={2}
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={!podeCriarProducao}
+                  >
+                    Criar produção (status 1)
+                  </Button>
+                </Stack>
+              </Box>
+            )}
           </Paper>
         </Grid>
 
