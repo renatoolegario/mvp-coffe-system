@@ -141,6 +141,7 @@ export default async function handler(req, res) {
                 "status",
                 "data_pagamento",
                 "forma_pagamento",
+                "producao_id",
               ],
               parcela,
             );
@@ -341,6 +342,7 @@ export default async function handler(req, res) {
                     custo.status_pagamento === "A_VISTA"
                       ? custo.forma_pagamento || "Transferência"
                       : null,
+                  producao_id: payload.producao_id,
                 },
               );
             }
@@ -453,6 +455,7 @@ export default async function handler(req, res) {
                 "status",
                 "data_recebimento",
                 "forma_recebimento",
+                "producao_id",
               ],
               parcela,
             );

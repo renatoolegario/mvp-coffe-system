@@ -87,8 +87,8 @@ const menuGroups = [
         icon: FactCheck,
       },
       {
-        label: "Fabricação de Café",
-        href: "/app/fabricacao-lotes",
+        label: "Produção",
+        href: "/app/producao",
         roles: ["admin", "producao"],
         icon: PrecisionManufacturing,
       },
