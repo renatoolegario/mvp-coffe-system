@@ -50,6 +50,33 @@ const sendCommand = (action, payload) =>
 const normalizeInsumoTipo = (tipo) =>
   tipo === "FISICO" ? "FISICO" : "CONSUMIVEL";
 
+const normalizeMovimentoInsumo = (movimento) => {
+  const quantidadeEntrada = Number(movimento.quantidade_entrada) || 0;
+  const quantidadeSaida = Number(movimento.quantidade_saida) || 0;
+  const quantidadeCalculada = quantidadeEntrada - quantidadeSaida;
+  const quantidadeNormalizada =
+    movimento.quantidade !== undefined
+      ? Number(movimento.quantidade) || 0
+      : quantidadeCalculada;
+  const custoUnitarioNormalizado =
+    movimento.custo_unit !== undefined
+      ? Number(movimento.custo_unit) || 0
+      : Number(movimento.custo_unitario) || 0;
+  const custoTotalNormalizado =
+    movimento.custo_total !== undefined
+      ? Number(movimento.custo_total) || 0
+      : custoUnitarioNormalizado * quantidadeNormalizada;
+
+  return {
+    ...movimento,
+    tipo: movimento.tipo || movimento.tipo_movimento,
+    quantidade: quantidadeNormalizada,
+    custo_unit: custoUnitarioNormalizado,
+    custo_total: custoTotalNormalizado,
+    data: movimento.data || movimento.data_movimentacao,
+  };
+};
+
 export const useDataStore = create((set, get) => ({
   ...baseState,
   hydrated: false,
@@ -328,7 +355,7 @@ export const useDataStore = create((set, get) => ({
         ],
       });
       set((state) => ({
-        movInsumos: [...state.movInsumos, movimento],
+        movInsumos: [...state.movInsumos, normalizeMovimentoInsumo(movimento)],
         contasPagar: [
           ...state.contasPagar,
           contaPagar,
