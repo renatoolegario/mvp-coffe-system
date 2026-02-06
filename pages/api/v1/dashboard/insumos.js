@@ -5,6 +5,25 @@ const normalizeNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const getFaixaStatus = (percentual, faixas = []) => {
+  const valor = normalizeNumber(percentual);
+  const ordered = [...faixas].sort((a, b) => a.ordem - b.ordem);
+
+  return (
+    ordered.find((faixa) => {
+      const minimo = normalizeNumber(faixa.percentual_min);
+      const maximo =
+        faixa.percentual_max === null
+          ? null
+          : normalizeNumber(faixa.percentual_max);
+
+      if (valor < minimo) return false;
+      if (maximo === null) return true;
+      return valor < maximo;
+    }) || null
+  );
+};
+
 const getResumoInsumo = (insumoId, movimentos = []) => {
   const orderedMovimentos = [...movimentos].sort(
     (a, b) =>
@@ -48,12 +67,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const [insumosResult, movimentosResult] = await Promise.all([
+    const [insumosResult, movimentosResult, faixasResult] = await Promise.all([
       query(
-        "SELECT id, nome, unidade, kg_por_saco, preco_kg, tipo FROM insumos ORDER BY nome ASC",
+        "SELECT id, nome, unidade, kg_por_saco, preco_kg, tipo, estoque_minimo, estoque_minimo_unidade FROM insumos ORDER BY nome ASC",
       ),
       query(
         "SELECT insumo_id, quantidade_entrada, quantidade_saida, custo_unitario, data_movimentacao FROM movimento_producao ORDER BY data_movimentacao ASC",
+      ),
+      query(
+        "SELECT chave, label, percentual_min, percentual_max, ordem FROM empresa_configuracao_estoque ORDER BY ordem ASC",
       ),
     ]);
 
@@ -72,10 +94,28 @@ export default async function handler(req, res) {
     const dashboard = insumosResult.rows.map((insumo) => {
       const resumo = getResumoInsumo(insumo.id, movimentosPorInsumo[insumo.id]);
       const kgPorSaco = normalizeNumber(insumo.kg_por_saco) || 1;
+      const custoMedioKg = normalizeNumber(resumo.custo_medio);
+      const custoMedioSaco = custoMedioKg * kgPorSaco;
+      const saldoSacos = resumo.saldo_kg / kgPorSaco;
+      const estoqueMinimoKg =
+        insumo.estoque_minimo_unidade === "saco"
+          ? normalizeNumber(insumo.estoque_minimo) * kgPorSaco
+          : normalizeNumber(insumo.estoque_minimo);
+      const percentualEstoque = estoqueMinimoKg
+        ? (normalizeNumber(resumo.saldo_kg) / estoqueMinimoKg) * 100
+        : 0;
+      const faixaStatus = getFaixaStatus(percentualEstoque, faixasResult.rows);
+
       return {
         ...insumo,
         ...resumo,
-        saldo_sacos: resumo.saldo_kg / kgPorSaco,
+        saldo_sacos: saldoSacos,
+        custo_medio_kg: custoMedioKg,
+        custo_medio_saco: custoMedioSaco,
+        estoque_minimo_kg: estoqueMinimoKg,
+        percentual_estoque: percentualEstoque,
+        status_estoque: faixaStatus?.chave || null,
+        status_label: faixaStatus?.label || "Sem faixa",
       };
     });
 
