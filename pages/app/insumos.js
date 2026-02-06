@@ -3,6 +3,10 @@ import {
   Box,
   Button,
   Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
   FormControlLabel,
   Grid,
@@ -13,22 +17,28 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close, PersonAdd } from "@mui/icons-material";
+import { Close, Edit, PersonAdd } from "@mui/icons-material";
 import { useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 
+const initialForm = {
+  nome: "",
+  kg_por_saco: "1",
+  estoque_minimo: "",
+  estoque_minimo_unidade: "kg",
+};
+
 const InsumosPage = () => {
   const insumos = useDataStore((state) => state.insumos);
   const addInsumo = useDataStore((state) => state.addInsumo);
-  const [form, setForm] = useState({
-    nome: "",
-    kg_por_saco: "1",
-    estoque_minimo: "",
-    estoque_minimo_unidade: "kg",
-  });
+  const updateInsumo = useDataStore((state) => state.updateInsumo);
+  const [form, setForm] = useState(initialForm);
+  const [editForm, setEditForm] = useState(initialForm);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingInsumoId, setEditingInsumoId] = useState("");
   const [feedback, setFeedback] = useState({
     open: false,
     message: "",
@@ -40,9 +50,19 @@ const InsumosPage = () => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleEditChange = (field) => (event) => {
+    const value = event.target.value;
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
   const handleToggleEstoqueMinimoUnidade = (event) => {
     const value = event.target.checked ? "saco" : "kg";
     setForm((prev) => ({ ...prev, estoque_minimo_unidade: value }));
+  };
+
+  const handleToggleEditEstoqueMinimoUnidade = (event) => {
+    const value = event.target.checked ? "saco" : "kg";
+    setEditForm((prev) => ({ ...prev, estoque_minimo_unidade: value }));
   };
 
   const handleSubmit = async (event) => {
@@ -72,16 +92,61 @@ const InsumosPage = () => {
       estoque_minimo_unidade: form.estoque_minimo_unidade,
       kg_por_saco: Number(form.kg_por_saco) || 1,
     });
-    setForm({
-      nome: "",
-      kg_por_saco: "1",
-      estoque_minimo: "",
-      estoque_minimo_unidade: "kg",
-    });
+    setForm(initialForm);
     setDrawerOpen(false);
     setFeedback({
       open: true,
       message: "Insumo cadastrado com sucesso.",
+      severity: "success",
+    });
+  };
+
+  const openEditDialog = (insumo) => {
+    setEditingInsumoId(insumo.id);
+    setEditForm({
+      nome: insumo.nome || "",
+      kg_por_saco: String(Number(insumo.kg_por_saco) || 1),
+      estoque_minimo: String(Number(insumo.estoque_minimo) || 0),
+      estoque_minimo_unidade:
+        insumo.estoque_minimo_unidade === "saco" ? "saco" : "kg",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!editForm.nome.trim()) {
+      setFeedback({
+        open: true,
+        message: "Informe o nome do insumo para editar.",
+        severity: "error",
+      });
+      return;
+    }
+
+    if (Number(editForm.kg_por_saco) <= 0) {
+      setFeedback({
+        open: true,
+        message: "Informe quantos kg vêm em cada saco.",
+        severity: "error",
+      });
+      return;
+    }
+
+    await updateInsumo({
+      id: editingInsumoId,
+      nome: editForm.nome,
+      kg_por_saco: Number(editForm.kg_por_saco) || 1,
+      estoque_minimo: Number(editForm.estoque_minimo) || 0,
+      estoque_minimo_unidade: editForm.estoque_minimo_unidade,
+    });
+
+    setEditDialogOpen(false);
+    setEditingInsumoId("");
+    setFeedback({
+      open: true,
+      message: "Insumo atualizado com sucesso.",
       severity: "success",
     });
   };
@@ -110,15 +175,31 @@ const InsumosPage = () => {
             <Stack spacing={2}>
               {insumos.map((insumo) => (
                 <Paper key={insumo.id} variant="outlined" sx={{ p: 2 }}>
-                  <Typography fontWeight={600}>{insumo.nome}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Unidade de cadastro: {insumo.unidade} • Kg por saco:{" "}
-                    {Number(insumo.kg_por_saco) || 1}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Estoque mínimo: {insumo.estoque_minimo || "-"}{" "}
-                    {insumo.estoque_minimo_unidade || "kg"}
-                  </Typography>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    spacing={2}
+                  >
+                    <Box>
+                      <Typography fontWeight={600}>{insumo.nome}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Unidade de cadastro: {insumo.unidade} • Kg por saco:{" "}
+                        {Number(insumo.kg_por_saco) || 1}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Estoque mínimo: {insumo.estoque_minimo || "-"}{" "}
+                        {insumo.estoque_minimo_unidade || "kg"}
+                      </Typography>
+                    </Box>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Edit />}
+                      onClick={() => openEditDialog(insumo)}
+                    >
+                      Editar
+                    </Button>
+                  </Stack>
                 </Paper>
               ))}
               {!insumos.length ? (
@@ -186,6 +267,57 @@ const InsumosPage = () => {
           </Stack>
         </Box>
       </Drawer>
+
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <Box component="form" onSubmit={handleEditSubmit}>
+          <DialogTitle>Editar insumo</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} mt={1}>
+              <TextField
+                label="Nome"
+                value={editForm.nome}
+                onChange={handleEditChange("nome")}
+                required
+              />
+              <TextField
+                label="Kg por saco"
+                type="number"
+                value={editForm.kg_por_saco}
+                onChange={handleEditChange("kg_por_saco")}
+                inputProps={{ min: 0.01, step: "0.01" }}
+                required
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={editForm.estoque_minimo_unidade === "saco"}
+                    onChange={handleToggleEditEstoqueMinimoUnidade}
+                  />
+                }
+                label={`Estoque mínimo em saco (${Number(editForm.kg_por_saco) || 1} kg/saco)`}
+              />
+              <TextField
+                label={`Estoque mínimo (${editForm.estoque_minimo_unidade})`}
+                type="number"
+                value={editForm.estoque_minimo}
+                onChange={handleEditChange("estoque_minimo")}
+                inputProps={{ min: 0, step: "0.01" }}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 3 }}>
+            <Button onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+            <Button type="submit" variant="contained">
+              Salvar alterações
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
 
       <Snackbar
         open={feedback.open}
