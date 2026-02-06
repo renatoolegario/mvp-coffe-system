@@ -3,10 +3,6 @@ import {
   Box,
   Button,
   Checkbox,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Drawer,
   FormControlLabel,
   Grid,
@@ -39,7 +35,7 @@ const InsumosPage = () => {
   const [form, setForm] = useState(initialForm);
   const [editForm, setEditForm] = useState(initialForm);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
   const [editingInsumoId, setEditingInsumoId] = useState("");
   const [feedback, setFeedback] = useState({
     open: false,
@@ -113,7 +109,7 @@ const InsumosPage = () => {
         insumo.estoque_minimo_unidade === "saco" ? "saco" : "kg",
       tipo: insumo.tipo === "FISICO" ? "FISICO" : "CONSUMIVEL",
     });
-    setEditDialogOpen(true);
+    setEditDrawerOpen(true);
   };
 
   const handleEditSubmit = async (event) => {
@@ -146,7 +142,7 @@ const InsumosPage = () => {
       tipo: editForm.tipo,
     });
 
-    setEditDialogOpen(false);
+    setEditDrawerOpen(false);
     setEditingInsumoId("");
     setFeedback({
       open: true,
@@ -286,66 +282,74 @@ const InsumosPage = () => {
         </Box>
       </Drawer>
 
-      <Dialog
-        open={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
-        fullWidth
-        maxWidth="sm"
+      <Drawer
+        anchor="right"
+        open={editDrawerOpen}
+        onClose={() => setEditDrawerOpen(false)}
+        PaperProps={{
+          sx: { width: { xs: "100%", sm: 420 }, height: "100vh", p: 3 },
+        }}
       >
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          mb={2}
+        >
+          <Typography variant="h6">Editar insumo</Typography>
+          <IconButton onClick={() => setEditDrawerOpen(false)}>
+            <Close />
+          </IconButton>
+        </Stack>
         <Box component="form" onSubmit={handleEditSubmit}>
-          <DialogTitle>Editar insumo</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} mt={1}>
-              <TextField
-                label="Nome"
-                value={editForm.nome}
-                onChange={handleEditChange("nome")}
-                required
-              />
-              <TextField
-                select
-                label="Tipo do insumo"
-                value={editForm.tipo}
-                onChange={handleEditChange("tipo")}
-                required
-              >
-                <MenuItem value="CONSUMIVEL">Consumível</MenuItem>
-                <MenuItem value="FISICO">Físico</MenuItem>
-              </TextField>
-              <TextField
-                label="Kg por saco"
-                type="number"
-                value={editForm.kg_por_saco}
-                onChange={handleEditChange("kg_por_saco")}
-                inputProps={{ min: 0.01, step: "0.01" }}
-                required
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={editForm.estoque_minimo_unidade === "saco"}
-                    onChange={handleToggleEditEstoqueMinimoUnidade}
-                  />
-                }
-                label={`Estoque mínimo em saco (${Number(editForm.kg_por_saco) || 1} kg/saco)`}
-              />
-              <TextField
-                label={`Estoque mínimo (${editForm.estoque_minimo_unidade})`}
-                type="number"
-                value={editForm.estoque_minimo}
-                onChange={handleEditChange("estoque_minimo")}
-                inputProps={{ min: 0, step: "0.01" }}
-              />
-            </Stack>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 3 }}>
-            <Button onClick={() => setEditDialogOpen(false)}>Cancelar</Button>
+          <Stack spacing={2}>
+            <TextField
+              label="Nome"
+              value={editForm.nome}
+              onChange={handleEditChange("nome")}
+              required
+            />
+            <TextField
+              select
+              label="Tipo do insumo"
+              value={editForm.tipo}
+              onChange={handleEditChange("tipo")}
+              required
+            >
+              <MenuItem value="CONSUMIVEL">Consumível</MenuItem>
+              <MenuItem value="FISICO">Físico</MenuItem>
+            </TextField>
+            <TextField
+              label="Kg por saco"
+              type="number"
+              value={editForm.kg_por_saco}
+              onChange={handleEditChange("kg_por_saco")}
+              inputProps={{ min: 0.01, step: "0.01" }}
+              required
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={editForm.estoque_minimo_unidade === "saco"}
+                  onChange={handleToggleEditEstoqueMinimoUnidade}
+                />
+              }
+              label={`Estoque mínimo em saco (${Number(editForm.kg_por_saco) || 1} kg/saco)`}
+            />
+            <TextField
+              label={`Estoque mínimo (${editForm.estoque_minimo_unidade})`}
+              type="number"
+              value={editForm.estoque_minimo}
+              onChange={handleEditChange("estoque_minimo")}
+              inputProps={{ min: 0, step: "0.01" }}
+            />
+            <Button onClick={() => setEditDrawerOpen(false)}>Cancelar</Button>
             <Button type="submit" variant="contained">
               Salvar alterações
             </Button>
-          </DialogActions>
+          </Stack>
         </Box>
-      </Dialog>
+      </Drawer>
 
       <Snackbar
         open={feedback.open}
