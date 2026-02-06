@@ -12,7 +12,6 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
@@ -137,15 +136,6 @@ const ProducaoPage = () => {
         title="Produção"
         subtitle="Etapa 1: criar produção com consumo previsto de insumos."
       />
-      <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
-        <Button
-          component={Link}
-          href="/app/retorno-producao"
-          variant="outlined"
-        >
-          Retorno da Produção
-        </Button>
-      </Stack>
       <Grid container spacing={3}>
         <Grid item xs={12} lg={8}>
           <Paper sx={{ p: 3 }}>

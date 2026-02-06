@@ -9,8 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
@@ -39,6 +38,7 @@ const RetornoProducaoPage = () => {
   );
 
   const [producaoSelecionadaId, setProducaoSelecionadaId] = useState("");
+  const [producaoConfirmadaId, setProducaoConfirmadaId] = useState("");
   const [pesoReal, setPesoReal] = useState("");
   const [taxaReal, setTaxaReal] = useState("");
   const [obsRetorno, setObsRetorno] = useState("");
@@ -46,15 +46,35 @@ const RetornoProducaoPage = () => {
     createCustoAdicional(),
   ]);
 
-  const producoesPendentes = producoes.filter(
-    (producao) => Number(producao.status) === 1,
+  const producoesPendentes = useMemo(
+    () => producoes.filter((producao) => Number(producao.status) === 1),
+    [producoes],
   );
-  const producaoSelecionada = producoesPendentes.find(
-    (item) => item.id === producaoSelecionadaId,
+
+  const producaoSelecionada = useMemo(
+    () => producoesPendentes.find((item) => item.id === producaoSelecionadaId),
+    [producoesPendentes, producaoSelecionadaId],
   );
-  const detalhesDaProducaoSelecionada = detalhesProducao.filter(
-    (detalhe) => detalhe.producao_id === producaoSelecionadaId,
+
+  const producaoConfirmada = useMemo(
+    () => producoesPendentes.find((item) => item.id === producaoConfirmadaId),
+    [producoesPendentes, producaoConfirmadaId],
   );
+
+  const detalhesDaProducaoConfirmada = useMemo(
+    () =>
+      detalhesProducao.filter(
+        (detalhe) => detalhe.producao_id === producaoConfirmadaId,
+      ),
+    [detalhesProducao, producaoConfirmadaId],
+  );
+
+  const resetFormulario = () => {
+    setPesoReal("");
+    setTaxaReal("");
+    setObsRetorno("");
+    setCustosAdicionais([createCustoAdicional()]);
+  };
 
   const handleChangeCusto = (index, field, value) => {
     setCustosAdicionais((prev) =>
@@ -64,9 +84,15 @@ const RetornoProducaoPage = () => {
     );
   };
 
+  const handleConfirmarSelecao = () => {
+    if (!producaoSelecionadaId) return;
+    setProducaoConfirmadaId(producaoSelecionadaId);
+    resetFormulario();
+  };
+
   const handleConfirmarRetorno = async (event) => {
     event.preventDefault();
-    if (!producaoSelecionadaId || toNumber(pesoReal) <= 0) return;
+    if (!producaoConfirmadaId || toNumber(pesoReal) <= 0) return;
 
     const custosValidos = custosAdicionais
       .map((item) => ({
@@ -76,7 +102,7 @@ const RetornoProducaoPage = () => {
       .filter((item) => item.valor > 0 && item.descricao);
 
     await confirmarRetornoProducao({
-      producao_id: producaoSelecionadaId,
+      producao_id: producaoConfirmadaId,
       peso_real: toNumber(pesoReal),
       taxa_conversao_real: toNumber(taxaReal) || null,
       custos_adicionais: custosValidos,
@@ -84,10 +110,8 @@ const RetornoProducaoPage = () => {
     });
 
     setProducaoSelecionadaId("");
-    setPesoReal("");
-    setTaxaReal("");
-    setObsRetorno("");
-    setCustosAdicionais([createCustoAdicional()]);
+    setProducaoConfirmadaId("");
+    resetFormulario();
   };
 
   return (
@@ -96,43 +120,66 @@ const RetornoProducaoPage = () => {
         title="Retorno da Produção"
         subtitle="Etapa 2: confirmar retorno, custos e entrada do produto final."
       />
-      <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
-        <Button component={Link} href="/app/producao" variant="outlined">
-          Criar produção
-        </Button>
-      </Stack>
       <Grid container spacing={3}>
         <Grid item xs={12} lg={8}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Retorno de Produção
+              Produções pendentes
             </Typography>
-            <Box component="form" onSubmit={handleConfirmarRetorno}>
-              <Stack spacing={2}>
-                <TextField
-                  select
-                  label="Produção pendente"
-                  value={producaoSelecionadaId}
-                  onChange={(event) =>
-                    setProducaoSelecionadaId(event.target.value)
-                  }
-                  required
-                >
-                  {producoesPendentes.map((item) => (
-                    <MenuItem key={item.id} value={item.id}>
-                      {item.id.slice(0, 8)} • {formatDate(item.data_producao)}
-                    </MenuItem>
-                  ))}
-                </TextField>
+            <Stack spacing={2}>
+              <TextField
+                select
+                label="Produção pendente"
+                value={producaoSelecionadaId}
+                onChange={(event) =>
+                  setProducaoSelecionadaId(event.target.value)
+                }
+                fullWidth
+              >
+                {producoesPendentes.map((item) => (
+                  <MenuItem key={item.id} value={item.id}>
+                    {item.id.slice(0, 8)} • {formatDate(item.data_producao)}
+                  </MenuItem>
+                ))}
+              </TextField>
 
-                {producaoSelecionada ? (
+              {producaoSelecionada ? (
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="body2" fontWeight={600}>
+                    Peso previsto:{" "}
+                    {toNumber(producaoSelecionada.peso_previsto).toFixed(2)} kg
+                  </Typography>
+                </Paper>
+              ) : null}
+
+              <Button
+                variant="contained"
+                onClick={handleConfirmarSelecao}
+                disabled={!producaoSelecionadaId}
+              >
+                Confirmar Retorno
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        {producaoConfirmada ? (
+          <Grid item xs={12} lg={8}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Retorno de Produção
+              </Typography>
+              <Box component="form" onSubmit={handleConfirmarRetorno}>
+                <Stack spacing={2}>
                   <Paper variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="body2" fontWeight={600}>
-                      Peso previsto:{" "}
-                      {toNumber(producaoSelecionada.peso_previsto).toFixed(2)}{" "}
-                      kg
+                      Produção confirmada: {producaoConfirmada.id.slice(0, 8)}
                     </Typography>
-                    {detalhesDaProducaoSelecionada.map((detalhe) => {
+                    <Typography variant="body2" fontWeight={600}>
+                      Peso previsto:{" "}
+                      {toNumber(producaoConfirmada.peso_previsto).toFixed(2)} kg
+                    </Typography>
+                    {detalhesDaProducaoConfirmada.map((detalhe) => {
                       const insumo = insumos.find(
                         (item) => item.id === detalhe.insumo_id,
                       );
@@ -148,135 +195,138 @@ const RetornoProducaoPage = () => {
                       );
                     })}
                   </Paper>
-                ) : null}
 
-                <TextField
-                  label="Peso real gerado (kg)"
-                  type="number"
-                  value={pesoReal}
-                  onChange={(event) => setPesoReal(event.target.value)}
-                  required
-                />
-                <TextField
-                  label="Taxa de conversão real (%)"
-                  type="number"
-                  value={taxaReal}
-                  onChange={(event) => setTaxaReal(event.target.value)}
-                />
+                  <TextField
+                    label="Peso real gerado (kg)"
+                    type="number"
+                    value={pesoReal}
+                    onChange={(event) => setPesoReal(event.target.value)}
+                    required
+                  />
+                  <TextField
+                    label="Taxa de conversão real (%)"
+                    type="number"
+                    value={taxaReal}
+                    onChange={(event) => setTaxaReal(event.target.value)}
+                  />
 
-                <Typography variant="subtitle2">Custos adicionais</Typography>
-                {custosAdicionais.map((custo, index) => (
-                  <Paper
-                    key={`custo-${index}`}
+                  <Typography variant="subtitle2">Custos adicionais</Typography>
+                  {custosAdicionais.map((custo, index) => (
+                    <Paper
+                      key={`custo-${index}`}
+                      variant="outlined"
+                      sx={{ p: 2 }}
+                    >
+                      <Grid container spacing={1.5}>
+                        <Grid item xs={12}>
+                          <TextField
+                            select
+                            label="Fornecedor"
+                            value={custo.fornecedor_id}
+                            onChange={(event) =>
+                              handleChangeCusto(
+                                index,
+                                "fornecedor_id",
+                                event.target.value,
+                              )
+                            }
+                            fullWidth
+                          >
+                            <MenuItem value="">Sem fornecedor</MenuItem>
+                            {fornecedores.map((fornecedor) => (
+                              <MenuItem
+                                key={fornecedor.id}
+                                value={fornecedor.id}
+                              >
+                                {fornecedor.razao_social}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            label="Descrição"
+                            value={custo.descricao}
+                            onChange={(event) =>
+                              handleChangeCusto(
+                                index,
+                                "descricao",
+                                event.target.value,
+                              )
+                            }
+                            fullWidth
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            label="Valor"
+                            type="number"
+                            value={custo.valor}
+                            onChange={(event) =>
+                              handleChangeCusto(
+                                index,
+                                "valor",
+                                event.target.value,
+                              )
+                            }
+                            fullWidth
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            select
+                            label="Pagamento"
+                            value={custo.status_pagamento}
+                            onChange={(event) =>
+                              handleChangeCusto(
+                                index,
+                                "status_pagamento",
+                                event.target.value,
+                              )
+                            }
+                            fullWidth
+                          >
+                            <MenuItem value="PENDENTE">Pendente</MenuItem>
+                            <MenuItem value="A_VISTA">À vista</MenuItem>
+                          </TextField>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  ))}
+
+                  <Button
                     variant="outlined"
-                    sx={{ p: 2 }}
+                    startIcon={<AddIcon />}
+                    onClick={() =>
+                      setCustosAdicionais((prev) => [
+                        ...prev,
+                        createCustoAdicional(),
+                      ])
+                    }
                   >
-                    <Grid container spacing={1.5}>
-                      <Grid item xs={12}>
-                        <TextField
-                          select
-                          label="Fornecedor"
-                          value={custo.fornecedor_id}
-                          onChange={(event) =>
-                            handleChangeCusto(
-                              index,
-                              "fornecedor_id",
-                              event.target.value,
-                            )
-                          }
-                          fullWidth
-                        >
-                          <MenuItem value="">Sem fornecedor</MenuItem>
-                          {fornecedores.map((fornecedor) => (
-                            <MenuItem key={fornecedor.id} value={fornecedor.id}>
-                              {fornecedor.razao_social}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <TextField
-                          label="Descrição"
-                          value={custo.descricao}
-                          onChange={(event) =>
-                            handleChangeCusto(
-                              index,
-                              "descricao",
-                              event.target.value,
-                            )
-                          }
-                          fullWidth
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        <TextField
-                          label="Valor"
-                          type="number"
-                          value={custo.valor}
-                          onChange={(event) =>
-                            handleChangeCusto(
-                              index,
-                              "valor",
-                              event.target.value,
-                            )
-                          }
-                          fullWidth
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        <TextField
-                          select
-                          label="Pagamento"
-                          value={custo.status_pagamento}
-                          onChange={(event) =>
-                            handleChangeCusto(
-                              index,
-                              "status_pagamento",
-                              event.target.value,
-                            )
-                          }
-                          fullWidth
-                        >
-                          <MenuItem value="PENDENTE">Pendente</MenuItem>
-                          <MenuItem value="A_VISTA">À vista</MenuItem>
-                        </TextField>
-                      </Grid>
-                    </Grid>
-                  </Paper>
-                ))}
+                    Adicionar custo adicional
+                  </Button>
 
-                <Button
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={() =>
-                    setCustosAdicionais((prev) => [
-                      ...prev,
-                      createCustoAdicional(),
-                    ])
-                  }
-                >
-                  Adicionar custo adicional
-                </Button>
+                  <TextField
+                    label="Observações do retorno"
+                    value={obsRetorno}
+                    onChange={(event) => setObsRetorno(event.target.value)}
+                    multiline
+                    rows={2}
+                  />
 
-                <TextField
-                  label="Observações do retorno"
-                  value={obsRetorno}
-                  onChange={(event) => setObsRetorno(event.target.value)}
-                  multiline
-                  rows={2}
-                />
-
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={!producaoSelecionadaId || toNumber(pesoReal) <= 0}
-                >
-                  Confirmar retorno (status 2)
-                </Button>
-              </Stack>
-            </Box>
-          </Paper>
-        </Grid>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    disabled={!producaoConfirmadaId || toNumber(pesoReal) <= 0}
+                  >
+                    Confirmar retorno (status 2)
+                  </Button>
+                </Stack>
+              </Box>
+            </Paper>
+          </Grid>
+        ) : null}
       </Grid>
     </AppLayout>
   );
