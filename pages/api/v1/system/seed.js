@@ -1,6 +1,7 @@
 import seedRaw from "../../../../docs/seed.json";
 import { normalizeSeedData } from "../../../../utils/seed";
 import { withTransaction } from "../../../../infra/database";
+import { conversaoCripto } from "../../../../utils/crypto";
 
 const tableList = [
   "custos_adicionais_producao",
@@ -46,7 +47,10 @@ export default async function handler(req, res) {
           client,
           "usuarios",
           ["id", "nome", "email", "senha", "perfil", "ativo", "criado_em"],
-          usuario,
+          {
+            ...usuario,
+            senha: await conversaoCripto(usuario.senha),
+          },
         );
       }
 

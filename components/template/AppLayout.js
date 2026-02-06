@@ -142,14 +142,8 @@ const menuGroups = [
     id: "configuracao",
     label: "Configuração da Empresa",
     icon: Settings,
-    items: [
-      {
-        label: "Parâmetros de Estoque",
-        href: "/app/configuracao-empresa",
-        roles: ["admin"],
-        icon: Settings,
-      },
-    ],
+    href: "/app/configuracao-empresa",
+    roles: ["admin"],
   },
   {
     id: "financeiro",
@@ -212,7 +206,13 @@ const AppLayout = ({ title, children }) => {
           ),
         };
       })
-      .filter((group) => (group.items ? group.items.length > 0 : true));
+      .filter((group) => {
+        if (group.roles && !group.roles.includes(session.perfil)) {
+          return false;
+        }
+
+        return group.items ? group.items.length > 0 : true;
+      });
   }, [session]);
 
   useEffect(() => {

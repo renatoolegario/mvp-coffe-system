@@ -1,4 +1,5 @@
 import { query, withTransaction } from "../../../infra/database";
+import { conversaoCripto } from "../../../utils/crypto";
 
 const insertRow = async (client, table, columns, data) => {
   const values = columns.map((column) => data[column] ?? null);
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
             payload.id,
             payload.nome,
             payload.email,
-            payload.senha,
+            await conversaoCripto(payload.senha),
             payload.perfil,
             payload.ativo,
             payload.criado_em,

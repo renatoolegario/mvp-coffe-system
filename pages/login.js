@@ -11,11 +11,9 @@ import {
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { createSession, getSession } from "../hooks/useSession";
-import { useDataStore } from "../hooks/useDataStore";
 
 const LoginPage = () => {
   const router = useRouter();
-  const usuarios = useDataStore((state) => state.usuarios);
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [error, setError] = useState("");
@@ -26,23 +24,34 @@ const LoginPage = () => {
     }
   }, [router]);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    const usuario = usuarios.find(
-      (item) => item.email === email && item.senha === senha && item.ativo,
-    );
-    if (!usuario) {
-      setError("Credenciais inválidas ou usuário inativo.");
-      return;
+
+    try {
+      const response = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, senha }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Credenciais inválidas ou usuário inativo.");
+        return;
+      }
+
+      const usuario = data.usuario;
+      createSession({
+        usuario_id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        perfil: usuario.perfil,
+      });
+      router.push("/app");
+    } catch (error) {
+      setError("Erro ao autenticar. Tente novamente.");
     }
-    createSession({
-      usuario_id: usuario.id,
-      nome: usuario.nome,
-      email: usuario.email,
-      perfil: usuario.perfil,
-    });
-    router.push("/app");
   };
 
   return (
