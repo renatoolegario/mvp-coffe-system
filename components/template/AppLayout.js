@@ -93,6 +93,12 @@ const menuGroups = [
         icon: PrecisionManufacturing,
       },
       {
+        label: "Retorno Produção",
+        href: "/app/retorno-producao",
+        roles: ["admin", "producao"],
+        icon: PrecisionManufacturing,
+      },
+      {
         label: "Dashboard Insumos",
         href: "/app/dashboard-insumos",
         roles: ["admin", "producao"],

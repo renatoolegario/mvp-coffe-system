@@ -13,7 +13,7 @@ Tela dedicada ao retorno da produção (status 2), com confirmação de peso rea
 - Lista produções pendentes.
 - Permite informar peso real, taxa real e custos adicionais.
 - Finaliza produção via `confirmarRetornoProducao`.
-- Exibe botão de navegação para a etapa de criação em `/app/producao`.
+- Exibe lista de produções pendentes e libera o formulário completo após clicar em `Confirmar Retorno`.
 
 ## Resultado esperado
 
