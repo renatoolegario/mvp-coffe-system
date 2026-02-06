@@ -15,9 +15,15 @@ import { useEffect, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 
+const integracoesIniciais = {
+  asaas: { chave: "", configurado: false, editando: true },
+  resend: { chave: "", configurado: false, editando: true },
+};
+
 const ConfiguracaoEmpresaPage = () => {
   const [tab, setTab] = useState("estoque");
   const [faixas, setFaixas] = useState([]);
+  const [integracoes, setIntegracoes] = useState(integracoesIniciais);
   const [feedback, setFeedback] = useState({
     open: false,
     severity: "success",
@@ -35,8 +41,33 @@ const ConfiguracaoEmpresaPage = () => {
     }
   };
 
+  const loadIntegracoes = async () => {
+    try {
+      const response = await fetch("/api/v1/configuracao-empresa/integracoes");
+      if (!response.ok) return;
+      const data = await response.json();
+
+      setIntegracoes((prev) => {
+        const next = { ...prev };
+        for (const integracao of data.integracoes || []) {
+          const provedor = integracao.provedor;
+          next[provedor] = {
+            ...prev[provedor],
+            configurado: Boolean(integracao.configurado),
+            editando: !integracao.configurado,
+            chave: "",
+          };
+        }
+        return next;
+      });
+    } catch (error) {
+      setIntegracoes(integracoesIniciais);
+    }
+  };
+
   useEffect(() => {
     loadFaixas();
+    loadIntegracoes();
   }, []);
 
   const handleFaixaChange = (index, field) => (event) => {
@@ -52,6 +83,80 @@ const ConfiguracaoEmpresaPage = () => {
           : faixa,
       ),
     );
+  };
+
+  const handleIntegracaoField = (provedor) => (event) => {
+    const value = event.target.value;
+    setIntegracoes((prev) => ({
+      ...prev,
+      [provedor]: {
+        ...prev[provedor],
+        chave: value,
+      },
+    }));
+  };
+
+  const handleEditarIntegracao = (provedor) => {
+    setIntegracoes((prev) => ({
+      ...prev,
+      [provedor]: {
+        ...prev[provedor],
+        chave: "",
+        editando: true,
+      },
+    }));
+  };
+
+  const handleSalvarIntegracao = async (provedor) => {
+    const chave = integracoes[provedor]?.chave?.trim();
+
+    if (!chave) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: "Informe a chave da integração antes de salvar.",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/v1/configuracao-empresa/integracoes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provedor, chave }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setFeedback({
+          open: true,
+          severity: "error",
+          message: data.error || "Não foi possível salvar a integração.",
+        });
+        return;
+      }
+
+      setIntegracoes((prev) => ({
+        ...prev,
+        [provedor]: {
+          ...prev[provedor],
+          configurado: true,
+          editando: false,
+          chave: "",
+        },
+      }));
+      setFeedback({
+        open: true,
+        severity: "success",
+        message: `Integração ${provedor.toUpperCase()} salva com sucesso.`,
+      });
+    } catch (error) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: "Erro ao salvar integração.",
+      });
+    }
   };
 
   const handleSaveFaixas = async () => {
@@ -89,12 +194,13 @@ const ConfiguracaoEmpresaPage = () => {
     <AppLayout>
       <PageHeader
         title="Configuração da Empresa"
-        subtitle="Defina as regras de classificação para o estoque mínimo dos insumos."
+        subtitle="Defina as regras de estoque e as integrações externas do sistema."
       />
 
       <Paper sx={{ p: 2, mb: 2 }}>
         <Tabs value={tab} onChange={(_, value) => setTab(value)}>
           <Tab value="estoque" label="Status de Estoque" />
+          <Tab value="integracoes" label="Integrações" />
         </Tabs>
       </Paper>
 
@@ -152,6 +258,62 @@ const ConfiguracaoEmpresaPage = () => {
                 Salvar configuração
               </Button>
             </Box>
+          </Stack>
+        </Paper>
+      ) : null}
+
+      {tab === "integracoes" ? (
+        <Paper sx={{ p: 3 }}>
+          <Stack spacing={3}>
+            <Typography variant="body2" color="text.secondary">
+              Configure as chaves das integrações. Por segurança, a chave não é
+              exibida novamente depois de salva.
+            </Typography>
+
+            {Object.entries(integracoes).map(([provedor, integracao]) => {
+              const bloqueado = integracao.configurado && !integracao.editando;
+              return (
+                <Grid container spacing={2} key={provedor} alignItems="center">
+                  <Grid item xs={12} md={4}>
+                    <Typography fontWeight={700}>
+                      {provedor.toUpperCase()}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={5}>
+                    <TextField
+                      fullWidth
+                      type="password"
+                      label="Chave da integração"
+                      placeholder={
+                        bloqueado ? "••••••••••••" : "Digite a chave"
+                      }
+                      value={bloqueado ? "" : integracao.chave}
+                      onChange={handleIntegracaoField(provedor)}
+                      disabled={bloqueado}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    {bloqueado ? (
+                      <Button
+                        variant="outlined"
+                        fullWidth
+                        onClick={() => handleEditarIntegracao(provedor)}
+                      >
+                        Editar
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        fullWidth
+                        onClick={() => handleSalvarIntegracao(provedor)}
+                      >
+                        Salvar
+                      </Button>
+                    )}
+                  </Grid>
+                </Grid>
+              );
+            })}
           </Stack>
         </Paper>
       ) : null}
