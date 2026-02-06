@@ -11,6 +11,7 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
+  MenuItem,
   Paper,
   Snackbar,
   Stack,
@@ -28,6 +29,7 @@ const initialForm = {
   kg_por_saco: "1",
   estoque_minimo: "",
   estoque_minimo_unidade: "kg",
+  tipo: "CONSUMIVEL",
 };
 
 const InsumosPage = () => {
@@ -109,6 +111,7 @@ const InsumosPage = () => {
       estoque_minimo: String(Number(insumo.estoque_minimo) || 0),
       estoque_minimo_unidade:
         insumo.estoque_minimo_unidade === "saco" ? "saco" : "kg",
+      tipo: insumo.tipo === "FISICO" ? "FISICO" : "CONSUMIVEL",
     });
     setEditDialogOpen(true);
   };
@@ -140,6 +143,7 @@ const InsumosPage = () => {
       kg_por_saco: Number(editForm.kg_por_saco) || 1,
       estoque_minimo: Number(editForm.estoque_minimo) || 0,
       estoque_minimo_unidade: editForm.estoque_minimo_unidade,
+      tipo: editForm.tipo,
     });
 
     setEditDialogOpen(false);
@@ -191,6 +195,10 @@ const InsumosPage = () => {
                         Estoque mínimo: {insumo.estoque_minimo || "-"}{" "}
                         {insumo.estoque_minimo_unidade || "kg"}
                       </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Tipo:{" "}
+                        {insumo.tipo === "FISICO" ? "Físico" : "Consumível"}
+                      </Typography>
                     </Box>
                     <Button
                       variant="outlined"
@@ -238,6 +246,16 @@ const InsumosPage = () => {
               required
             />
             <TextField
+              select
+              label="Tipo do insumo"
+              value={form.tipo}
+              onChange={handleChange("tipo")}
+              required
+            >
+              <MenuItem value="CONSUMIVEL">Consumível</MenuItem>
+              <MenuItem value="FISICO">Físico</MenuItem>
+            </TextField>
+            <TextField
               label="Kg por saco"
               type="number"
               value={form.kg_por_saco}
@@ -284,6 +302,16 @@ const InsumosPage = () => {
                 onChange={handleEditChange("nome")}
                 required
               />
+              <TextField
+                select
+                label="Tipo do insumo"
+                value={editForm.tipo}
+                onChange={handleEditChange("tipo")}
+                required
+              >
+                <MenuItem value="CONSUMIVEL">Consumível</MenuItem>
+                <MenuItem value="FISICO">Físico</MenuItem>
+              </TextField>
               <TextField
                 label="Kg por saco"
                 type="number"

@@ -57,6 +57,11 @@ const ProducaoPage = () => {
   const [obsCriacao, setObsCriacao] = useState("");
   const [detalhes, setDetalhes] = useState([createDetalhe()]);
 
+  const insumosConsumiveis = useMemo(
+    () => insumos.filter((insumo) => insumo.tipo !== "FISICO"),
+    [insumos],
+  );
+
   const detalhesComMetadados = useMemo(
     () =>
       detalhes.map((detalhe) => {
@@ -163,7 +168,7 @@ const ProducaoPage = () => {
                   onChange={(event) => setInsumoFinalId(event.target.value)}
                   required
                 >
-                  {insumos.map((insumo) => (
+                  {insumosConsumiveis.map((insumo) => (
                     <MenuItem key={insumo.id} value={insumo.id}>
                       {insumo.nome}
                     </MenuItem>
@@ -223,7 +228,7 @@ const ProducaoPage = () => {
                           }
                           fullWidth
                         >
-                          {insumos.map((insumo) => (
+                          {insumosConsumiveis.map((insumo) => (
                             <MenuItem key={insumo.id} value={insumo.id}>
                               {insumo.nome}
                             </MenuItem>

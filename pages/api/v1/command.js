@@ -15,6 +15,9 @@ const getNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeInsumoTipo = (tipo) =>
+  tipo === "FISICO" ? "FISICO" : "CONSUMIVEL";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
@@ -84,7 +87,7 @@ export default async function handler(req, res) {
             payload.estoque_minimo_unidade,
             payload.kg_por_saco,
             getNumber(payload.preco_kg),
-            payload.tipo || "MATERIA_PRIMA",
+            normalizeInsumoTipo(payload.tipo),
             payload.ativo,
             payload.criado_em,
           ],
@@ -92,13 +95,14 @@ export default async function handler(req, res) {
         break;
       case "updateInsumo":
         await query(
-          "UPDATE insumos SET nome = $2, estoque_minimo = $3, estoque_minimo_unidade = $4, kg_por_saco = $5 WHERE id = $1",
+          "UPDATE insumos SET nome = $2, estoque_minimo = $3, estoque_minimo_unidade = $4, kg_por_saco = $5, tipo = $6 WHERE id = $1",
           [
             payload.id,
             payload.nome,
             getNumber(payload.estoque_minimo),
             payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
             getNumber(payload.kg_por_saco) || 1,
+            normalizeInsumoTipo(payload.tipo),
           ],
         );
         break;

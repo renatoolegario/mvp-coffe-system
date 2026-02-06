@@ -103,7 +103,7 @@ export default async function handler(req, res) {
           {
             ...insumo,
             preco_kg: insumo.preco_kg || 0,
-            tipo: insumo.tipo || "MATERIA_PRIMA",
+            tipo: insumo.tipo === "FISICO" ? "FISICO" : "CONSUMIVEL",
           },
         );
       }

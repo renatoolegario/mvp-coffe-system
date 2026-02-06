@@ -46,6 +46,9 @@ const sendCommand = (action, payload) =>
     body: JSON.stringify({ action, payload }),
   });
 
+const normalizeInsumoTipo = (tipo) =>
+  tipo === "FISICO" ? "FISICO" : "CONSUMIVEL";
+
 export const useDataStore = create((set, get) => ({
   ...baseState,
   hydrated: false,
@@ -137,7 +140,7 @@ export const useDataStore = create((set, get) => ({
       kg_por_saco: kgPorSaco,
       estoque_minimo_unidade: estoqueMinimoUnidade,
       preco_kg: Number(payload.preco_kg) || 0,
-      tipo: payload.tipo || "MATERIA_PRIMA",
+      tipo: normalizeInsumoTipo(payload.tipo),
     };
     try {
       await sendCommand("addInsumo", insumo);
@@ -158,6 +161,7 @@ export const useDataStore = create((set, get) => ({
       estoque_minimo: Number(payload.estoque_minimo) || 0,
       estoque_minimo_unidade:
         payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
+      tipo: normalizeInsumoTipo(payload.tipo || current.tipo),
     };
 
     try {
