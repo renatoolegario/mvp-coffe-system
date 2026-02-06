@@ -135,6 +135,7 @@ export default async function handler(req, res) {
                 "valor_total",
                 "data_emissao",
                 "status",
+                "venda_id",
               ],
               contaPagar,
             );
@@ -434,6 +435,9 @@ export default async function handler(req, res) {
               "parcelas_qtd",
               "valor_negociado",
               "status",
+              "data_programada_entrega",
+              "data_entrega",
+              "status_entrega",
               "obs",
             ],
             payload.venda,
@@ -467,6 +471,51 @@ export default async function handler(req, res) {
                 "status",
                 "data_recebimento",
                 "forma_recebimento",
+                "producao_id",
+              ],
+              parcela,
+            );
+          }
+        });
+        break;
+      case "confirmarEntregaVenda":
+        await withTransaction(async (client) => {
+          await client.query(
+            "UPDATE vendas SET status_entrega = $2, data_entrega = $3 WHERE id = $1",
+            [payload.venda_id, "ENTREGUE", payload.data_entrega],
+          );
+
+          for (const contaPagar of payload.contasPagar || []) {
+            await insertRow(
+              client,
+              "contas_pagar",
+              [
+                "id",
+                "fornecedor_id",
+                "origem_tipo",
+                "origem_id",
+                "valor_total",
+                "data_emissao",
+                "status",
+                "venda_id",
+              ],
+              contaPagar,
+            );
+          }
+
+          for (const parcela of payload.parcelas || []) {
+            await insertRow(
+              client,
+              "contas_pagar_parcelas",
+              [
+                "id",
+                "conta_pagar_id",
+                "parcela_num",
+                "vencimento",
+                "valor",
+                "status",
+                "data_pagamento",
+                "forma_pagamento",
                 "producao_id",
               ],
               parcela,

@@ -23,10 +23,24 @@ const VendasPage = () => {
                   Venda #{venda.id.slice(0, 6)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Cliente: {clientes.find((cliente) => cliente.id === venda.cliente_id)?.nome || "-"}
+                  Cliente:{" "}
+                  {clientes.find((cliente) => cliente.id === venda.cliente_id)
+                    ?.nome || "-"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Data: {formatDate(venda.data_venda)} • Parcelas: {venda.parcelas_qtd}
+                  Data: {formatDate(venda.data_venda)} • Parcelas:{" "}
+                  {venda.parcelas_qtd}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Entrega programada:{" "}
+                  {venda.data_programada_entrega
+                    ? formatDate(venda.data_programada_entrega)
+                    : "-"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Data entrega:{" "}
+                  {venda.data_entrega ? formatDate(venda.data_entrega) : "-"} •
+                  Status: {venda.status_entrega || "PENDENTE"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Valor total: {formatCurrency(venda.valor_total)}

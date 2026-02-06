@@ -25,12 +25,22 @@ const ContasPagarPage = () => {
             <Stack spacing={2}>
               {contas.map((conta) => (
                 <Paper key={conta.id} variant="outlined" sx={{ p: 2 }}>
-                  <Typography fontWeight={600}>Conta #{conta.id.slice(0, 6)}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Fornecedor: {fornecedores.find((item) => item.id === conta.fornecedor_id)?.razao_social || "-"}
+                  <Typography fontWeight={600}>
+                    Conta #{conta.id.slice(0, 6)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Valor: {formatCurrency(conta.valor_total)} • Emissão: {formatDate(conta.data_emissao)}
+                    Fornecedor:{" "}
+                    {fornecedores.find(
+                      (item) => item.id === conta.fornecedor_id,
+                    )?.razao_social || "-"}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Valor: {formatCurrency(conta.valor_total)} • Emissão:{" "}
+                    {formatDate(conta.data_emissao)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    ID venda:{" "}
+                    {conta.venda_id ? `#${conta.venda_id.slice(0, 6)}` : "-"}
                   </Typography>
                 </Paper>
               ))}
@@ -51,15 +61,21 @@ const ContasPagarPage = () => {
               {parcelas.map((parcela) => (
                 <Paper key={parcela.id} variant="outlined" sx={{ p: 2 }}>
                   <Stack spacing={1}>
-                    <Typography fontWeight={600}>Parcela #{parcela.parcela_num}</Typography>
+                    <Typography fontWeight={600}>
+                      Parcela #{parcela.parcela_num}
+                    </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Vencimento: {formatDate(parcela.vencimento)} • {formatCurrency(parcela.valor)}
+                      Vencimento: {formatDate(parcela.vencimento)} •{" "}
+                      {formatCurrency(parcela.valor)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Status: {parcela.status}
                     </Typography>
                     {parcela.status === "ABERTA" ? (
-                      <Button variant="contained" onClick={() => marcarParcelaPaga(parcela.id)}>
+                      <Button
+                        variant="contained"
+                        onClick={() => marcarParcelaPaga(parcela.id)}
+                      >
                         Confirmar pagamento
                       </Button>
                     ) : null}
