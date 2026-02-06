@@ -5,6 +5,12 @@ import {
   MenuItem,
   Paper,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from "@mui/material";
@@ -37,7 +43,6 @@ const RetornoProducaoPage = () => {
     (state) => state.confirmarRetornoProducao,
   );
 
-  const [producaoSelecionadaId, setProducaoSelecionadaId] = useState("");
   const [producaoConfirmadaId, setProducaoConfirmadaId] = useState("");
   const [pesoReal, setPesoReal] = useState("");
   const [taxaReal, setTaxaReal] = useState("");
@@ -49,11 +54,6 @@ const RetornoProducaoPage = () => {
   const producoesPendentes = useMemo(
     () => producoes.filter((producao) => Number(producao.status) === 1),
     [producoes],
-  );
-
-  const producaoSelecionada = useMemo(
-    () => producoesPendentes.find((item) => item.id === producaoSelecionadaId),
-    [producoesPendentes, producaoSelecionadaId],
   );
 
   const producaoConfirmada = useMemo(
@@ -84,9 +84,9 @@ const RetornoProducaoPage = () => {
     );
   };
 
-  const handleConfirmarSelecao = () => {
-    if (!producaoSelecionadaId) return;
-    setProducaoConfirmadaId(producaoSelecionadaId);
+  const handleSelecionarProducao = (producaoId) => {
+    if (!producaoId) return;
+    setProducaoConfirmadaId(producaoId);
     resetFormulario();
   };
 
@@ -109,7 +109,6 @@ const RetornoProducaoPage = () => {
       obs: obsRetorno,
     });
 
-    setProducaoSelecionadaId("");
     setProducaoConfirmadaId("");
     resetFormulario();
   };
@@ -126,40 +125,52 @@ const RetornoProducaoPage = () => {
             <Typography variant="h6" gutterBottom>
               Produções pendentes
             </Typography>
-            <Stack spacing={2}>
-              <TextField
-                select
-                label="Produção pendente"
-                value={producaoSelecionadaId}
-                onChange={(event) =>
-                  setProducaoSelecionadaId(event.target.value)
-                }
-                fullWidth
-              >
-                {producoesPendentes.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>
-                    {item.id.slice(0, 8)} • {formatDate(item.data_producao)}
-                  </MenuItem>
-                ))}
-              </TextField>
-
-              {producaoSelecionada ? (
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="body2" fontWeight={600}>
-                    Peso previsto:{" "}
-                    {toNumber(producaoSelecionada.peso_previsto).toFixed(2)} kg
-                  </Typography>
-                </Paper>
-              ) : null}
-
-              <Button
-                variant="contained"
-                onClick={handleConfirmarSelecao}
-                disabled={!producaoSelecionadaId}
-              >
-                Confirmar Retorno
-              </Button>
-            </Stack>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>ID</TableCell>
+                    <TableCell>Data</TableCell>
+                    <TableCell align="right">Peso previsto (kg)</TableCell>
+                    <TableCell align="right">Ação</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {producoesPendentes.length > 0 ? (
+                    producoesPendentes.map((item) => {
+                      const linhaSelecionada = item.id === producaoConfirmadaId;
+                      return (
+                        <TableRow key={item.id} selected={linhaSelecionada}>
+                          <TableCell>{item.id.slice(0, 8)}</TableCell>
+                          <TableCell>
+                            {formatDate(item.data_producao)}
+                          </TableCell>
+                          <TableCell align="right">
+                            {toNumber(item.peso_previsto).toFixed(2)}
+                          </TableCell>
+                          <TableCell align="right">
+                            <Button
+                              variant={
+                                linhaSelecionada ? "outlined" : "contained"
+                              }
+                              onClick={() => handleSelecionarProducao(item.id)}
+                            >
+                              Confirmar retorno
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        Nenhuma produção pendente para retorno.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Paper>
         </Grid>
 
