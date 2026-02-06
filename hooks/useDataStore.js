@@ -19,6 +19,7 @@ const baseState = {
   contasPagarParcelas: [],
   contasReceber: [],
   contasReceberParcelas: [],
+  vendaDetalhes: [],
   producoes: [],
   detalhesProducao: [],
   custosAdicionaisProducao: [],
@@ -107,6 +108,28 @@ export const useDataStore = create((set, get) => ({
     try {
       await sendCommand("addCliente", cliente);
       set((state) => ({ clientes: [...state.clientes, cliente] }));
+    } catch (error) {
+      return;
+    }
+  },
+  updateCliente: async ({ id, ...payload }) => {
+    const current = get().clientes.find((cliente) => cliente.id === id);
+    if (!current) return;
+    const updated = {
+      ...current,
+      ...payload,
+      nome: payload.nome?.trim() || current.nome,
+      cpf_cnpj: payload.cpf_cnpj || "",
+      telefone: payload.telefone || "",
+      endereco: payload.endereco || "",
+    };
+    try {
+      await sendCommand("updateCliente", updated);
+      set((state) => ({
+        clientes: state.clientes.map((cliente) =>
+          cliente.id === id ? updated : cliente,
+        ),
+      }));
     } catch (error) {
       return;
     }
@@ -469,16 +492,27 @@ export const useDataStore = create((set, get) => ({
       data_recebimento: null,
       forma_recebimento: null,
     }));
+    const vendaDetalhes = parcelas.map((parcela) => ({
+      id: uuidv4(),
+      venda_id: vendaId,
+      parcela_id: parcela.id,
+      tipo_evento: "PARCELA",
+      descricao: `Parcela ${parcela.parcela_num} criada`,
+      valor: parcela.valor,
+      data_evento: dataVenda,
+    }));
     try {
       await sendCommand("addVenda", {
         venda,
         contaReceber,
         parcelas,
+        vendaDetalhes,
       });
       set((state) => ({
         vendas: [...state.vendas, venda],
         contasReceber: [...state.contasReceber, contaReceber],
         contasReceberParcelas: [...state.contasReceberParcelas, ...parcelas],
+        vendaDetalhes: [...state.vendaDetalhes, ...vendaDetalhes],
       }));
     } catch (error) {
       return;
@@ -573,23 +607,60 @@ export const useDataStore = create((set, get) => ({
       return;
     }
   },
-  marcarParcelaRecebida: async (id) => {
+  marcarParcelaRecebida: async ({
+    id,
+    forma_recebimento = "Pix",
+    tipo_ajuste = "SEM_AJUSTE",
+    valor_ajuste = 0,
+    venda_id,
+  }) => {
     const parcelaAtual = get().contasReceberParcelas.find(
       (parcela) => parcela.id === id,
     );
     if (!parcelaAtual) return;
+    const valorAjusteNormalizado = Number(valor_ajuste) || 0;
+    const tipoAjusteNormalizado =
+      tipo_ajuste === "DESCONTO" || tipo_ajuste === "JUROS"
+        ? tipo_ajuste
+        : "SEM_AJUSTE";
+    const ajusteValor =
+      tipoAjusteNormalizado === "DESCONTO"
+        ? -Math.abs(valorAjusteNormalizado)
+        : tipoAjusteNormalizado === "JUROS"
+          ? Math.abs(valorAjusteNormalizado)
+          : 0;
+    const ajuste =
+      tipoAjusteNormalizado === "SEM_AJUSTE"
+        ? null
+        : {
+            id: uuidv4(),
+            venda_id,
+            tipo_evento: tipoAjusteNormalizado,
+            descricao:
+              tipoAjusteNormalizado === "DESCONTO"
+                ? "Desconto aplicado no recebimento de parcela"
+                : "Juros aplicado no recebimento de parcela",
+            valor: ajusteValor,
+            data_evento: nowIso(),
+          };
     const updated = {
       ...parcelaAtual,
       status: "RECEBIDA",
       data_recebimento: nowIso(),
-      forma_recebimento: "Pix",
+      forma_recebimento,
     };
     try {
-      await sendCommand("marcarParcelaRecebida", updated);
+      await sendCommand("marcarParcelaRecebida", {
+        ...updated,
+        ajuste,
+      });
       set((state) => ({
         contasReceberParcelas: state.contasReceberParcelas.map((parcela) =>
           parcela.id === id ? updated : parcela,
         ),
+        vendaDetalhes: ajuste
+          ? [...state.vendaDetalhes, ajuste]
+          : state.vendaDetalhes,
       }));
     } catch (error) {
       return;

@@ -18,6 +18,7 @@ const tableMap = [
     queryText: "SELECT * FROM custos_adicionais_producao",
   },
   { key: "vendas", queryText: "SELECT * FROM vendas" },
+  { key: "vendaDetalhes", queryText: "SELECT * FROM venda_detalhes" },
   { key: "contasPagar", queryText: "SELECT * FROM contas_pagar" },
   {
     key: "contasPagarParcelas",

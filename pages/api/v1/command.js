@@ -62,6 +62,18 @@ export default async function handler(req, res) {
           ],
         );
         break;
+      case "updateCliente":
+        await query(
+          "UPDATE clientes SET nome = $2, cpf_cnpj = $3, telefone = $4, endereco = $5 WHERE id = $1",
+          [
+            payload.id,
+            payload.nome,
+            payload.cpf_cnpj,
+            payload.telefone,
+            payload.endereco,
+          ],
+        );
+        break;
       case "addFornecedor":
         await query(
           "INSERT INTO fornecedores (id, razao_social, cpf_cnpj, telefone, endereco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
@@ -480,6 +492,23 @@ export default async function handler(req, res) {
               parcela,
             );
           }
+
+          for (const detalhe of payload.vendaDetalhes || []) {
+            await insertRow(
+              client,
+              "venda_detalhes",
+              [
+                "id",
+                "venda_id",
+                "parcela_id",
+                "tipo_evento",
+                "descricao",
+                "valor",
+                "data_evento",
+              ],
+              detalhe,
+            );
+          }
         });
         break;
       case "confirmarEntregaVenda":
@@ -539,15 +568,42 @@ export default async function handler(req, res) {
         );
         break;
       case "marcarParcelaRecebida":
-        await query(
-          "UPDATE contas_receber_parcelas SET status = $2, data_recebimento = $3, forma_recebimento = $4 WHERE id = $1",
-          [
-            payload.id,
-            payload.status,
-            payload.data_recebimento,
-            payload.forma_recebimento,
-          ],
-        );
+        await withTransaction(async (client) => {
+          await client.query(
+            "UPDATE contas_receber_parcelas SET status = $2, data_recebimento = $3, forma_recebimento = $4 WHERE id = $1",
+            [
+              payload.id,
+              payload.status,
+              payload.data_recebimento,
+              payload.forma_recebimento,
+            ],
+          );
+
+          if (payload.ajuste && getNumber(payload.ajuste.valor) !== 0) {
+            await insertRow(
+              client,
+              "venda_detalhes",
+              [
+                "id",
+                "venda_id",
+                "parcela_id",
+                "tipo_evento",
+                "descricao",
+                "valor",
+                "data_evento",
+              ],
+              {
+                id: payload.ajuste.id,
+                venda_id: payload.ajuste.venda_id,
+                parcela_id: payload.id,
+                tipo_evento: payload.ajuste.tipo_evento,
+                descricao: payload.ajuste.descricao,
+                valor: payload.ajuste.valor,
+                data_evento: payload.data_recebimento,
+              },
+            );
+          }
+        });
         break;
       default:
         return res.status(400).json({ error: "Ação não reconhecida." });
