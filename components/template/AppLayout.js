@@ -28,6 +28,7 @@ import {
   PointOfSale,
   PrecisionManufacturing,
   ReceiptLong,
+  Settings,
   StackedLineChart,
 } from "@mui/icons-material";
 import Link from "next/link";
@@ -134,6 +135,19 @@ const menuGroups = [
         href: "/app/detalhe-cliente",
         roles: ["admin", "vendas"],
         icon: Handshake,
+      },
+    ],
+  },
+  {
+    id: "configuracao",
+    label: "Configuração da Empresa",
+    icon: Settings,
+    items: [
+      {
+        label: "Parâmetros de Estoque",
+        href: "/app/configuracao-empresa",
+        roles: ["admin"],
+        icon: Settings,
       },
     ],
   },

@@ -1,8 +1,15 @@
-import { Grid, Paper, Stack, Typography } from "@mui/material";
+import { Chip, Grid, Paper, Stack, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { formatCurrency } from "../../utils/format";
+
+const statusColorMap = {
+  CRITICO: "error",
+  NORMAL: "success",
+  ELEVADO: "warning",
+  EXCESSO: "secondary",
+};
 
 const DashboardInsumosPage = () => {
   const [insumos, setInsumos] = useState([]);
@@ -28,30 +35,62 @@ const DashboardInsumosPage = () => {
     <AppLayout>
       <PageHeader
         title="Dashboard de Insumos"
-        subtitle="Saldo, custo médio e valor em estoque de matérias-primas."
+        subtitle="Saldo, custo médio e status do estoque mínimo configurado."
       />
       <Grid container spacing={2}>
         {insumos.map((insumo) => (
           <Grid item xs={12} md={6} key={insumo.id}>
             <Paper sx={{ p: 3 }}>
-              <Stack spacing={1}>
-                <Typography variant="h6" fontWeight={600}>
-                  {insumo.nome}
-                </Typography>
+              <Stack spacing={1.2}>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Typography variant="h6" fontWeight={600}>
+                    {insumo.nome}
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label={insumo.status_label || "Sem faixa"}
+                    color={statusColorMap[insumo.status_estoque] || "default"}
+                  />
+                </Stack>
+
                 <Typography variant="body2" color="text.secondary">
                   Estoque (kg): {Number(insumo.saldo_kg).toFixed(2)} kg
                 </Typography>
-                {insumo.unidade === "saco" ? (
+
+                {insumo.tipo !== "FISICO" ? (
                   <Typography variant="body2" color="text.secondary">
                     Estoque (sacos): {Number(insumo.saldo_sacos).toFixed(2)}{" "}
                     sacos
                   </Typography>
                 ) : null}
+
                 <Typography variant="body2" color="text.secondary">
-                  Custo médio: {formatCurrency(insumo.custo_medio)}
+                  Custo médio (kg): {formatCurrency(insumo.custo_medio_kg)}
                 </Typography>
+
+                {insumo.tipo !== "FISICO" ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Custo médio (saco):{" "}
+                    {formatCurrency(insumo.custo_medio_saco)}
+                  </Typography>
+                ) : null}
+
                 <Typography variant="body2" color="text.secondary">
                   Valor em estoque: {formatCurrency(insumo.valor_estoque)}
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary">
+                  Estoque mínimo:{" "}
+                  {Number(insumo.estoque_minimo_kg || 0).toFixed(2)} kg
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary">
+                  Percentual sobre mínimo:{" "}
+                  {Number(insumo.percentual_estoque || 0).toFixed(2)}%
                 </Typography>
               </Stack>
             </Paper>
