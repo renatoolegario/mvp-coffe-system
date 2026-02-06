@@ -146,6 +146,31 @@ export const useDataStore = create((set, get) => ({
       return;
     }
   },
+  updateInsumo: async ({ id, ...payload }) => {
+    const current = get().insumos.find((insumo) => insumo.id === id);
+    if (!current) return;
+
+    const updated = {
+      ...current,
+      ...payload,
+      nome: payload.nome?.trim() || current.nome,
+      kg_por_saco: Number(payload.kg_por_saco) || 1,
+      estoque_minimo: Number(payload.estoque_minimo) || 0,
+      estoque_minimo_unidade:
+        payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
+    };
+
+    try {
+      await sendCommand("updateInsumo", updated);
+      set((state) => ({
+        insumos: state.insumos.map((insumo) =>
+          insumo.id === id ? updated : insumo,
+        ),
+      }));
+    } catch (error) {
+      return;
+    }
+  },
   addEntradaInsumos: async ({
     fornecedor_id,
     insumo_id,

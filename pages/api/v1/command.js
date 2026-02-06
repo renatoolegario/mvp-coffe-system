@@ -90,6 +90,18 @@ export default async function handler(req, res) {
           ],
         );
         break;
+      case "updateInsumo":
+        await query(
+          "UPDATE insumos SET nome = $2, estoque_minimo = $3, estoque_minimo_unidade = $4, kg_por_saco = $5 WHERE id = $1",
+          [
+            payload.id,
+            payload.nome,
+            getNumber(payload.estoque_minimo),
+            payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
+            getNumber(payload.kg_por_saco) || 1,
+          ],
+        );
+        break;
       case "addEntradaInsumos":
         await withTransaction(async (client) => {
           await insertRow(
