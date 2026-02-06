@@ -423,7 +423,13 @@ export const useDataStore = create((set, get) => ({
       return;
     }
   },
-  addVenda: async ({ cliente_id, itens, parcelas_qtd, obs }) => {
+  addVenda: async ({
+    cliente_id,
+    itens,
+    parcelas_qtd,
+    obs,
+    data_programada_entrega,
+  }) => {
     const vendaId = uuidv4();
     const dataVenda = nowIso();
     const valor_total = itens.reduce(
@@ -438,6 +444,9 @@ export const useDataStore = create((set, get) => ({
       parcelas_qtd,
       valor_negociado: valor_total,
       status: "FECHADA",
+      data_programada_entrega: data_programada_entrega || null,
+      data_entrega: null,
+      status_entrega: "PENDENTE",
       obs,
     };
     const contaReceberId = uuidv4();
@@ -470,6 +479,73 @@ export const useDataStore = create((set, get) => ({
         vendas: [...state.vendas, venda],
         contasReceber: [...state.contasReceber, contaReceber],
         contasReceberParcelas: [...state.contasReceberParcelas, ...parcelas],
+      }));
+    } catch (error) {
+      return;
+    }
+  },
+  confirmarEntregaVenda: async ({ venda_id, data_entrega, custos_extras }) => {
+    const venda = get().vendas.find((item) => item.id === venda_id);
+    if (!venda) return;
+
+    const dataEntrega = data_entrega || nowIso().slice(0, 10);
+    const despesas = (custos_extras || []).map((item) => {
+      const contaPagarId = uuidv4();
+      const valor = Number(item.valor) || 0;
+      const dataDespesa = item.data || dataEntrega;
+      const statusPagamento =
+        item.status_pagamento === "A_VISTA" ? "PAGO" : "ABERTO";
+
+      return {
+        contaPagar: {
+          id: contaPagarId,
+          fornecedor_id: item.fornecedor_id || null,
+          origem_tipo: "venda_despesa_extra",
+          origem_id: venda_id,
+          venda_id,
+          valor_total: valor,
+          data_emissao: dataDespesa,
+          status: statusPagamento,
+        },
+        parcela: {
+          id: uuidv4(),
+          conta_pagar_id: contaPagarId,
+          parcela_num: 1,
+          vencimento: dataDespesa,
+          valor,
+          status: statusPagamento === "PAGO" ? "PAGA" : "ABERTA",
+          data_pagamento: statusPagamento === "PAGO" ? dataDespesa : null,
+          forma_pagamento: statusPagamento === "PAGO" ? "Entrega" : null,
+        },
+      };
+    });
+
+    try {
+      await sendCommand("confirmarEntregaVenda", {
+        venda_id,
+        data_entrega: dataEntrega,
+        contasPagar: despesas.map((item) => item.contaPagar),
+        parcelas: despesas.map((item) => item.parcela),
+      });
+
+      set((state) => ({
+        vendas: state.vendas.map((item) =>
+          item.id === venda_id
+            ? {
+                ...item,
+                status_entrega: "ENTREGUE",
+                data_entrega: dataEntrega,
+              }
+            : item,
+        ),
+        contasPagar: [
+          ...state.contasPagar,
+          ...despesas.map((item) => item.contaPagar),
+        ],
+        contasPagarParcelas: [
+          ...state.contasPagarParcelas,
+          ...despesas.map((item) => item.parcela),
+        ],
       }));
     } catch (error) {
       return;
