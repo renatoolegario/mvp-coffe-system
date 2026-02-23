@@ -91,7 +91,7 @@ export default async function handler(req, res) {
         break;
       case "addInsumo":
         await query(
-          "INSERT INTO insumos (id, nome, unidade, estoque_minimo, estoque_minimo_unidade, kg_por_saco, preco_kg, tipo, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+          "INSERT INTO insumos (id, nome, unidade, estoque_minimo, estoque_minimo_unidade, kg_por_saco, preco_kg, tipo, ativo, criado_em, pode_ser_insumo, pode_ser_produzivel, pode_ser_vendido) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
           [
             payload.id,
             payload.nome,
@@ -103,12 +103,15 @@ export default async function handler(req, res) {
             normalizeInsumoTipo(payload.tipo),
             payload.ativo,
             payload.criado_em,
+            payload.pode_ser_insumo ?? true,
+            payload.pode_ser_produzivel ?? false,
+            payload.pode_ser_vendido ?? false,
           ],
         );
         break;
       case "updateInsumo":
         await query(
-          "UPDATE insumos SET nome = $2, estoque_minimo = $3, estoque_minimo_unidade = $4, kg_por_saco = $5, tipo = $6 WHERE id = $1",
+          "UPDATE insumos SET nome = $2, estoque_minimo = $3, estoque_minimo_unidade = $4, kg_por_saco = $5, tipo = $6, pode_ser_insumo = $7, pode_ser_produzivel = $8, pode_ser_vendido = $9 WHERE id = $1",
           [
             payload.id,
             payload.nome,
@@ -116,6 +119,9 @@ export default async function handler(req, res) {
             payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
             getNumber(payload.kg_por_saco) || 1,
             normalizeInsumoTipo(payload.tipo),
+            payload.pode_ser_insumo ?? true,
+            payload.pode_ser_produzivel ?? false,
+            payload.pode_ser_vendido ?? false,
           ],
         );
         break;
@@ -193,8 +199,6 @@ export default async function handler(req, res) {
               "insumo_final_id",
               "status",
               "modo_geracao",
-              "taxa_conversao_planejada",
-              "peso_previsto",
               "obs",
               "anexo_base64",
               "custo_total_previsto",
@@ -236,7 +240,7 @@ export default async function handler(req, res) {
               {
                 id: detalhe.movimento_id,
                 insumo_id: detalhe.insumo_id,
-                tipo_movimento: "SAIDA_PRODUCAO",
+                tipo_movimento: "RESERVA_PRODUCAO",
                 custo_unitario: detalhe.custo_unitario_previsto,
                 quantidade_entrada: 0,
                 quantidade_saida: detalhe.quantidade_kg,
@@ -257,7 +261,7 @@ export default async function handler(req, res) {
             [payload.producao_id],
           );
           const producao = producaoResult.rows[0];
-          if (!producao || Number(producao.status) !== 1) {
+          if (!producao || producao.status !== "PENDENTE") {
             throw new Error("Produção não encontrada ou já finalizada.");
           }
 
@@ -282,11 +286,10 @@ export default async function handler(req, res) {
             pesoReal > 0 ? custoTotalReal / pesoReal : 0;
 
           await client.query(
-            "UPDATE producao SET status = 2, peso_real = $2, taxa_conversao_real = $3, anexo_base64 = $4, custo_total_real = $5, custo_unitario_real = $6, obs = COALESCE($7, obs) WHERE id = $1",
+            "UPDATE producao SET status = 'CONCLUIDA', peso_real = $2, anexo_base64 = $3, custo_total_real = $4, custo_unitario_real = $5, obs = COALESCE($6, obs) WHERE id = $1",
             [
               payload.producao_id,
               pesoReal,
-              payload.taxa_conversao_real,
               payload.anexo_base64,
               custoTotalReal,
               custoUnitarioReal,
@@ -423,7 +426,7 @@ export default async function handler(req, res) {
           const precoMedioNovo =
             novoSaldo > 0
               ? (saldoAtual * precoAtual + pesoReal * custoUnitarioReal) /
-                novoSaldo
+              novoSaldo
               : custoUnitarioReal;
 
           await client.query("UPDATE insumos SET preco_kg = $2 WHERE id = $1", [
@@ -437,6 +440,33 @@ export default async function handler(req, res) {
           await client.query("DELETE FROM producao WHERE id = $1", [
             payload.producao_id,
           ]);
+        });
+        break;
+      case "cancelarProducao":
+        await withTransaction(async (client) => {
+          await client.query("UPDATE producao SET status = 'CANCELADA' WHERE id = $1", [
+            payload.producao_id,
+          ]);
+          for (const estorno of payload.estornos || []) {
+            await insertRow(
+              client,
+              "movimento_producao",
+              [
+                "id",
+                "insumo_id",
+                "tipo_movimento",
+                "custo_unitario",
+                "quantidade_entrada",
+                "quantidade_saida",
+                "data_movimentacao",
+                "referencia_tipo",
+                "referencia_id",
+                "producao_id",
+                "obs",
+              ],
+              estorno
+            );
+          }
         });
         break;
       case "addVenda":
@@ -604,6 +634,89 @@ export default async function handler(req, res) {
               },
             );
           }
+        });
+        break;
+      case "createTransferencia":
+        await withTransaction(async (client) => {
+          const { transferencia, movimento_origem_id, movimento_destino_id } =
+            payload;
+
+          await insertRow(
+            client,
+            "transferencias",
+            [
+              "id",
+              "origem_id",
+              "destino_id",
+              "quantidade_kg",
+              "custo_unitario",
+              "data_transferencia",
+              "obs",
+            ],
+            transferencia,
+          );
+
+          await insertRow(
+            client,
+            "movimento_producao",
+            [
+              "id",
+              "insumo_id",
+              "tipo_movimento",
+              "custo_unitario",
+              "quantidade_entrada",
+              "quantidade_saida",
+              "data_movimentacao",
+              "referencia_tipo",
+              "referencia_id",
+              "producao_id",
+              "obs",
+            ],
+            {
+              id: movimento_origem_id,
+              insumo_id: transferencia.origem_id,
+              tipo_movimento: "TRANSFERENCIA_SAIDA",
+              custo_unitario: transferencia.custo_unitario,
+              quantidade_entrada: 0,
+              quantidade_saida: transferencia.quantidade_kg,
+              data_movimentacao: transferencia.data_transferencia,
+              referencia_tipo: "transferencia",
+              referencia_id: transferencia.id,
+              producao_id: null,
+              obs: transferencia.obs || "",
+            },
+          );
+
+          await insertRow(
+            client,
+            "movimento_producao",
+            [
+              "id",
+              "insumo_id",
+              "tipo_movimento",
+              "custo_unitario",
+              "quantidade_entrada",
+              "quantidade_saida",
+              "data_movimentacao",
+              "referencia_tipo",
+              "referencia_id",
+              "producao_id",
+              "obs",
+            ],
+            {
+              id: movimento_destino_id,
+              insumo_id: transferencia.destino_id,
+              tipo_movimento: "TRANSFERENCIA_ENTRADA",
+              custo_unitario: transferencia.custo_unitario,
+              quantidade_entrada: transferencia.quantidade_kg,
+              quantidade_saida: 0,
+              data_movimentacao: transferencia.data_transferencia,
+              referencia_tipo: "transferencia",
+              referencia_id: transferencia.id,
+              producao_id: null,
+              obs: transferencia.obs || "",
+            },
+          );
         });
         break;
       default:

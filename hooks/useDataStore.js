@@ -191,6 +191,9 @@ export const useDataStore = create((set, get) => ({
       estoque_minimo_unidade: estoqueMinimoUnidade,
       preco_kg: Number(payload.preco_kg) || 0,
       tipo: normalizeInsumoTipo(payload.tipo),
+      pode_ser_insumo: payload.pode_ser_insumo ?? true,
+      pode_ser_produzivel: payload.pode_ser_produzivel ?? false,
+      pode_ser_vendido: payload.pode_ser_vendido ?? false,
     };
     try {
       await sendCommand("addInsumo", insumo);
@@ -212,6 +215,9 @@ export const useDataStore = create((set, get) => ({
       estoque_minimo_unidade:
         payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
       tipo: normalizeInsumoTipo(payload.tipo || current.tipo),
+      pode_ser_insumo: payload.pode_ser_insumo ?? current.pode_ser_insumo ?? true,
+      pode_ser_produzivel: payload.pode_ser_produzivel ?? current.pode_ser_produzivel ?? false,
+      pode_ser_vendido: payload.pode_ser_vendido ?? current.pode_ser_vendido ?? false,
     };
 
     try {
@@ -272,10 +278,10 @@ export const useDataStore = create((set, get) => ({
     };
     const parcelasBase = Array.isArray(parcelas_valores)
       ? parcelas_valores.map((valor, index) => ({
-          parcela_num: index + 1,
-          valor,
-          vencimento: parcelas_vencimentos?.[index] || dataEntrada,
-        }))
+        parcela_num: index + 1,
+        valor,
+        vencimento: parcelas_vencimentos?.[index] || dataEntrada,
+      }))
       : getParcelas(valor_total, parcelas_qtd);
     const parcelas = parcelasBase.map((parcela) => ({
       id: uuidv4(),
@@ -302,10 +308,10 @@ export const useDataStore = create((set, get) => ({
       const parcelasQtdExtra = Math.max(1, Number(item.parcelas_qtd) || 1);
       const parcelasBaseExtra = Array.isArray(item.parcelas_valores)
         ? item.parcelas_valores.map((valor, index) => ({
-            parcela_num: index + 1,
-            valor,
-            vencimento: item.parcelas_vencimentos?.[index] || dataEntrada,
-          }))
+          parcela_num: index + 1,
+          valor,
+          vencimento: item.parcelas_vencimentos?.[index] || dataEntrada,
+        }))
         : getParcelas(valorTotalExtra, parcelasQtdExtra);
 
       const contaPagarExtra = {
@@ -321,7 +327,7 @@ export const useDataStore = create((set, get) => ({
       const parcelasExtra = parcelasBaseExtra.map((parcela) => {
         const statusPagamento =
           (item.parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") ===
-          "PAGO"
+            "PAGO"
             ? "PAGO"
             : "A_PRAZO";
         return {
@@ -406,7 +412,7 @@ export const useDataStore = create((set, get) => ({
       id: producaoId,
       data_producao: dataProducao,
       insumo_final_id,
-      status: 1,
+      status: "PENDENTE",
       modo_geracao: modo_geracao || "PRODUTO_FINAL",
       taxa_conversao_planejada,
       peso_previsto: Number(peso_previsto) || 0,
@@ -468,6 +474,60 @@ export const useDataStore = create((set, get) => ({
     if (!producaoId) return;
     try {
       await sendCommand("deleteProducao", { producao_id: producaoId });
+      await get().loadData();
+    } catch (error) {
+      return;
+    }
+  },
+  cancelarProducao: async (producaoId) => {
+    if (!producaoId) return;
+
+    const movimentosReserva = get()
+      .movimentoProducao.filter(
+        (m) => String(m.producao_id) === String(producaoId) && m.tipo_movimento === "RESERVA_PRODUCAO"
+      );
+
+    const dataCancelamento = nowIso();
+
+    const estornos = movimentosReserva.map((mov) => ({
+      id: uuidv4(),
+      insumo_id: mov.insumo_id,
+      tipo_movimento: "ESTORNO_PRODUCAO",
+      custo_unitario: Number(mov.custo_unitario) || 0,
+      quantidade_entrada: Number(mov.quantidade_saida) || 0,
+      quantidade_saida: 0,
+      data_movimentacao: dataCancelamento,
+      referencia_tipo: "producao_cancelamento",
+      referencia_id: producaoId,
+      producao_id: producaoId,
+      obs: "Cancelamento de Ordem de Produção",
+    }));
+
+    try {
+      await sendCommand("cancelarProducao", { producao_id: producaoId, estornos });
+      await get().loadData();
+    } catch (error) {
+      return;
+    }
+  },
+  createTransferencia: async (payload) => {
+    const dataTransferencia = nowIso();
+    const id = uuidv4();
+    const movimento_origem_id = uuidv4();
+    const movimento_destino_id = uuidv4();
+
+    const transferencia = {
+      id,
+      data_transferencia: dataTransferencia,
+      ...payload,
+    };
+
+    try {
+      await sendCommand("createTransferencia", {
+        transferencia,
+        movimento_origem_id,
+        movimento_destino_id,
+      });
       await get().loadData();
     } catch (error) {
       return;
@@ -593,10 +653,10 @@ export const useDataStore = create((set, get) => ({
         vendas: state.vendas.map((item) =>
           item.id === venda_id
             ? {
-                ...item,
-                status_entrega: "ENTREGUE",
-                data_entrega: dataEntrega,
-              }
+              ...item,
+              status_entrega: "ENTREGUE",
+              data_entrega: dataEntrega,
+            }
             : item,
         ),
         contasPagar: [
@@ -660,16 +720,16 @@ export const useDataStore = create((set, get) => ({
       tipoAjusteNormalizado === "SEM_AJUSTE"
         ? null
         : {
-            id: uuidv4(),
-            venda_id,
-            tipo_evento: tipoAjusteNormalizado,
-            descricao:
-              tipoAjusteNormalizado === "DESCONTO"
-                ? "Desconto aplicado no recebimento de parcela"
-                : "Juros aplicado no recebimento de parcela",
-            valor: ajusteValor,
-            data_evento: nowIso(),
-          };
+          id: uuidv4(),
+          venda_id,
+          tipo_evento: tipoAjusteNormalizado,
+          descricao:
+            tipoAjusteNormalizado === "DESCONTO"
+              ? "Desconto aplicado no recebimento de parcela"
+              : "Juros aplicado no recebimento de parcela",
+          valor: ajusteValor,
+          data_evento: nowIso(),
+        };
     const updated = {
       ...parcelaAtual,
       status: "RECEBIDA",

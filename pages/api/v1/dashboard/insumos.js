@@ -31,32 +31,41 @@ const getResumoInsumo = (insumoId, movimentos = []) => {
       new Date(b.data_movimentacao).getTime(),
   );
 
-  let saldo = 0;
+  let saldoDisponivel = 0;
+  let saldoTransito = 0;
   let custoMedio = 0;
 
   orderedMovimentos.forEach((movimento) => {
     const quantidadeEntrada = normalizeNumber(movimento.quantidade_entrada);
     const quantidadeSaida = normalizeNumber(movimento.quantidade_saida);
     const custoUnitario = normalizeNumber(movimento.custo_unitario);
+    const isTransitoAberto =
+      movimento.tipo_movimento === "RESERVA_PRODUCAO" &&
+      movimento.status_producao === "PENDENTE";
 
     if (quantidadeEntrada > 0) {
-      const novoSaldo = saldo + quantidadeEntrada;
+      const novoSaldo = saldoDisponivel + quantidadeEntrada;
       custoMedio = novoSaldo
-        ? (saldo * custoMedio + quantidadeEntrada * custoUnitario) / novoSaldo
+        ? (saldoDisponivel * custoMedio + quantidadeEntrada * custoUnitario) /
+        novoSaldo
         : 0;
-      saldo = novoSaldo;
+      saldoDisponivel = novoSaldo;
     }
 
     if (quantidadeSaida > 0) {
-      saldo -= quantidadeSaida;
+      saldoDisponivel -= quantidadeSaida;
+      if (isTransitoAberto) {
+        saldoTransito += quantidadeSaida;
+      }
     }
   });
 
   return {
     insumo_id: insumoId,
-    saldo_kg: saldo,
+    saldo_kg: saldoDisponivel,
+    saldo_transito_kg: saldoTransito,
     custo_medio: custoMedio,
-    valor_estoque: saldo * custoMedio,
+    valor_estoque: (saldoDisponivel + saldoTransito) * custoMedio,
   };
 };
 
@@ -72,7 +81,10 @@ export default async function handler(req, res) {
         "SELECT id, nome, unidade, kg_por_saco, preco_kg, tipo, estoque_minimo, estoque_minimo_unidade FROM insumos ORDER BY nome ASC",
       ),
       query(
-        "SELECT insumo_id, quantidade_entrada, quantidade_saida, custo_unitario, data_movimentacao FROM movimento_producao ORDER BY data_movimentacao ASC",
+        `SELECT m.insumo_id, m.quantidade_entrada, m.quantidade_saida, m.custo_unitario, m.data_movimentacao, m.tipo_movimento, p.status as status_producao
+         FROM movimento_producao m
+         LEFT JOIN producao p ON m.producao_id = p.id
+         ORDER BY m.data_movimentacao ASC`,
       ),
       query(
         "SELECT chave, label, percentual_min, percentual_max, ordem FROM empresa_configuracao_estoque ORDER BY ordem ASC",
@@ -106,10 +118,13 @@ export default async function handler(req, res) {
         : 0;
       const faixaStatus = getFaixaStatus(percentualEstoque, faixasResult.rows);
 
+      const saldoTransitoSacos = resumo.saldo_transito_kg / kgPorSaco;
+
       return {
         ...insumo,
         ...resumo,
         saldo_sacos: saldoSacos,
+        saldo_transito_sacos: saldoTransitoSacos,
         custo_medio_kg: custoMedioKg,
         custo_medio_saco: custoMedioSaco,
         estoque_minimo_kg: estoqueMinimoKg,

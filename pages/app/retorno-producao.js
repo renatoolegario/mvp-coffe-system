@@ -42,17 +42,17 @@ const RetornoProducaoPage = () => {
   const confirmarRetornoProducao = useDataStore(
     (state) => state.confirmarRetornoProducao,
   );
+  const cancelarProducao = useDataStore((state) => state.cancelarProducao);
 
   const [producaoConfirmadaId, setProducaoConfirmadaId] = useState("");
-  const [pesoReal, setPesoReal] = useState("");
-  const [taxaReal, setTaxaReal] = useState("");
+  const [sacosRetornados, setSacosRetornados] = useState("");
   const [obsRetorno, setObsRetorno] = useState("");
   const [custosAdicionais, setCustosAdicionais] = useState([
     createCustoAdicional(),
   ]);
 
   const producoesPendentes = useMemo(
-    () => producoes.filter((producao) => Number(producao.status) === 1),
+    () => producoes.filter((producao) => producao.status === "PENDENTE"),
     [producoes],
   );
 
@@ -69,9 +69,16 @@ const RetornoProducaoPage = () => {
     [detalhesProducao, producaoConfirmadaId],
   );
 
+  const sacosPrevistos = useMemo(() => {
+    const totalKg = detalhesDaProducaoConfirmada.reduce(
+      (acc, detalhe) => acc + toNumber(detalhe.quantidade_kg),
+      0,
+    );
+    return (totalKg * 0.75) / 23;
+  }, [detalhesDaProducaoConfirmada]);
+
   const resetFormulario = () => {
-    setPesoReal("");
-    setTaxaReal("");
+    setSacosRetornados("");
     setObsRetorno("");
     setCustosAdicionais([createCustoAdicional()]);
   };
@@ -92,7 +99,8 @@ const RetornoProducaoPage = () => {
 
   const handleConfirmarRetorno = async (event) => {
     event.preventDefault();
-    if (!producaoConfirmadaId || toNumber(pesoReal) <= 0) return;
+    const sacos = toNumber(sacosRetornados);
+    if (!producaoConfirmadaId || sacos <= 0) return;
 
     const custosValidos = custosAdicionais
       .map((item) => ({
@@ -103,8 +111,8 @@ const RetornoProducaoPage = () => {
 
     await confirmarRetornoProducao({
       producao_id: producaoConfirmadaId,
-      peso_real: toNumber(pesoReal),
-      taxa_conversao_real: toNumber(taxaReal) || null,
+      peso_real: sacos * 23,
+      taxa_conversao_real: 0,
       custos_adicionais: custosValidos,
       obs: obsRetorno,
     });
@@ -113,11 +121,24 @@ const RetornoProducaoPage = () => {
     resetFormulario();
   };
 
+  const handleCancelar = async () => {
+    if (!producaoConfirmadaId) return;
+    if (
+      confirm(
+        "Tem certeza que deseja cancelar (estornar) esta produção? Os insumos retornarão ao estoque disponível."
+      )
+    ) {
+      await cancelarProducao(producaoConfirmadaId);
+      setProducaoConfirmadaId("");
+      resetFormulario();
+    }
+  };
+
   return (
     <AppLayout>
       <PageHeader
-        title="Retorno da Produção"
-        subtitle="Etapa 2: confirmar retorno, custos e entrada do produto final."
+        title="Produções em Trânsito"
+        subtitle="Etapa 2: Acompanhar ordens abertas, confirmar retorno, atualizar custos e dar entrada do produto final."
       />
       <Grid container spacing={3}>
         <Grid item xs={12} lg={8}>
@@ -131,7 +152,6 @@ const RetornoProducaoPage = () => {
                   <TableRow>
                     <TableCell>ID</TableCell>
                     <TableCell>Data</TableCell>
-                    <TableCell align="right">Peso previsto (kg)</TableCell>
                     <TableCell align="right">Ação</TableCell>
                   </TableRow>
                 </TableHead>
@@ -144,9 +164,6 @@ const RetornoProducaoPage = () => {
                           <TableCell>{item.id.slice(0, 8)}</TableCell>
                           <TableCell>
                             {formatDate(item.data_producao)}
-                          </TableCell>
-                          <TableCell align="right">
-                            {toNumber(item.peso_previsto).toFixed(2)}
                           </TableCell>
                           <TableCell align="right">
                             <Button
@@ -163,8 +180,8 @@ const RetornoProducaoPage = () => {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
-                        Nenhuma produção pendente para retorno.
+                      <TableCell colSpan={3} align="center">
+                        Nenhuma produção em trânsito.
                       </TableCell>
                     </TableRow>
                   )}
@@ -184,11 +201,10 @@ const RetornoProducaoPage = () => {
                 <Stack spacing={2}>
                   <Paper variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="body2" fontWeight={600}>
-                      Produção confirmada: {producaoConfirmada.id.slice(0, 8)}
+                      Produção (OP): {producaoConfirmada.id.slice(0, 8)}
                     </Typography>
-                    <Typography variant="body2" fontWeight={600}>
-                      Peso previsto:{" "}
-                      {toNumber(producaoConfirmada.peso_previsto).toFixed(2)} kg
+                    <Typography variant="body2" color="primary" fontWeight={600} mb={1}>
+                      Retorno esperado: ≈ {sacosPrevistos.toFixed(1)} sacos de 23kg
                     </Typography>
                     {detalhesDaProducaoConfirmada.map((detalhe) => {
                       const insumo = insumos.find(
@@ -208,17 +224,11 @@ const RetornoProducaoPage = () => {
                   </Paper>
 
                   <TextField
-                    label="Peso real gerado (kg)"
+                    label="Quantidade de Sacos (23kg) recebidos"
                     type="number"
-                    value={pesoReal}
-                    onChange={(event) => setPesoReal(event.target.value)}
+                    value={sacosRetornados}
+                    onChange={(event) => setSacosRetornados(event.target.value)}
                     required
-                  />
-                  <TextField
-                    label="Taxa de conversão real (%)"
-                    type="number"
-                    value={taxaReal}
-                    onChange={(event) => setTaxaReal(event.target.value)}
                   />
 
                   <Typography variant="subtitle2">Custos adicionais</Typography>
@@ -329,9 +339,18 @@ const RetornoProducaoPage = () => {
                   <Button
                     type="submit"
                     variant="contained"
-                    disabled={!producaoConfirmadaId || toNumber(pesoReal) <= 0}
+                    disabled={!producaoConfirmadaId || toNumber(sacosRetornados) <= 0}
                   >
-                    Confirmar retorno (status 2)
+                    Confirmar retorno (Concluída)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    color="error"
+                    disabled={!producaoConfirmadaId}
+                    onClick={handleCancelar}
+                  >
+                    Cancelar / Estornar (Retornar Estoque)
                   </Button>
                 </Stack>
               </Box>

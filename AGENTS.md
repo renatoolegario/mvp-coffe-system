@@ -23,8 +23,6 @@ pg - para conexão com o banco de dados
 uuid - Para gerar hash uui4
 🔎 Observação: não vamos utilizar TypeScript, todo o projeto será feito em JavaScript/JSX.
 
-#integração relógio evo
-A documentação de integração com o relógio evo está em /docs/Evo_API.md 
 
 Teremos os Erros Customizados crinado uma class validationError extends Error <- vou erdar o error dentro dessa nova classe e passar para dentro dela a message
 Com o seguinte parametro:

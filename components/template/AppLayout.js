@@ -30,6 +30,7 @@ import {
   ReceiptLong,
   Settings,
   StackedLineChart,
+  SwapHoriz,
 } from "@mui/icons-material";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -82,34 +83,22 @@ const menuGroups = [
     icon: PrecisionManufacturing,
     items: [
       {
-        label: "Entrada de Insumos",
-        href: "/app/entrada-insumos",
-        roles: ["admin", "producao"],
-        icon: FactCheck,
-      },
-      {
         label: "Produção",
         href: "/app/producao",
         roles: ["admin", "producao"],
         icon: PrecisionManufacturing,
       },
       {
-        label: "Retorno Produção",
+        label: "Produções em Trânsito",
         href: "/app/retorno-producao",
         roles: ["admin", "producao"],
         icon: PrecisionManufacturing,
       },
       {
-        label: "Dashboard Insumos",
-        href: "/app/dashboard-insumos",
+        label: "Transferências Internas",
+        href: "/app/transferencias",
         roles: ["admin", "producao"],
-        icon: BarChart,
-      },
-      {
-        label: "Dashboard Estoque",
-        href: "/app/dashboard-lotes",
-        roles: ["admin", "producao"],
-        icon: StackedLineChart,
+        icon: SwapHoriz,
       },
     ],
   },

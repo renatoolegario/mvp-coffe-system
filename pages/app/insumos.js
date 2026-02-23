@@ -14,10 +14,12 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close, Edit, PersonAdd } from "@mui/icons-material";
-import { useState } from "react";
+import { Close, Edit, PersonAdd, AddBusiness, Search } from "@mui/icons-material";
+import { useState, useMemo } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import InsumoLedgerModal from "../../components/atomic/InsumoLedgerModal";
+import EntradaInsumoDrawer from "../../components/atomic/EntradaInsumoDrawer";
 import { useDataStore } from "../../hooks/useDataStore";
 
 const initialForm = {
@@ -26,6 +28,9 @@ const initialForm = {
   estoque_minimo: "",
   estoque_minimo_unidade: "kg",
   tipo: "CONSUMIVEL",
+  pode_ser_insumo: true,
+  pode_ser_produzivel: false,
+  pode_ser_vendido: false,
 };
 
 const InsumosPage = () => {
@@ -36,20 +41,35 @@ const InsumosPage = () => {
   const [editForm, setEditForm] = useState(initialForm);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [selectedInsumo, setSelectedInsumo] = useState(null);
   const [editingInsumoId, setEditingInsumoId] = useState("");
   const [feedback, setFeedback] = useState({
     open: false,
     message: "",
     severity: "success",
   });
+  const [filtroNome, setFiltroNome] = useState("");
+  const [entradaDrawerOpen, setEntradaDrawerOpen] = useState(false);
+
+  const insumosFiltrados = useMemo(() => {
+    if (!filtroNome.trim()) return insumos;
+    const lower = filtroNome.toLowerCase();
+    return insumos.filter((i) => i.nome.toLowerCase().includes(lower));
+  }, [insumos, filtroNome]);
+
+  const openLedgerDialog = (insumo) => {
+    setSelectedInsumo(insumo);
+    setLedgerOpen(true);
+  };
 
   const handleChange = (field) => (event) => {
-    const value = event.target.value;
+    const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleEditChange = (field) => (event) => {
-    const value = event.target.value;
+    const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -108,6 +128,9 @@ const InsumosPage = () => {
       estoque_minimo_unidade:
         insumo.estoque_minimo_unidade === "saco" ? "saco" : "kg",
       tipo: insumo.tipo === "FISICO" ? "FISICO" : "CONSUMIVEL",
+      pode_ser_insumo: insumo.pode_ser_insumo ?? true,
+      pode_ser_produzivel: insumo.pode_ser_produzivel ?? false,
+      pode_ser_vendido: insumo.pode_ser_vendido ?? false,
     });
     setEditDrawerOpen(true);
   };
@@ -140,6 +163,9 @@ const InsumosPage = () => {
       estoque_minimo: Number(editForm.estoque_minimo) || 0,
       estoque_minimo_unidade: editForm.estoque_minimo_unidade,
       tipo: editForm.tipo,
+      pode_ser_insumo: editForm.pode_ser_insumo,
+      pode_ser_produzivel: editForm.pode_ser_produzivel,
+      pode_ser_vendido: editForm.pode_ser_vendido,
     });
 
     setEditDrawerOpen(false);
@@ -157,23 +183,44 @@ const InsumosPage = () => {
         title="Gestão de Insumos"
         subtitle="Cadastre matérias-primas e parâmetros de estoque."
         action={
-          <Button
-            variant="contained"
-            startIcon={<PersonAdd />}
-            onClick={() => setDrawerOpen(true)}
-          >
-            Cadastrar insumo
-          </Button>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <Button
+              variant="outlined"
+              startIcon={<AddBusiness />}
+              onClick={() => setEntradaDrawerOpen(true)}
+            >
+              Entrada de Estoque
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<PersonAdd />}
+              onClick={() => setDrawerOpen(true)}
+            >
+              Novo insumo
+            </Button>
+          </Stack>
         }
       />
       <Grid container spacing={3}>
         <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Insumos cadastrados
-            </Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} mb={2} spacing={2}>
+              <Typography variant="h6">
+                Insumos cadastrados
+              </Typography>
+              <TextField
+                size="small"
+                placeholder="Buscar insumo..."
+                value={filtroNome}
+                onChange={(e) => setFiltroNome(e.target.value)}
+                InputProps={{
+                  startAdornment: <Search color="action" sx={{ mr: 1 }} />,
+                }}
+                sx={{ width: { xs: "100%", sm: 300 } }}
+              />
+            </Stack>
             <Stack spacing={2}>
-              {insumos.map((insumo) => (
+              {insumosFiltrados.map((insumo) => (
                 <Paper key={insumo.id} variant="outlined" sx={{ p: 2 }}>
                   <Stack
                     direction={{ xs: "column", sm: "row" }}
@@ -192,21 +239,33 @@ const InsumosPage = () => {
                         {insumo.estoque_minimo_unidade || "kg"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Tipo:{" "}
-                        {insumo.tipo === "FISICO" ? "Físico" : "Consumível"}
+                        Finalidade: {[
+                          insumo.pode_ser_insumo ? "Insumo" : "",
+                          insumo.pode_ser_produzivel ? "Produzível" : "",
+                          insumo.pode_ser_vendido ? "Venda" : "",
+                        ].filter(Boolean).join(" • ") || "Nenhuma"}
                       </Typography>
                     </Box>
-                    <Button
-                      variant="outlined"
-                      startIcon={<Edit />}
-                      onClick={() => openEditDialog(insumo)}
-                    >
-                      Editar
-                    </Button>
+                    <Box>
+                      <Button
+                        variant="text"
+                        onClick={() => openLedgerDialog(insumo)}
+                        sx={{ mr: 1 }}
+                      >
+                        Extrato
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Edit />}
+                        onClick={() => openEditDialog(insumo)}
+                      >
+                        Editar
+                      </Button>
+                    </Box>
                   </Stack>
                 </Paper>
               ))}
-              {!insumos.length ? (
+              {!insumosFiltrados.length ? (
                 <Typography variant="body2" color="text.secondary">
                   Nenhum insumo cadastrado ainda.
                 </Typography>
@@ -220,7 +279,8 @@ const InsumosPage = () => {
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        PaperProps={{ sx: { width: { xs: "100%", sm: 360 }, p: 3 } }}
+        sx={{ zIndex: (theme) => theme.zIndex.drawer + 2 }}
+        PaperProps={{ sx: { width: "50vw", minWidth: 450, height: "100vh", p: 3 } }}
       >
         <Stack
           direction="row"
@@ -275,6 +335,36 @@ const InsumosPage = () => {
               onChange={handleChange("estoque_minimo")}
               inputProps={{ min: 0, step: "0.01" }}
             />
+            <Typography variant="subtitle2" mt={2}>
+              Finalidade no sistema
+            </Typography>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={form.pode_ser_insumo}
+                  onChange={handleChange("pode_ser_insumo")}
+                />
+              }
+              label="Pode ser usado como INSUMO"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={form.pode_ser_produzivel}
+                  onChange={handleChange("pode_ser_produzivel")}
+                />
+              }
+              label="Pode ser PRODUZIDO internamente"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={form.pode_ser_vendido}
+                  onChange={handleChange("pode_ser_vendido")}
+                />
+              }
+              label="Pode ser VENDIDO ao cliente final"
+            />
             <Button type="submit" variant="contained">
               Salvar insumo
             </Button>
@@ -286,8 +376,9 @@ const InsumosPage = () => {
         anchor="right"
         open={editDrawerOpen}
         onClose={() => setEditDrawerOpen(false)}
+        sx={{ zIndex: (theme) => theme.zIndex.drawer + 2 }}
         PaperProps={{
-          sx: { width: { xs: "100%", sm: 420 }, height: "100vh", p: 3 },
+          sx: { width: "50vw", minWidth: 450, height: "100vh", p: 3 },
         }}
       >
         <Stack
@@ -343,6 +434,36 @@ const InsumosPage = () => {
               onChange={handleEditChange("estoque_minimo")}
               inputProps={{ min: 0, step: "0.01" }}
             />
+            <Typography variant="subtitle2" mt={2}>
+              Finalidade no sistema
+            </Typography>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={editForm.pode_ser_insumo}
+                  onChange={handleEditChange("pode_ser_insumo")}
+                />
+              }
+              label="Pode ser usado como INSUMO"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={editForm.pode_ser_produzivel}
+                  onChange={handleEditChange("pode_ser_produzivel")}
+                />
+              }
+              label="Pode ser PRODUZIDO internamente"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={editForm.pode_ser_vendido}
+                  onChange={handleEditChange("pode_ser_vendido")}
+                />
+              }
+              label="Pode ser VENDIDO ao cliente final"
+            />
             <Button onClick={() => setEditDrawerOpen(false)}>Cancelar</Button>
             <Button type="submit" variant="contained">
               Salvar alterações
@@ -365,6 +486,20 @@ const InsumosPage = () => {
           {feedback.message}
         </Alert>
       </Snackbar>
+
+      <EntradaInsumoDrawer
+        open={entradaDrawerOpen}
+        onClose={() => setEntradaDrawerOpen(false)}
+      />
+
+      <InsumoLedgerModal
+        open={ledgerOpen}
+        onClose={() => {
+          setLedgerOpen(false);
+          setSelectedInsumo(null);
+        }}
+        insumo={selectedInsumo}
+      />
     </AppLayout>
   );
 };

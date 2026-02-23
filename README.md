@@ -19,9 +19,6 @@ O objetivo é simular um mini-ERP de café com **estoque (insumos + tipos de caf
   - Clientes: compras, status (inadimplente), histórico de recebimentos.
   - Fornecedores: compras, status (devendo), histórico de pagamentos.
 
-### O que NÃO é objetivo do MVP (por design)
-- Não há preocupações de segurança real (login/sessão) — é apenas controle de acesso para demonstração.
-- Multiusuário real e concorrência não são suportados (controle simplificado via API).
 
 ---
 
