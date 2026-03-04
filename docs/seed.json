@@ -1,88 +1,77 @@
 {
   "meta": {
-    "seed_version": "1.2.0",
+    "seed_version": "2.0.0",
     "generated_at": "2026-02-04T12:00:00-03:00",
     "currency": "BRL",
     "timezone": "America/Sao_Paulo"
   },
   "usuarios": [
     {
-      "id": "usr_admin_01",
+      "id": "e4cf26b5-4f59-4687-839a-35f5db1fbb7c",
       "nome": "Administrador",
       "email": "admin@cafemvp.com",
       "senha_hash": "mvp_admin_123",
-      "perfil": "admin",
+      "perfil": 1,
       "ativo": true,
-      "criado_em": "2026-01-01T09:00:00-03:00"
-    }
-  ],
-  "sessao": [],
-  "tipos_cafe": [
-    {
-      "id": "tc_001",
-      "nome": "Café em Grão",
-      "insumo_id": "ins_001",
-      "rendimento_percent": 92,
-      "margem_lucro_percent": 20,
-      "ativo": true
+      "criado_em": "2026-01-01T09:00:00"
     }
   ],
   "clientes": [
     {
-      "id": "cli_001",
+      "id": "7a032fb3-bca9-4ab7-bc2f-8bd4b930c560",
       "nome": "Cafeteria Central",
       "cpf_cnpj": "12.345.678/0001-10",
       "telefone": "(34) 99999-1001",
       "endereco": "Uberlândia - MG",
       "ativo": true,
-      "criado_em": "2026-01-10T10:00:00-03:00"
+      "criado_em": "2026-01-10T10:00:00"
     },
     {
-      "id": "cli_002",
+      "id": "0e491fac-9228-4258-9f2d-98f2189c1828",
       "nome": "Empório do Café",
       "cpf_cnpj": "45.111.222/0001-90",
       "telefone": "(34) 99999-1002",
       "endereco": "Patos de Minas - MG",
       "ativo": true,
-      "criado_em": "2026-01-12T10:00:00-03:00"
+      "criado_em": "2026-01-12T10:00:00"
     },
     {
-      "id": "cli_003",
+      "id": "d1d3f905-bd89-4f9e-ba8d-5f199799901a",
       "nome": "Mercado Santo Grão",
       "cpf_cnpj": "09.888.777/0001-55",
       "telefone": "(34) 99999-1003",
       "endereco": "Araxá - MG",
       "ativo": true,
-      "criado_em": "2026-01-15T10:00:00-03:00"
+      "criado_em": "2026-01-15T10:00:00"
     }
   ],
   "fornecedores": [
     {
-      "id": "for_001",
+      "id": "b341d2ec-2046-42ef-90ea-f0c0f7fa3070",
       "razao_social": "AgroInsumos Minas",
       "cpf_cnpj": "11.222.333/0001-44",
       "telefone": "(34) 99999-2001",
       "endereco": "Uberaba - MG",
       "ativo": true,
-      "criado_em": "2026-01-05T09:00:00-03:00"
+      "criado_em": "2026-01-05T09:00:00"
     },
     {
-      "id": "for_002",
+      "id": "f33f5fa3-3d30-45d9-92d0-9fd77995a51b",
       "razao_social": "Embalagens Brasil",
       "cpf_cnpj": "22.333.444/0001-55",
       "telefone": "(34) 99999-2002",
       "endereco": "Franca - SP",
       "ativo": true,
-      "criado_em": "2026-01-06T09:00:00-03:00"
+      "criado_em": "2026-01-06T09:00:00"
     },
     {
-      "id": "for_003",
+      "id": "87937fce-e3b0-4bda-87f8-aab0ca2314a7",
       "razao_social": "Transportes Cerrado",
       "cpf_cnpj": "33.444.555/0001-66",
       "telefone": "(34) 99999-2003",
       "endereco": "Ribeirão Preto - SP",
       "ativo": true,
-      "criado_em": "2026-01-06T09:00:00-03:00"
+      "criado_em": "2026-01-06T09:00:00"
     }
   ],
   "insumos": [
@@ -93,32 +82,20 @@
       "estoque_minimo": 50,
       "estoque_minimo_unidade": "kg",
       "kg_por_saco": 1,
+      "preco_kg": 12.5,
+      "tipo": "CONSUMIVEL",
       "ativo": true,
-      "criado_em": "2026-01-04T08:30:00-03:00"
+      "criado_em": "2026-01-04T08:30:00"
     }
   ],
-  "entrada_insumos": [],
-  "entrada_insumos_itens": [],
-  "ordem_producao": [],
   "vendas": [],
-  "vendas_itens": [],
   "contas_pagar": [],
   "contas_pagar_parcelas": [],
   "contas_receber": [],
   "contas_receber_parcelas": [],
-  "mov_insumos": [
-    {
-      "id": "mov_ins_001",
-      "insumo_id": "ins_001",
-      "tipo": "ENTRADA_COMPRA",
-      "quantidade": 500,
-      "custo_unit": 12.5,
-      "custo_total": 6250,
-      "data": "2026-01-04T09:00:00-03:00",
-      "referencia_tipo": "entrada_insumos",
-      "referencia_id": "entrada_001",
-      "obs": "Estoque inicial"
-    }
-  ],
-  "mov_lotes": []
+  "producao": [],
+  "detalhes_producao": [],
+  "custos_adicionais_producao": [],
+  "movimento_producao": [],
+  "venda_detalhes": []
 }

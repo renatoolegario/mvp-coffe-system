@@ -13,10 +13,12 @@ import {
   Typography,
 } from "@mui/material";
 import { Close, PersonAdd } from "@mui/icons-material";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
+import { getSession } from "../../hooks/useSession";
+import { PERFIS, toPerfilCode, toPerfilLabel } from "../../utils/profile";
 
 const UsuariosPage = () => {
   const usuarios = useDataStore((state) => state.usuarios);
@@ -26,11 +28,17 @@ const UsuariosPage = () => {
     nome: "",
     email: "",
     senha: "",
-    perfil: "vendas",
+    perfil: PERFIS.COMUM,
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [errors, setErrors] = useState({ email: "", senha: "" });
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const session = getSession();
+    setIsAdmin(toPerfilCode(session?.perfil) === PERFIS.ADMIN);
+  }, []);
 
   const handleChange = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -38,6 +46,8 @@ const UsuariosPage = () => {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (!isAdmin) return;
+
     const email = form.email.trim().toLowerCase();
     const senha = form.senha.trim();
     const emailExists = usuarios.some(
@@ -53,8 +63,8 @@ const UsuariosPage = () => {
       return;
     }
 
-    addUsuario({ ...form, email, senha });
-    setForm({ nome: "", email: "", senha: "", perfil: "vendas" });
+    addUsuario({ ...form, email, senha, perfil: Number(form.perfil) });
+    setForm({ nome: "", email: "", senha: "", perfil: PERFIS.COMUM });
     setErrors({ email: "", senha: "" });
     setDrawerOpen(false);
     setSnackbarOpen(true);
@@ -62,6 +72,11 @@ const UsuariosPage = () => {
 
   return (
     <AppLayout>
+      {!isAdmin ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Apenas usuários administradores (perfil 1) podem acessar esta área.
+        </Alert>
+      ) : null}
       <PageHeader
         title="Usuários"
         subtitle="Gerencie acessos e perfis do sistema."
@@ -69,6 +84,7 @@ const UsuariosPage = () => {
           <Button
             variant="contained"
             startIcon={<PersonAdd />}
+            disabled={!isAdmin}
             onClick={() => setDrawerOpen(true)}
           >
             Cadastrar usuário
@@ -88,12 +104,13 @@ const UsuariosPage = () => {
                     <Box>
                       <Typography fontWeight={600}>{usuario.nome}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {usuario.email} • {usuario.perfil}
+                        {usuario.email} • {toPerfilLabel(usuario.perfil)}
                       </Typography>
                     </Box>
                     <Button
                       variant="outlined"
                       color={usuario.ativo ? "secondary" : "primary"}
+                      disabled={!isAdmin}
                       onClick={() => toggleUsuario(usuario.id)}
                     >
                       {usuario.ativo ? "Desativar" : "Ativar"}
@@ -148,15 +165,19 @@ const UsuariosPage = () => {
             <TextField
               select
               label="Perfil"
+              disabled={!isAdmin}
               value={form.perfil}
-              onChange={handleChange("perfil")}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  perfil: Number(event.target.value),
+                }))
+              }
             >
-              <MenuItem value="admin">Admin</MenuItem>
-              <MenuItem value="financeiro">Financeiro</MenuItem>
-              <MenuItem value="producao">Produção</MenuItem>
-              <MenuItem value="vendas">Vendas</MenuItem>
+              <MenuItem value={PERFIS.ADMIN}>Admin</MenuItem>
+              <MenuItem value={PERFIS.COMUM}>Comum</MenuItem>
             </TextField>
-            <Button type="submit" variant="contained">
+            <Button type="submit" variant="contained" disabled={!isAdmin}>
               Salvar
             </Button>
           </Stack>

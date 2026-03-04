@@ -1,9 +1,13 @@
 import { query } from "../../../../infra/database";
 import { conversaoCripto } from "../../../../utils/crypto";
+import { requireAdmin } from "../../../../infra/auth";
 
 const INTEGRACOES = ["asaas", "resend"];
 
 export default async function handler(req, res) {
+  const auth = await requireAdmin(req, res);
+  if (!auth) return;
+
   if (req.method === "GET") {
     try {
       const result = await query(

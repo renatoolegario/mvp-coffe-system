@@ -25,7 +25,6 @@ const ClientesPage = () => {
     cpf_cnpj: "",
     telefone: "",
     endereco: "",
-    limite_credito: "",
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [feedback, setFeedback] = useState({
@@ -55,7 +54,6 @@ const ClientesPage = () => {
       cpf_cnpj: "",
       telefone: "",
       endereco: "",
-      limite_credito: "",
     });
     setDrawerOpen(false);
     setFeedback({
@@ -94,6 +92,11 @@ const ClientesPage = () => {
                     {cliente.cpf_cnpj || "CPF/CNPJ não informado"} •{" "}
                     {cliente.telefone || "Sem telefone"}
                   </Typography>
+                  {cliente.protegido ? (
+                    <Typography variant="caption" color="warning.main">
+                      Cliente protegido por regra de sistema.
+                    </Typography>
+                  ) : null}
                 </Paper>
               ))}
               {!clientes.length ? (
@@ -145,11 +148,6 @@ const ClientesPage = () => {
               label="Endereço"
               value={form.endereco}
               onChange={handleChange("endereco")}
-            />
-            <TextField
-              label="Limite de crédito"
-              value={form.limite_credito}
-              onChange={handleChange("limite_credito")}
             />
             <Button type="submit" variant="contained">
               Salvar cliente

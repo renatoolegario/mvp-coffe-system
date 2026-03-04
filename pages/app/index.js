@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import InfoCard from "../../components/atomic/InfoCard";
 import { formatCurrency, formatDate } from "../../utils/format";
+import { authenticatedFetch } from "../../hooks/useSession";
 
 const emptyResumo = {
   clientesAtivos: 0,
@@ -81,7 +82,7 @@ const AppHome = () => {
   useEffect(() => {
     const carregarResumo = async () => {
       try {
-        const response = await fetch("/api/v1/dashboard/resumo");
+        const response = await authenticatedFetch("/api/v1/dashboard/resumo");
         if (!response.ok) return;
         const result = await response.json();
         setResumo({
@@ -102,7 +103,7 @@ const AppHome = () => {
   useEffect(() => {
     const carregarFluxo = async () => {
       try {
-        const response = await fetch("/api/v1/dashboard/fluxo-caixa");
+        const response = await authenticatedFetch("/api/v1/dashboard/fluxo-caixa");
         if (!response.ok) return;
         const result = await response.json();
         const fallbackDate = toIsoDate(new Date());

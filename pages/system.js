@@ -7,23 +7,32 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { useDataStore } from "../hooks/useDataStore";
 import { serializeSeedData } from "../utils/seed";
+import { authenticatedFetch, getSession } from "../hooks/useSession";
 
 const SystemPage = () => {
+  const router = useRouter();
   const loadData = useDataStore((state) => state.loadData);
 
   const [status, setStatus] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
   const [databaseJson, setDatabaseJson] = useState("");
 
+  useEffect(() => {
+    if (!getSession()) {
+      router.replace("/login");
+    }
+  }, [router]);
+
   const handleSeedDatabase = async () => {
     setLoadingSeed(true);
     setStatus(null);
 
     try {
-      const response = await fetch("/api/v1/system/seed", {
+      const response = await authenticatedFetch("/api/v1/system/seed", {
         method: "POST",
       });
 
@@ -52,7 +61,7 @@ const SystemPage = () => {
     setStatus(null);
 
     try {
-      const response = await fetch("/api/v1/data");
+      const response = await authenticatedFetch("/api/v1/data");
       if (!response.ok) {
         throw new Error("Erro ao buscar dados.");
       }
@@ -86,7 +95,7 @@ const SystemPage = () => {
     setStatus(null);
 
     try {
-      const response = await fetch("/api/v1/data");
+      const response = await authenticatedFetch("/api/v1/data");
       if (!response.ok) {
         throw new Error("Erro ao buscar dados.");
       }

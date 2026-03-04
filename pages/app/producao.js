@@ -26,7 +26,7 @@ const toNumber = (value) => {
 const createDetalhe = () => ({
   insumo_id: "",
   quantidade: "",
-  unidade: "kg",
+  unidade: "KG",
 });
 
 const getSaldo = (movimentos, insumoId) =>
@@ -37,7 +37,7 @@ const getSaldo = (movimentos, insumoId) =>
 const getQuantidadeKg = (detalhe, insumo) => {
   const quantidade = toNumber(detalhe.quantidade);
   if (!insumo) return 0;
-  if (detalhe.unidade === "saco") {
+  if (detalhe.unidade === "SACO") {
     return quantidade * (toNumber(insumo.kg_por_saco) || 1);
   }
   return quantidade;
@@ -45,6 +45,7 @@ const getQuantidadeKg = (detalhe, insumo) => {
 
 const ProducaoPage = () => {
   const insumos = useDataStore((state) => state.insumos);
+  const auxUnidades = useDataStore((state) => state.auxUnidades);
   const movimentoProducao = useDataStore((state) => state.movInsumos);
   const createProducao = useDataStore((state) => state.createProducao);
 
@@ -99,6 +100,19 @@ const ProducaoPage = () => {
     );
 
   const handleChangeDetalhe = (index, field, value) => {
+    if (field === "insumo_id") {
+      const insumo = insumos.find((item) => item.id === value);
+      const unidadeDefault = insumo?.unidade_codigo || "KG";
+      setDetalhes((prev) =>
+        prev.map((item, currentIndex) =>
+          currentIndex === index
+            ? { ...item, insumo_id: value, unidade: unidadeDefault }
+            : item,
+        ),
+      );
+      return;
+    }
+
     setDetalhes((prev) =>
       prev.map((item, currentIndex) =>
         currentIndex === index ? { ...item, [field]: value } : item,
@@ -113,8 +127,6 @@ const ProducaoPage = () => {
     await createProducao({
       insumo_final_id: insumoFinalId,
       modo_geracao: "PRODUTO_FINAL", // Fallback parameter for backend limits
-      taxa_conversao_planejada: 0,
-      peso_previsto: 0,
       detalhes: detalhesComMetadados.map((item) => ({
         insumo_id: item.insumo_id,
         quantidade_kg: item.quantidadeKg,
@@ -201,8 +213,16 @@ const ProducaoPage = () => {
                           }
                           fullWidth
                         >
-                          <MenuItem value="kg">kg</MenuItem>
-                          <MenuItem value="saco">saco</MenuItem>
+                          {(auxUnidades?.length
+                            ? auxUnidades
+                            : [
+                              { id: "kg", codigo: "KG", label: "Quilograma" },
+                              { id: "saco", codigo: "SACO", label: "Saco" },
+                            ]).map((unidade) => (
+                            <MenuItem key={unidade.id} value={unidade.codigo}>
+                              {unidade.label}
+                            </MenuItem>
+                          ))}
                         </TextField>
                       </Grid>
                       <Grid item xs={12} md={2}>

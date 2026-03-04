@@ -8,7 +8,7 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
@@ -25,42 +25,50 @@ const getSaldo = (movimentos, insumoId) =>
 
 const TransferenciasPage = () => {
     const insumos = useDataStore((state) => state.insumos);
+    const auxUnidades = useDataStore((state) => state.auxUnidades);
     const movInsumos = useDataStore((state) => state.movInsumos);
     const createTransferencia = useDataStore((state) => state.createTransferencia);
 
     const [origemId, setOrigemId] = useState("");
     const [destinoId, setDestinoId] = useState("");
-    const [quantidadeKg, setQuantidadeKg] = useState("");
+    const [unidadeOperacao, setUnidadeOperacao] = useState("KG");
+    const [quantidadeInformada, setQuantidadeInformada] = useState("");
+    const [kgPorSacoInformado, setKgPorSacoInformado] = useState("");
     const [obs, setObs] = useState("");
 
     const origemSelecionada = useMemo(
         () => insumos.find((item) => item.id === origemId) || null,
-        [insumos, origemId]
-    );
-
-    const destinoSelecionado = useMemo(
-        () => insumos.find((item) => item.id === destinoId) || null,
-        [insumos, destinoId]
+        [insumos, origemId],
     );
 
     const saldoOrigem = useMemo(
         () => (origemId ? getSaldo(movInsumos, origemId) : 0),
-        [movInsumos, origemId]
+        [movInsumos, origemId],
     );
 
     const custoUnitarioOrigem = useMemo(
-        () => (origemSelecionada ? toNumber(origemSelecionada.preco_kg) : 0),
-        [origemSelecionada]
+        () => toNumber(origemSelecionada?.custo_medio_kg),
+        [origemSelecionada],
     );
 
-    const parsedQuatidade = toNumber(quantidadeKg);
-    const semSaldo = parsedQuatidade > saldoOrigem;
+    useEffect(() => {
+        if (!origemSelecionada) return;
+        const unidadeDefault = String(origemSelecionada.unidade_codigo || "KG").toUpperCase();
+        setUnidadeOperacao(unidadeDefault === "SACO" ? "SACO" : "KG");
+        setKgPorSacoInformado(String(Number(origemSelecionada.kg_por_saco) || 1));
+    }, [origemSelecionada?.id]);
+
+    const quantidadeInfo = toNumber(quantidadeInformada);
+    const kgPorSaco = toNumber(kgPorSacoInformado) || Number(origemSelecionada?.kg_por_saco) || 1;
+    const quantidadeKg =
+        unidadeOperacao === "SACO" ? quantidadeInfo * kgPorSaco : quantidadeInfo;
+    const semSaldo = quantidadeKg > saldoOrigem;
 
     const podeTransferir =
         origemId &&
         destinoId &&
         origemId !== destinoId &&
-        parsedQuatidade > 0 &&
+        quantidadeKg > 0 &&
         !semSaldo;
 
     const handleTransferir = async (event) => {
@@ -70,14 +78,18 @@ const TransferenciasPage = () => {
         await createTransferencia({
             origem_id: origemId,
             destino_id: destinoId,
-            quantidade_kg: parsedQuatidade,
+            unidade_operacao_codigo: unidadeOperacao,
+            quantidade_informada: quantidadeInfo,
+            kg_por_saco_informado: unidadeOperacao === "SACO" ? kgPorSaco : null,
             custo_unitario: custoUnitarioOrigem,
             obs,
         });
 
         setOrigemId("");
         setDestinoId("");
-        setQuantidadeKg("");
+        setUnidadeOperacao("KG");
+        setQuantidadeInformada("");
+        setKgPorSacoInformado("");
         setObs("");
     };
 
@@ -85,7 +97,7 @@ const TransferenciasPage = () => {
         <AppLayout>
             <PageHeader
                 title="Transferências Internas"
-                subtitle="Desmembre, reembale ou converta formatos de estoque transferindo o saldo e os custos financeiros entre produtos."
+                subtitle="Transfira estoque em KG ou SACO, com conversão explícita para KG."
             />
             <Grid container spacing={3}>
                 <Grid item xs={12} lg={8}>
@@ -116,7 +128,7 @@ const TransferenciasPage = () => {
                                                 ))}
                                             </TextField>
                                         </Grid>
-                                        {origemSelecionada && (
+                                        {origemSelecionada ? (
                                             <Grid item xs={12}>
                                                 <Typography variant="body2" color={semSaldo ? "error" : "text.secondary"}>
                                                     Saldo disponível: {saldoOrigem.toFixed(2)} kg
@@ -125,7 +137,7 @@ const TransferenciasPage = () => {
                                                     Custo médio atual: R$ {custoUnitarioOrigem.toFixed(2)} / kg
                                                 </Typography>
                                             </Grid>
-                                        )}
+                                        ) : null}
                                     </Grid>
                                 </Paper>
 
@@ -156,23 +168,48 @@ const TransferenciasPage = () => {
                                 </Paper>
 
                                 <Grid container spacing={2}>
-                                    <Grid item xs={12} md={6}>
+                                    <Grid item xs={12} md={4}>
                                         <TextField
-                                            label="Quantidade a transferir (kg)"
+                                            select
+                                            label="Unidade informada"
+                                            value={unidadeOperacao}
+                                            onChange={(event) => setUnidadeOperacao(event.target.value)}
+                                            fullWidth
+                                        >
+                                            {(auxUnidades || []).map((unidade) => (
+                                                <MenuItem key={unidade.id} value={unidade.codigo}>
+                                                    {unidade.label}
+                                                </MenuItem>
+                                            ))}
+                                        </TextField>
+                                    </Grid>
+                                    <Grid item xs={12} md={4}>
+                                        <TextField
+                                            label={unidadeOperacao === "SACO" ? "Quantidade de sacos" : "Quantidade em kg"}
                                             type="number"
-                                            value={quantidadeKg}
-                                            onChange={(e) => setQuantidadeKg(e.target.value)}
+                                            value={quantidadeInformada}
+                                            onChange={(e) => setQuantidadeInformada(e.target.value)}
                                             fullWidth
                                             required
-                                            error={semSaldo}
-                                            helperText={
-                                                semSaldo
-                                                    ? "Quantidade superior ao saldo disponível."
-                                                    : "A mesma quantidade abatida da Origem será somada no Destino."
-                                            }
                                         />
                                     </Grid>
+                                    {unidadeOperacao === "SACO" ? (
+                                        <Grid item xs={12} md={4}>
+                                            <TextField
+                                                label="Kg por saco"
+                                                type="number"
+                                                value={kgPorSacoInformado}
+                                                onChange={(e) => setKgPorSacoInformado(e.target.value)}
+                                                fullWidth
+                                                required
+                                            />
+                                        </Grid>
+                                    ) : null}
                                 </Grid>
+
+                                <Typography variant="body2" color={semSaldo ? "error.main" : "text.secondary"}>
+                                    Conversão aplicada: {quantidadeKg.toFixed(2)} kg
+                                </Typography>
 
                                 <TextField
                                     label="Observações / Motivo"

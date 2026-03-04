@@ -1,4 +1,5 @@
 import { query, withTransaction } from "../../../../infra/database";
+import { requireAdmin } from "../../../../infra/auth";
 
 const parseNumber = (value) => {
   const parsed = Number(value);
@@ -56,6 +57,9 @@ const validateFaixas = (faixas) => {
 };
 
 export default async function handler(req, res) {
+  const auth = await requireAdmin(req, res);
+  if (!auth) return;
+
   if (req.method === "GET") {
     try {
       const result = await query(

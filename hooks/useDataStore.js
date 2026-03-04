@@ -1,20 +1,22 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 import { getParcelas } from "../utils/stock";
+import { getAuthHeaders } from "./useSession";
+import { toLocalDateTime } from "../utils/datetime";
+import { toPerfilCode } from "../utils/profile";
 
-const nowIso = () => new Date().toISOString();
+const nowIso = () => toLocalDateTime();
 
 const baseState = {
   usuarios: [],
   clientes: [],
   fornecedores: [],
+  auxUnidades: [],
+  auxFormasPagamento: [],
   insumos: [],
-  tiposCafe: [],
   movInsumos: [],
-  movLotes: [],
-  entradasInsumos: [],
-  ordensProducao: [],
   vendas: [],
+  vendaItens: [],
   contasPagar: [],
   contasPagarParcelas: [],
   contasReceber: [],
@@ -24,14 +26,18 @@ const baseState = {
   detalhesProducao: [],
   custosAdicionaisProducao: [],
   movimentoProducao: [],
+  transferencias: [],
 };
 
 const apiFetch = async (path, options) => {
+  const customHeaders = options?.headers || {};
   const response = await fetch(path, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...customHeaders,
     },
-    ...options,
   });
 
   if (!response.ok) {
@@ -46,9 +52,6 @@ const sendCommand = (action, payload) =>
     method: "POST",
     body: JSON.stringify({ action, payload }),
   });
-
-const normalizeInsumoTipo = (tipo) =>
-  tipo === "FISICO" ? "FISICO" : "CONSUMIVEL";
 
 const normalizeMovimentoInsumo = (movimento) => {
   const quantidadeEntrada = Number(movimento.quantidade_entrada) || 0;
@@ -77,6 +80,16 @@ const normalizeMovimentoInsumo = (movimento) => {
   };
 };
 
+const resolveUnidadeByCode = (unidades = [], code = "KG") => {
+  const normalized = String(code || "KG").trim().toUpperCase();
+  return (
+    unidades.find((unidade) => unidade.codigo === normalized) ||
+    unidades.find((unidade) => unidade.is_default) ||
+    unidades[0] ||
+    null
+  );
+};
+
 export const useDataStore = create((set, get) => ({
   ...baseState,
   hydrated: false,
@@ -102,6 +115,7 @@ export const useDataStore = create((set, get) => ({
       ativo: true,
       criado_em: nowIso(),
       ...payload,
+      perfil: toPerfilCode(payload.perfil),
     };
     try {
       await sendCommand("addUsuario", usuario);
@@ -176,21 +190,31 @@ export const useDataStore = create((set, get) => ({
     }
   },
   addInsumo: async (payload) => {
-    const unidade = "kg";
+    const unidades = get().auxUnidades || [];
+    const unidadeDefault = resolveUnidadeByCode(
+      unidades,
+      payload.unidade_codigo || "KG",
+    );
+    const unidadeEstoque = resolveUnidadeByCode(
+      unidades,
+      payload.estoque_minimo_unidade_codigo || unidadeDefault?.codigo || "KG",
+    );
     const kgPorSaco = Number(payload.kg_por_saco) || 1;
-    const estoqueMinimoUnidade =
-      payload.estoque_minimo_unidade === "saco" ? "saco" : "kg";
 
     const insumo = {
       id: uuidv4(),
       ativo: true,
       criado_em: nowIso(),
       ...payload,
-      unidade,
+      unidade_id: payload.unidade_id || unidadeDefault?.id || null,
+      unidade_codigo: unidadeDefault?.codigo || "KG",
+      unidade_label: unidadeDefault?.label || "Quilograma",
       kg_por_saco: kgPorSaco,
-      estoque_minimo_unidade: estoqueMinimoUnidade,
-      preco_kg: Number(payload.preco_kg) || 0,
-      tipo: normalizeInsumoTipo(payload.tipo),
+      estoque_minimo: Number(payload.estoque_minimo) || 0,
+      estoque_minimo_unidade_id:
+        payload.estoque_minimo_unidade_id || unidadeEstoque?.id || null,
+      estoque_minimo_unidade_codigo: unidadeEstoque?.codigo || "KG",
+      estoque_minimo_unidade_label: unidadeEstoque?.label || "Quilograma",
       pode_ser_insumo: payload.pode_ser_insumo ?? true,
       pode_ser_produzivel: payload.pode_ser_produzivel ?? false,
       pode_ser_vendido: payload.pode_ser_vendido ?? false,
@@ -205,6 +229,18 @@ export const useDataStore = create((set, get) => ({
   updateInsumo: async ({ id, ...payload }) => {
     const current = get().insumos.find((insumo) => insumo.id === id);
     if (!current) return;
+    const unidades = get().auxUnidades || [];
+    const unidadePadrao = resolveUnidadeByCode(
+      unidades,
+      payload.unidade_codigo || current.unidade_codigo || "KG",
+    );
+    const unidadeEstoque = resolveUnidadeByCode(
+      unidades,
+      payload.estoque_minimo_unidade_codigo ||
+        current.estoque_minimo_unidade_codigo ||
+        unidadePadrao?.codigo ||
+        "KG",
+    );
 
     const updated = {
       ...current,
@@ -212,9 +248,17 @@ export const useDataStore = create((set, get) => ({
       nome: payload.nome?.trim() || current.nome,
       kg_por_saco: Number(payload.kg_por_saco) || 1,
       estoque_minimo: Number(payload.estoque_minimo) || 0,
-      estoque_minimo_unidade:
-        payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
-      tipo: normalizeInsumoTipo(payload.tipo || current.tipo),
+      unidade_id: unidadePadrao?.id || current.unidade_id,
+      unidade_codigo: unidadePadrao?.codigo || current.unidade_codigo || "KG",
+      unidade_label: unidadePadrao?.label || current.unidade_label,
+      estoque_minimo_unidade_id:
+        unidadeEstoque?.id || current.estoque_minimo_unidade_id,
+      estoque_minimo_unidade_codigo:
+        unidadeEstoque?.codigo ||
+        current.estoque_minimo_unidade_codigo ||
+        "KG",
+      estoque_minimo_unidade_label:
+        unidadeEstoque?.label || current.estoque_minimo_unidade_label,
       pode_ser_insumo: payload.pode_ser_insumo ?? current.pode_ser_insumo ?? true,
       pode_ser_produzivel: payload.pode_ser_produzivel ?? current.pode_ser_produzivel ?? false,
       pode_ser_vendido: payload.pode_ser_vendido ?? current.pode_ser_vendido ?? false,
@@ -380,8 +424,6 @@ export const useDataStore = create((set, get) => ({
   createProducao: async ({
     insumo_final_id,
     modo_geracao,
-    taxa_conversao_planejada = 76,
-    peso_previsto,
     detalhes,
     obs,
     anexo_base64,
@@ -390,7 +432,7 @@ export const useDataStore = create((set, get) => ({
     const producaoId = uuidv4();
     const detalhesProducao = (detalhes || []).map((item) => {
       const insumo = get().insumos.find((i) => i.id === item.insumo_id);
-      const custoUnitario = Number(insumo?.preco_kg) || 0;
+      const custoUnitario = Number(insumo?.custo_medio_kg) || 0;
       const quantidadeKg = Number(item.quantidade_kg) || 0;
       return {
         id: uuidv4(),
@@ -414,8 +456,6 @@ export const useDataStore = create((set, get) => ({
       insumo_final_id,
       status: "PENDENTE",
       modo_geracao: modo_geracao || "PRODUTO_FINAL",
-      taxa_conversao_planejada,
-      peso_previsto: Number(peso_previsto) || 0,
       obs: obs || "",
       anexo_base64: anexo_base64 || null,
       custo_total_previsto,
@@ -515,11 +555,30 @@ export const useDataStore = create((set, get) => ({
     const id = uuidv4();
     const movimento_origem_id = uuidv4();
     const movimento_destino_id = uuidv4();
+    const origem = get().insumos.find((item) => item.id === payload.origem_id);
+    const unidadeOperacao =
+      resolveUnidadeByCode(
+        get().auxUnidades,
+        payload.unidade_operacao_codigo || "KG",
+      ) || null;
+    const quantidadeInformada = Number(payload.quantidade_informada) || 0;
+    const kgPorSacoInformado =
+      Number(payload.kg_por_saco_informado) || Number(origem?.kg_por_saco) || 1;
+    const quantidadeKg =
+      unidadeOperacao?.codigo === "SACO"
+        ? quantidadeInformada * kgPorSacoInformado
+        : quantidadeInformada;
 
     const transferencia = {
       id,
       data_transferencia: dataTransferencia,
       ...payload,
+      quantidade_kg: quantidadeKg,
+      quantidade_informada: quantidadeInformada,
+      unidade_operacao_id: unidadeOperacao?.id || null,
+      unidade_codigo: unidadeOperacao?.codigo || "KG",
+      kg_por_saco_informado:
+        unidadeOperacao?.codigo === "SACO" ? kgPorSacoInformado : null,
     };
 
     try {
@@ -539,25 +598,59 @@ export const useDataStore = create((set, get) => ({
     parcelas_qtd,
     obs,
     data_programada_entrega,
+    tipo_pagamento = "A_VISTA",
+    forma_pagamento = "PIX",
+    desconto = null,
+    acrescimo = null,
+    parcelas_custom = [],
   }) => {
     const vendaId = uuidv4();
     const dataVenda = nowIso();
-    const valor_total = itens.reduce(
-      (total, item) => total + item.quantidade * item.preco_unit,
-      0,
+    const subtotal = (itens || []).reduce((total, item) => {
+      const quantidade = Number(item.quantidade) || 0;
+      const precoUnitario = Number(item.preco_unit) || 0;
+      return total + quantidade * precoUnitario;
+    }, 0);
+    const descontoTipo = desconto?.tipo || null;
+    const descontoRaw = Number(desconto?.valor) || 0;
+    const descontoValor =
+      descontoTipo === "PERCENTUAL"
+        ? (subtotal * descontoRaw) / 100
+        : descontoRaw;
+    const acrescimoTipo = acrescimo?.tipo || null;
+    const acrescimoRaw = Number(acrescimo?.valor) || 0;
+    const acrescimoValor =
+      acrescimoTipo === "PERCENTUAL"
+        ? (subtotal * acrescimoRaw) / 100
+        : acrescimoRaw;
+    const valor_total = Number(
+      Math.max(0, subtotal - descontoValor + acrescimoValor).toFixed(2),
     );
+    const parcelasQuantidade =
+      tipo_pagamento === "A_PRAZO"
+        ? Math.max(1, Number(parcelas_qtd) || 1)
+        : 1;
+    const unidades = get().auxUnidades || [];
     const venda = {
       id: vendaId,
       cliente_id,
       data_venda: dataVenda,
       valor_total,
-      parcelas_qtd,
+      parcelas_qtd: parcelasQuantidade,
       valor_negociado: valor_total,
       status: "FECHADA",
       data_programada_entrega: data_programada_entrega || null,
       data_entrega: null,
       status_entrega: "PENDENTE",
       obs,
+      tipo_pagamento,
+      forma_pagamento: tipo_pagamento === "A_VISTA" ? forma_pagamento : null,
+      desconto_tipo: descontoTipo,
+      desconto_valor: Number(descontoValor.toFixed(2)),
+      desconto_descricao: desconto?.descricao || null,
+      acrescimo_tipo: acrescimoTipo,
+      acrescimo_valor: Number(acrescimoValor.toFixed(2)),
+      acrescimo_descricao: acrescimo?.descricao || null,
     };
     const contaReceberId = uuidv4();
     const contaReceber = {
@@ -569,16 +662,69 @@ export const useDataStore = create((set, get) => ({
       data_emissao: dataVenda,
       status: "ABERTO",
     };
-    const parcelas = getParcelas(valor_total, parcelas_qtd).map((parcela) => ({
-      id: uuidv4(),
-      conta_receber_id: contaReceberId,
-      parcela_num: parcela.parcela_num,
-      vencimento: dataVenda,
-      valor: parcela.valor,
-      status: "ABERTA",
-      data_recebimento: null,
-      forma_recebimento: null,
-    }));
+    const parcelasOrigem =
+      tipo_pagamento === "A_PRAZO" && Array.isArray(parcelas_custom) && parcelas_custom.length
+        ? parcelas_custom
+        : getParcelas(valor_total, parcelasQuantidade).map((parcela) => ({
+          parcela_num: parcela.parcela_num,
+          valor: parcela.valor,
+          vencimento: dataVenda,
+          forma_pagamento,
+          status: "ABERTA",
+        }));
+
+    const parcelas = parcelasOrigem.map((parcela, index) => {
+      const valorParcela = Number(parcela.valor) || 0;
+      const statusParcela = String(parcela.status || "ABERTA").toUpperCase();
+      const isRecebida = statusParcela === "RECEBIDA";
+      const formaProgramada = parcela.forma_pagamento || forma_pagamento;
+      return {
+        id: uuidv4(),
+        conta_receber_id: contaReceberId,
+        parcela_num: Number(parcela.parcela_num) || index + 1,
+        vencimento: parcela.vencimento || dataVenda,
+        valor: valorParcela,
+        status: isRecebida ? "RECEBIDA" : "ABERTA",
+        data_recebimento: isRecebida ? nowIso() : null,
+        forma_recebimento: formaProgramada || null,
+        valor_programado: valorParcela,
+        valor_recebido: isRecebida ? valorParcela : null,
+        forma_recebimento_real: isRecebida ? formaProgramada || null : null,
+        motivo_diferenca: null,
+        acao_diferenca: null,
+        origem_recebimento: "NORMAL",
+        fornecedor_destino_id: null,
+        comprovante_url: null,
+        observacao_recebimento: null,
+      };
+    });
+
+    const itensVenda = (itens || []).map((item) => {
+      const unidade = resolveUnidadeByCode(
+        unidades,
+        item.unidade_codigo || "KG",
+      );
+      const quantidadeInformada = Number(item.quantidade) || 0;
+      const kgPorSaco = Number(item.kg_por_saco) || Number(item.kg_por_saco_item) || 1;
+      const quantidadeKg =
+        unidade?.codigo === "SACO"
+          ? quantidadeInformada * kgPorSaco
+          : quantidadeInformada;
+      const precoUnitario = Number(item.preco_unit) || 0;
+      return {
+        id: uuidv4(),
+        venda_id: vendaId,
+        insumo_id: item.insumo_id,
+        quantidade_kg: quantidadeKg,
+        quantidade_informada: quantidadeInformada,
+        unidade_id: unidade?.id || null,
+        kg_por_saco: unidade?.codigo === "SACO" ? kgPorSaco : null,
+        preco_unitario: precoUnitario,
+        valor_total: Number((quantidadeInformada * precoUnitario).toFixed(2)),
+        criado_em: dataVenda,
+      };
+    });
+
     const vendaDetalhes = parcelas.map((parcela) => ({
       id: uuidv4(),
       venda_id: vendaId,
@@ -591,16 +737,12 @@ export const useDataStore = create((set, get) => ({
     try {
       await sendCommand("addVenda", {
         venda,
+        itens: itensVenda,
         contaReceber,
         parcelas,
         vendaDetalhes,
       });
-      set((state) => ({
-        vendas: [...state.vendas, venda],
-        contasReceber: [...state.contasReceber, contaReceber],
-        contasReceberParcelas: [...state.contasReceberParcelas, ...parcelas],
-        vendaDetalhes: [...state.vendaDetalhes, ...vendaDetalhes],
-      }));
+      await get().loadData();
     } catch (error) {
       return;
     }
@@ -616,6 +758,7 @@ export const useDataStore = create((set, get) => ({
       const dataDespesa = item.data || dataEntrega;
       const statusPagamento =
         item.status_pagamento === "A_VISTA" ? "PAGO" : "ABERTO";
+      const formaPagamento = item.forma_pagamento || "TRANSFERENCIA";
 
       return {
         contaPagar: {
@@ -636,7 +779,7 @@ export const useDataStore = create((set, get) => ({
           valor,
           status: statusPagamento === "PAGO" ? "PAGA" : "ABERTA",
           data_pagamento: statusPagamento === "PAGO" ? dataDespesa : null,
-          forma_pagamento: statusPagamento === "PAGO" ? "Entrega" : null,
+          forma_pagamento: statusPagamento === "PAGO" ? formaPagamento : null,
         },
       };
     });
@@ -696,59 +839,114 @@ export const useDataStore = create((set, get) => ({
   },
   marcarParcelaRecebida: async ({
     id,
-    forma_recebimento = "Pix",
-    tipo_ajuste = "SEM_AJUSTE",
-    valor_ajuste = 0,
+    ids = [],
+    forma_recebimento = "PIX",
+    forma_recebimento_real = "",
+    valor_recebido = null,
+    motivo_diferenca = "",
+    acao_diferenca = null,
+    origem_recebimento = "NORMAL",
+    fornecedor_destino_id = null,
+    comprovante_url = null,
+    observacao_recebimento = "",
     venda_id,
   }) => {
-    const parcelaAtual = get().contasReceberParcelas.find(
-      (parcela) => parcela.id === id,
-    );
-    if (!parcelaAtual) return;
-    const valorAjusteNormalizado = Number(valor_ajuste) || 0;
-    const tipoAjusteNormalizado =
-      tipo_ajuste === "DESCONTO" || tipo_ajuste === "JUROS"
-        ? tipo_ajuste
-        : "SEM_AJUSTE";
-    const ajusteValor =
-      tipoAjusteNormalizado === "DESCONTO"
-        ? -Math.abs(valorAjusteNormalizado)
-        : tipoAjusteNormalizado === "JUROS"
-          ? Math.abs(valorAjusteNormalizado)
-          : 0;
-    const ajuste =
-      tipoAjusteNormalizado === "SEM_AJUSTE"
-        ? null
-        : {
-          id: uuidv4(),
-          venda_id,
-          tipo_evento: tipoAjusteNormalizado,
-          descricao:
-            tipoAjusteNormalizado === "DESCONTO"
-              ? "Desconto aplicado no recebimento de parcela"
-              : "Juros aplicado no recebimento de parcela",
-          valor: ajusteValor,
-          data_evento: nowIso(),
-        };
-    const updated = {
-      ...parcelaAtual,
-      status: "RECEBIDA",
-      data_recebimento: nowIso(),
-      forma_recebimento,
-    };
+    const parcelaIds = ids.length ? ids : [id];
+    const dataRecebimento = nowIso();
+
     try {
-      await sendCommand("marcarParcelaRecebida", {
-        ...updated,
-        ajuste,
-      });
-      set((state) => ({
-        contasReceberParcelas: state.contasReceberParcelas.map((parcela) =>
-          parcela.id === id ? updated : parcela,
-        ),
-        vendaDetalhes: ajuste
-          ? [...state.vendaDetalhes, ajuste]
-          : state.vendaDetalhes,
-      }));
+      for (const parcelaId of parcelaIds) {
+        const parcelaAtual = get().contasReceberParcelas.find(
+          (parcela) => parcela.id === parcelaId,
+        );
+        if (!parcelaAtual) continue;
+        const contaReceber = get().contasReceber.find(
+          (conta) => conta.id === parcelaAtual.conta_receber_id,
+        );
+        const vendaIdParcela =
+          contaReceber?.origem_tipo === "venda"
+            ? contaReceber?.origem_id
+            : venda_id || null;
+
+        const valorProgramado =
+          Number(parcelaAtual.valor_programado) || Number(parcelaAtual.valor) || 0;
+        const valorRecebidoFinal =
+          valor_recebido === null || valor_recebido === undefined
+            ? valorProgramado
+            : Number(valor_recebido) || 0;
+        const diferenca = Number((valorProgramado - valorRecebidoFinal).toFixed(2));
+
+        if (diferenca > 0 && !String(motivo_diferenca || "").trim()) {
+          return;
+        }
+
+        const ajuste =
+          diferenca === 0
+            ? null
+            : {
+              id: uuidv4(),
+              venda_id: vendaIdParcela,
+              tipo_evento: diferenca > 0 ? "DESCONTO" : "JUROS",
+              descricao:
+                diferenca > 0
+                  ? "Diferença aceita no recebimento"
+                  : "Recebimento acima do programado",
+              valor: diferenca > 0 ? -Math.abs(diferenca) : Math.abs(diferenca),
+              data_evento: dataRecebimento,
+            };
+
+        const contasPagarDiretas =
+          origem_recebimento === "DIRETO_FORNECEDOR" && fornecedor_destino_id
+            ? [
+              {
+                id: uuidv4(),
+                fornecedor_id: fornecedor_destino_id,
+                origem_tipo: "cliente_pagou_direto_fornecedor",
+                origem_id: parcelaId,
+                valor_total: valorRecebidoFinal,
+                data_emissao: dataRecebimento,
+                status: "ABERTO",
+                venda_id: null,
+              },
+            ]
+            : [];
+
+        const parcelasPagarDiretas = contasPagarDiretas.map((conta, index) => ({
+          id: uuidv4(),
+          conta_pagar_id: conta.id,
+          parcela_num: index + 1,
+          vencimento: dataRecebimento,
+          valor: conta.valor_total,
+          status: "ABERTA",
+          data_pagamento: null,
+          forma_pagamento: null,
+          producao_id: null,
+        }));
+
+        await sendCommand("marcarParcelaRecebida", {
+          ...parcelaAtual,
+          id: parcelaId,
+          status: "RECEBIDA",
+          data_recebimento: dataRecebimento,
+          forma_recebimento,
+          forma_recebimento_real:
+            forma_recebimento_real || forma_recebimento || null,
+          valor_programado: valorProgramado,
+          valor_recebido: valorRecebidoFinal,
+          motivo_diferenca: motivo_diferenca || null,
+          acao_diferenca: diferenca > 0 ? acao_diferenca || "ACEITAR_ENCERRAR" : null,
+          origem_recebimento,
+          fornecedor_destino_id: fornecedor_destino_id || null,
+          comprovante_url: comprovante_url || null,
+          observacao_recebimento: observacao_recebimento || null,
+          conta_receber_id: parcelaAtual.conta_receber_id,
+          parcela_num: parcelaAtual.parcela_num,
+          ajuste,
+          contasPagar: contasPagarDiretas,
+          parcelasPagar: parcelasPagarDiretas,
+        });
+      }
+      await get().loadData();
     } catch (error) {
       return;
     }

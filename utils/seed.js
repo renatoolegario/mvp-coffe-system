@@ -1,3 +1,5 @@
+import { toLocalDateTime } from "./datetime";
+
 const safeArray = (value) => (Array.isArray(value) ? value : []);
 
 const mapUsuariosFromSeed = (usuarios) =>
@@ -14,12 +16,8 @@ export const normalizeSeedData = (seed) => ({
   clientes: safeArray(seed?.clientes),
   fornecedores: safeArray(seed?.fornecedores),
   insumos: safeArray(seed?.insumos),
-  tiposCafe: safeArray(seed?.tipos_cafe),
-  movInsumos: safeArray(seed?.mov_insumos),
-  movLotes: safeArray(seed?.mov_lotes),
-  entradasInsumos: safeArray(seed?.entrada_insumos),
-  ordensProducao: safeArray(seed?.ordem_producao),
   vendas: safeArray(seed?.vendas),
+  vendaItens: safeArray(seed?.venda_itens),
   contasPagar: safeArray(seed?.contas_pagar),
   contasPagarParcelas: safeArray(seed?.contas_pagar_parcelas),
   contasReceber: safeArray(seed?.contas_receber),
@@ -37,26 +35,24 @@ const mapUsuariosToSeed = (usuarios) =>
 
 export const serializeSeedData = (state) => ({
   meta: {
-    seed_version: "1.2.0",
-    generated_at: new Date().toISOString(),
+    seed_version: "2.0.0",
+    generated_at: toLocalDateTime(),
     currency: "BRL",
     timezone: "America/Sao_Paulo",
   },
   usuarios: mapUsuariosToSeed(state?.usuarios),
-  sessao: [],
-  tipos_cafe: safeArray(state?.tiposCafe),
   clientes: safeArray(state?.clientes),
   fornecedores: safeArray(state?.fornecedores),
   insumos: safeArray(state?.insumos),
-  entrada_insumos: safeArray(state?.entradasInsumos),
-  entrada_insumos_itens: [],
-  ordem_producao: safeArray(state?.ordensProducao),
   vendas: safeArray(state?.vendas),
-  vendas_itens: [],
+  venda_itens: safeArray(state?.vendaItens),
   contas_pagar: safeArray(state?.contasPagar),
   contas_pagar_parcelas: safeArray(state?.contasPagarParcelas),
   contas_receber: safeArray(state?.contasReceber),
   contas_receber_parcelas: safeArray(state?.contasReceberParcelas),
-  mov_insumos: safeArray(state?.movInsumos),
-  mov_lotes: safeArray(state?.movLotes),
+  producao: safeArray(state?.producoes),
+  detalhes_producao: safeArray(state?.detalhesProducao),
+  custos_adicionais_producao: safeArray(state?.custosAdicionaisProducao),
+  movimento_producao: safeArray(state?.movimentoProducao),
+  venda_detalhes: safeArray(state?.vendaDetalhes),
 });

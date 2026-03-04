@@ -1,9 +1,15 @@
 import seedRaw from "../../../../docs/seed.json";
 import { normalizeSeedData } from "../../../../utils/seed";
 import { withTransaction } from "../../../../infra/database";
-import { conversaoCripto } from "../../../../utils/crypto";
+import { encryptIfNeeded } from "../../../../utils/crypto";
+import { toPerfilCode } from "../../../../utils/profile";
+import { requireAdmin } from "../../../../infra/auth";
 
 const tableList = [
+  "auth_tokens",
+  "venda_detalhes",
+  "venda_itens",
+  "transferencias",
   "custos_adicionais_producao",
   "detalhes_producao",
   "producao",
@@ -34,6 +40,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const auth = await requireAdmin(req, res);
+  if (!auth) return;
+
   const seedData = normalizeSeedData(seedRaw);
 
   try {
@@ -49,7 +58,10 @@ export default async function handler(req, res) {
           ["id", "nome", "email", "senha", "perfil", "ativo", "criado_em"],
           {
             ...usuario,
-            senha: await conversaoCripto(usuario.senha),
+            nome: encryptIfNeeded(usuario.nome),
+            email: encryptIfNeeded(String(usuario.email || "").toLowerCase()),
+            senha: encryptIfNeeded(usuario.senha),
+            perfil: toPerfilCode(usuario.perfil),
           },
         );
       }
@@ -66,8 +78,16 @@ export default async function handler(req, res) {
             "endereco",
             "ativo",
             "criado_em",
+            "protegido",
           ],
-          cliente,
+          {
+            ...cliente,
+            nome: encryptIfNeeded(cliente.nome),
+            cpf_cnpj: encryptIfNeeded(cliente.cpf_cnpj),
+            telefone: encryptIfNeeded(cliente.telefone),
+            endereco: encryptIfNeeded(cliente.endereco),
+            protegido: false,
+          },
         );
       }
 
@@ -84,30 +104,56 @@ export default async function handler(req, res) {
             "ativo",
             "criado_em",
           ],
-          fornecedor,
+          {
+            ...fornecedor,
+            razao_social: encryptIfNeeded(fornecedor.razao_social),
+            cpf_cnpj: encryptIfNeeded(fornecedor.cpf_cnpj),
+            telefone: encryptIfNeeded(fornecedor.telefone),
+            endereco: encryptIfNeeded(fornecedor.endereco),
+          },
         );
       }
 
+      const unidadesResult = await client.query(
+        "SELECT id, codigo FROM aux_unidade WHERE codigo IN ('KG', 'SACO')",
+      );
+      const unidadeByCodigo = Object.fromEntries(
+        unidadesResult.rows.map((row) => [row.codigo, row.id]),
+      );
+      const kgId = unidadeByCodigo.KG;
+      const sacoId = unidadeByCodigo.SACO;
+
       for (const insumo of seedData.insumos || []) {
+        const unidadeCodigo = String(insumo.unidade || "kg").trim().toUpperCase();
+        const estoqueUnidadeCodigo = String(
+          insumo.estoque_minimo_unidade || insumo.unidade || "kg",
+        )
+          .trim()
+          .toUpperCase();
         await insertRow(
           client,
           "insumos",
           [
             "id",
             "nome",
-            "unidade",
             "estoque_minimo",
-            "estoque_minimo_unidade",
             "kg_por_saco",
-            "preco_kg",
-            "tipo",
             "ativo",
             "criado_em",
+            "unidade_id",
+            "estoque_minimo_unidade_id",
+            "pode_ser_insumo",
+            "pode_ser_produzivel",
+            "pode_ser_vendido",
           ],
           {
             ...insumo,
-            preco_kg: insumo.preco_kg || 0,
-            tipo: insumo.tipo === "FISICO" ? "FISICO" : "CONSUMIVEL",
+            unidade_id: unidadeCodigo === "SACO" ? sacoId : kgId,
+            estoque_minimo_unidade_id:
+              estoqueUnidadeCodigo === "SACO" ? sacoId : kgId,
+            pode_ser_insumo: insumo.pode_ser_insumo ?? true,
+            pode_ser_produzivel: insumo.pode_ser_produzivel ?? false,
+            pode_ser_vendido: insumo.pode_ser_vendido ?? false,
           },
         );
       }

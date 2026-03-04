@@ -1,4 +1,5 @@
 import { query } from "../../../../infra/database";
+import { requireAuth } from "../../../../infra/auth";
 
 const normalizeNumber = (value) => {
   const parsed = Number(value);
@@ -75,10 +76,29 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+
   try {
     const [insumosResult, movimentosResult, faixasResult] = await Promise.all([
       query(
-        "SELECT id, nome, unidade, kg_por_saco, preco_kg, tipo, estoque_minimo, estoque_minimo_unidade FROM insumos ORDER BY nome ASC",
+        `
+        SELECT
+          i.id,
+          i.nome,
+          i.kg_por_saco,
+          i.estoque_minimo,
+          i.unidade_id,
+          i.estoque_minimo_unidade_id,
+          u.codigo AS unidade_codigo,
+          u.label AS unidade_label,
+          eu.codigo AS estoque_minimo_unidade_codigo,
+          eu.label AS estoque_minimo_unidade_label
+        FROM insumos i
+        LEFT JOIN aux_unidade u ON u.id = i.unidade_id
+        LEFT JOIN aux_unidade eu ON eu.id = i.estoque_minimo_unidade_id
+        ORDER BY i.nome ASC
+        `,
       ),
       query(
         `SELECT m.insumo_id, m.quantidade_entrada, m.quantidade_saida, m.custo_unitario, m.data_movimentacao, m.tipo_movimento, p.status as status_producao
@@ -110,7 +130,7 @@ export default async function handler(req, res) {
       const custoMedioSaco = custoMedioKg * kgPorSaco;
       const saldoSacos = resumo.saldo_kg / kgPorSaco;
       const estoqueMinimoKg =
-        insumo.estoque_minimo_unidade === "saco"
+        insumo.estoque_minimo_unidade_codigo === "SACO"
           ? normalizeNumber(insumo.estoque_minimo) * kgPorSaco
           : normalizeNumber(insumo.estoque_minimo);
       const percentualEstoque = estoqueMinimoKg

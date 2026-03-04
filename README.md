@@ -1,174 +1,49 @@
-# MVP – Sistema de Gestão de Café (8k) – README
+# MVP Coffee System
 
-Este repositório contém um **MVP com API e banco PostgreSQL**, feito para demonstração/apresentação.  
-O objetivo é simular um mini-ERP de café com **estoque (insumos + tipos de café)**, **produção**, **vendas** e **financeiro (contas a pagar/receber com parcelas)**.
+Sistema MVP de gestão com Next.js + PostgreSQL.
 
----
+## Stack
+- Next.js (frontend + API em `pages/api`)
+- PostgreSQL (`pg`)
+- Migrations com `node-pg-migrate`
+- Zustand no frontend
 
-## ✅ Visão Geral do Produto
+## Modelo atual (pós refactor de produção)
 
-### O que o MVP entrega
-- **Cadastro** de clientes, fornecedores, insumos e tipos de café.
-- **Entrada de Insumos (compra)**: alimenta estoque e gera **contas a pagar** + **parcelas**.
-- **Fabricação de Café**: baixa insumo base, calcula custo, dá entrada em estoque do tipo.
-- **Vendas**: baixa tipo do estoque, gera **contas a receber** + **parcelas**.
-- **Dashboards**:
-  - Estoque de Insumos: saldo, custo médio, valor em estoque, histórico.
-  - Estoque por Tipo: saldo, custo médio, valor em estoque, histórico.
-  - Financeiro: aberto/pago, vencidos, próximos vencimentos.
-  - Clientes: compras, status (inadimplente), histórico de recebimentos.
-  - Fornecedores: compras, status (devendo), histórico de pagamentos.
+As tabelas legadas `tipos_cafe`, `mov_lotes`, `mov_insumos`, `ordem_producao` e `entrada_insumos` foram removidas da operação principal.
 
+Fluxo atual:
+- Estoque e custos via `movimento_producao`
+- Produção via `producao`, `detalhes_producao`, `custos_adicionais_producao`
+- Comercial via `vendas`, `venda_detalhes`
+- Financeiro via `contas_pagar(_parcelas)` e `contas_receber(_parcelas)`
+- Configuração via `empresa_configuracao_estoque` e `empresa_configuracao_integracoes`
 
----
+## Endpoints API v1
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/validate`
+- `GET /api/v1/data`
+- `POST /api/v1/command`
+- `GET /api/v1/dashboard/resumo`
+- `GET /api/v1/dashboard/insumos`
+- `GET /api/v1/dashboard/fluxo-caixa`
+- `GET|POST|PUT|DELETE /api/v1/configuracao-empresa/estoque`
+- `GET|PUT /api/v1/configuracao-empresa/integracoes`
+- `POST /api/v1/system/seed`
+- `GET /api/v1/docs/openapi`
 
-## 🧠 Conceito de Dados (como o sistema funciona)
+## Segurança
+- Autenticação por token (`Bearer`) com expiração de 7 dias
+- Todo endpoint (exceto login) exige token válido
+- Dados sensíveis de `usuarios`, `clientes` e `fornecedores` são armazenados criptografados
 
-### 1) Estoque baseado em movimentações
-O saldo NÃO é salvo diretamente como “campo estoque”.
-Ele é calculado por:
-- **Insumos**: soma(entradas) − soma(saídas)
-- **Tipos de café**: soma(entradas) − soma(saídas)
-
-Tabelas envolvidas:
-- `mov_insumos` → entradas/saídas/ajustes de insumos
-- `mov_lotes` → entradas/saídas/ajustes por tipo de café
-
-### 2) Macro + Parcelas (Financeiro)
-Cada compra/venda cria um documento “macro” e, se necessário, várias parcelas.
-
-- Compras → `contas_pagar` + `contas_pagar_parcelas`
-- Vendas → `contas_receber` + `contas_receber_parcelas`
-
----
-
-## 🧩 Módulos
-
-### 1) Autenticação e Usuários
-- Login por email/senha (MVP).
-- Cria `sessao` local com token e expiração.
-- Perfis controlam menu e permissões.
-
-### 2) Cadastros Base
-CRUD completo:
-- Clientes (`clientes`)
-- Fornecedores (`fornecedores`)
-- Insumos (`insumos`)
-- Tipos de Café (`tipos_cafe`)
-
-### 3) Gestão de Café (Estoque + Produção)
-- Entrada de insumos (compra) → estoque + contas a pagar
-- Fabricação de café → baixa insumo + entrada por tipo + custo
-
-### 4) Gestão Comercial (Vendas + Clientes)
-- Nova venda → baixa tipo + contas a receber
-- Status do cliente → inadimplente se existir parcela vencida em aberto
-
-### 5) Fornecedores + Compras
-- Dashboard por fornecedor: quanto devo / pago
-- Histórico: compras e pagamentos por fornecedor
-
-### 6) Financeiro
-- Dash macro + listagem + baixa de parcelas
-
----
-
-## 🗃️ Estrutura de Tabelas (PostgreSQL)
-
-### A) Acesso
-- `usuarios`
-- `sessao`
-
-### B) Cadastros
-- `clientes`
-- `fornecedores`
-- `insumos`
-- `tipos_cafe`
-
-### C) Compras / Entrada Insumos
-- `entrada_insumos` (macro)
-- `entrada_insumos_itens` (itens)
-
-### D) Produção
-- `ordem_producao` (macro)
-
-### E) Vendas
-- `vendas` (macro)
-- `vendas_itens` (itens)
-
-### F) Financeiro
-- `contas_pagar` (macro)
-- `contas_pagar_parcelas` (parcelas)
-- `contas_receber` (macro)
-- `contas_receber_parcelas` (parcelas)
-
-### G) Estoque (histórico oficial)
-- `mov_insumos`
-- `mov_lotes`
-
----
-
-## 📦 Seed (Dados iniciais)
-
-O arquivo de seed popula:
-- 3 clientes
-- 3 fornecedores
-- 1 insumo
-- 1 tipo de café
-- movimentações de insumos e estoque por tipo coerentes
-
-> O seed é importante para abrir a aplicação e já ter dashboards “vivos” na apresentação.
-
----
-
-## 🔁 Fluxos principais
-
-### Entrada de Insumos (Compra)
-1. Criar `entrada_insumos` + `entrada_insumos_itens`
-2. Gerar `mov_insumos` (ENTRADA_COMPRA)
-3. Criar `contas_pagar` + `contas_pagar_parcelas`
-
-### Fabricação
-1. Criar `ordem_producao`
-2. Gerar `mov_insumos` (SAIDA_PRODUCAO)
-3. Gerar `mov_lotes` (ENTRADA_FABRICACAO) com custo unit calculado
-
-### Venda
-1. Criar `vendas` + `vendas_itens`
-2. Gerar `mov_lotes` (SAIDA_VENDA)
-3. Criar `contas_receber` + `contas_receber_parcelas`
-
----
-
-## 🧮 Regras de Custo (MVP)
-
-### Insumos
-- `custo_total = quantidade * custo_unit`
-
-### Fabricação
-- `custo_base = quantidade_insumo * custo_unit_insumo`
-- `margem_lucro = custo_base * (margem_lucro_percent / 100)`
-- `custo_total_producao = custo_base + margem_lucro`
-- `custo_unit_tipo = custo_total_producao / quantidade_gerada`
-
----
-
-## 🧪 Como rodar (genérico)
-- Instale dependências do projeto.
-- Configure `DATABASE_URL` no ambiente.
-- Rode migrations com `npm run migration:up`.
-- Rode o front localmente.
-- No primeiro acesso:
-  - Acesse **/system** e clique em **Alimentar banco de dados**.
-  - Faça login com:
-    - **Email:** `admin@cafemvp.com`
-    - **Senha:** `mvp_admin_123`
-
----
-
-## 📌 Observações importantes (para apresentação)
-- Este MVP é uma prova de conceito para validar o modelo de dados, fluxos e dashboards.
-- O backend é minimalista e focado em suportar as telas do MVP.
-- A migração para integrações mais complexas pode reutilizar as mesmas tabelas.
-
----
+## Rodando local
+1. Configurar `DATABASE_URL` no `.env`
+2. Rodar migrations:
+```bash
+npm run migration:up
+```
+3. Subir aplicação:
+```bash
+npm run dev
+```

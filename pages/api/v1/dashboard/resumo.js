@@ -1,4 +1,5 @@
 import { query } from "../../../../infra/database";
+import { requireAuth } from "../../../../infra/auth";
 
 const toNumber = (value) => Number(value) || 0;
 
@@ -7,6 +8,9 @@ export default async function handler(req, res) {
     res.setHeader("Allow", ["GET"]);
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
 
   try {
     const [

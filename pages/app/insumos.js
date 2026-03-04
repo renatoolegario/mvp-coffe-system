@@ -26,8 +26,8 @@ const initialForm = {
   nome: "",
   kg_por_saco: "1",
   estoque_minimo: "",
-  estoque_minimo_unidade: "kg",
-  tipo: "CONSUMIVEL",
+  unidade_codigo: "KG",
+  estoque_minimo_unidade_codigo: "KG",
   pode_ser_insumo: true,
   pode_ser_produzivel: false,
   pode_ser_vendido: false,
@@ -35,6 +35,7 @@ const initialForm = {
 
 const InsumosPage = () => {
   const insumos = useDataStore((state) => state.insumos);
+  const auxUnidades = useDataStore((state) => state.auxUnidades);
   const addInsumo = useDataStore((state) => state.addInsumo);
   const updateInsumo = useDataStore((state) => state.updateInsumo);
   const [form, setForm] = useState(initialForm);
@@ -58,6 +59,17 @@ const InsumosPage = () => {
     return insumos.filter((i) => i.nome.toLowerCase().includes(lower));
   }, [insumos, filtroNome]);
 
+  const unidadesOptions = useMemo(
+    () =>
+      auxUnidades.length
+        ? auxUnidades
+        : [
+            { id: "kg", codigo: "KG", label: "Quilograma" },
+            { id: "saco", codigo: "SACO", label: "Saco" },
+          ],
+    [auxUnidades],
+  );
+
   const openLedgerDialog = (insumo) => {
     setSelectedInsumo(insumo);
     setLedgerOpen(true);
@@ -71,16 +83,6 @@ const InsumosPage = () => {
   const handleEditChange = (field) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     setEditForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleToggleEstoqueMinimoUnidade = (event) => {
-    const value = event.target.checked ? "saco" : "kg";
-    setForm((prev) => ({ ...prev, estoque_minimo_unidade: value }));
-  };
-
-  const handleToggleEditEstoqueMinimoUnidade = (event) => {
-    const value = event.target.checked ? "saco" : "kg";
-    setEditForm((prev) => ({ ...prev, estoque_minimo_unidade: value }));
   };
 
   const handleSubmit = async (event) => {
@@ -105,9 +107,7 @@ const InsumosPage = () => {
 
     await addInsumo({
       ...form,
-      unidade: "kg",
       estoque_minimo: Number(form.estoque_minimo) || 0,
-      estoque_minimo_unidade: form.estoque_minimo_unidade,
       kg_por_saco: Number(form.kg_por_saco) || 1,
     });
     setForm(initialForm);
@@ -125,9 +125,9 @@ const InsumosPage = () => {
       nome: insumo.nome || "",
       kg_por_saco: String(Number(insumo.kg_por_saco) || 1),
       estoque_minimo: String(Number(insumo.estoque_minimo) || 0),
-      estoque_minimo_unidade:
-        insumo.estoque_minimo_unidade === "saco" ? "saco" : "kg",
-      tipo: insumo.tipo === "FISICO" ? "FISICO" : "CONSUMIVEL",
+      unidade_codigo: insumo.unidade_codigo || "KG",
+      estoque_minimo_unidade_codigo:
+        insumo.estoque_minimo_unidade_codigo || "KG",
       pode_ser_insumo: insumo.pode_ser_insumo ?? true,
       pode_ser_produzivel: insumo.pode_ser_produzivel ?? false,
       pode_ser_vendido: insumo.pode_ser_vendido ?? false,
@@ -161,8 +161,9 @@ const InsumosPage = () => {
       nome: editForm.nome,
       kg_por_saco: Number(editForm.kg_por_saco) || 1,
       estoque_minimo: Number(editForm.estoque_minimo) || 0,
-      estoque_minimo_unidade: editForm.estoque_minimo_unidade,
-      tipo: editForm.tipo,
+      unidade_codigo: editForm.unidade_codigo || "KG",
+      estoque_minimo_unidade_codigo:
+        editForm.estoque_minimo_unidade_codigo || "KG",
       pode_ser_insumo: editForm.pode_ser_insumo,
       pode_ser_produzivel: editForm.pode_ser_produzivel,
       pode_ser_vendido: editForm.pode_ser_vendido,
@@ -231,12 +232,12 @@ const InsumosPage = () => {
                     <Box>
                       <Typography fontWeight={600}>{insumo.nome}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Unidade de cadastro: {insumo.unidade} • Kg por saco:{" "}
+                        Unidade de cadastro: {insumo.unidade_label || insumo.unidade_codigo || "-"} • Kg por saco:{" "}
                         {Number(insumo.kg_por_saco) || 1}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Estoque mínimo: {insumo.estoque_minimo || "-"}{" "}
-                        {insumo.estoque_minimo_unidade || "kg"}
+                        {insumo.estoque_minimo_unidade_label || insumo.estoque_minimo_unidade_codigo || "KG"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Finalidade: {[
@@ -302,16 +303,6 @@ const InsumosPage = () => {
               required
             />
             <TextField
-              select
-              label="Tipo do insumo"
-              value={form.tipo}
-              onChange={handleChange("tipo")}
-              required
-            >
-              <MenuItem value="CONSUMIVEL">Consumível</MenuItem>
-              <MenuItem value="FISICO">Físico</MenuItem>
-            </TextField>
-            <TextField
               label="Kg por saco"
               type="number"
               value={form.kg_por_saco}
@@ -319,22 +310,39 @@ const InsumosPage = () => {
               inputProps={{ min: 0.01, step: "0.01" }}
               required
             />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={form.estoque_minimo_unidade === "saco"}
-                  onChange={handleToggleEstoqueMinimoUnidade}
-                />
-              }
-              label={`Estoque mínimo em saco (${Number(form.kg_por_saco) || 1} kg/saco)`}
-            />
             <TextField
-              label={`Estoque mínimo (${form.estoque_minimo_unidade})`}
+              select
+              label="Unidade padrão"
+              value={form.unidade_codigo}
+              onChange={handleChange("unidade_codigo")}
+              required
+            >
+              {unidadesOptions.map((unidade) => (
+                <MenuItem key={unidade.id} value={unidade.codigo}>
+                  {unidade.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Estoque mínimo"
               type="number"
               value={form.estoque_minimo}
               onChange={handleChange("estoque_minimo")}
               inputProps={{ min: 0, step: "0.01" }}
             />
+            <TextField
+              select
+              label="Unidade do estoque mínimo"
+              value={form.estoque_minimo_unidade_codigo}
+              onChange={handleChange("estoque_minimo_unidade_codigo")}
+              required
+            >
+              {unidadesOptions.map((unidade) => (
+                <MenuItem key={unidade.id} value={unidade.codigo}>
+                  {unidade.label}
+                </MenuItem>
+              ))}
+            </TextField>
             <Typography variant="subtitle2" mt={2}>
               Finalidade no sistema
             </Typography>
@@ -401,16 +409,6 @@ const InsumosPage = () => {
               required
             />
             <TextField
-              select
-              label="Tipo do insumo"
-              value={editForm.tipo}
-              onChange={handleEditChange("tipo")}
-              required
-            >
-              <MenuItem value="CONSUMIVEL">Consumível</MenuItem>
-              <MenuItem value="FISICO">Físico</MenuItem>
-            </TextField>
-            <TextField
               label="Kg por saco"
               type="number"
               value={editForm.kg_por_saco}
@@ -418,22 +416,39 @@ const InsumosPage = () => {
               inputProps={{ min: 0.01, step: "0.01" }}
               required
             />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={editForm.estoque_minimo_unidade === "saco"}
-                  onChange={handleToggleEditEstoqueMinimoUnidade}
-                />
-              }
-              label={`Estoque mínimo em saco (${Number(editForm.kg_por_saco) || 1} kg/saco)`}
-            />
             <TextField
-              label={`Estoque mínimo (${editForm.estoque_minimo_unidade})`}
+              select
+              label="Unidade padrão"
+              value={editForm.unidade_codigo}
+              onChange={handleEditChange("unidade_codigo")}
+              required
+            >
+              {unidadesOptions.map((unidade) => (
+                <MenuItem key={unidade.id} value={unidade.codigo}>
+                  {unidade.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Estoque mínimo"
               type="number"
               value={editForm.estoque_minimo}
               onChange={handleEditChange("estoque_minimo")}
               inputProps={{ min: 0, step: "0.01" }}
             />
+            <TextField
+              select
+              label="Unidade do estoque mínimo"
+              value={editForm.estoque_minimo_unidade_codigo}
+              onChange={handleEditChange("estoque_minimo_unidade_codigo")}
+              required
+            >
+              {unidadesOptions.map((unidade) => (
+                <MenuItem key={unidade.id} value={unidade.codigo}>
+                  {unidade.label}
+                </MenuItem>
+              ))}
+            </TextField>
             <Typography variant="subtitle2" mt={2}>
               Finalidade no sistema
             </Typography>

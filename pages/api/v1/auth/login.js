@@ -1,5 +1,7 @@
 import { query } from "../../../../infra/database";
-import { conversaoCripto } from "../../../../utils/crypto";
+import { encryptIfNeeded, decryptIfNeeded } from "../../../../utils/crypto";
+import { generateAuthToken, tokenExpiresAt } from "../../../../infra/auth";
+import { toPerfilCode } from "../../../../utils/profile";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -17,10 +19,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const senhaCriptografada = await conversaoCripto(senha);
+    const emailCriptografado = encryptIfNeeded(email);
+    const senhaCriptografada = encryptIfNeeded(senha);
     const result = await query(
       "SELECT id, nome, email, perfil FROM usuarios WHERE email = $1 AND senha = $2 AND ativo = true LIMIT 1",
-      [email, senhaCriptografada],
+      [emailCriptografado, senhaCriptografada],
     );
 
     const usuario = result.rows[0];
@@ -28,7 +31,24 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Credenciais inválidas." });
     }
 
-    return res.status(200).json({ usuario });
+    const token = generateAuthToken();
+    const expiraEm = tokenExpiresAt(7);
+
+    await query(
+      "INSERT INTO auth_tokens (usuario_id, token, expira_em, criado_em) VALUES ($1, $2, $3, now()::timestamp)",
+      [usuario.id, token, expiraEm],
+    );
+
+    return res.status(200).json({
+      token,
+      expira_em: expiraEm,
+      usuario: {
+        id: usuario.id,
+        nome: decryptIfNeeded(usuario.nome),
+        email: decryptIfNeeded(usuario.email),
+        perfil: toPerfilCode(usuario.perfil),
+      },
+    });
   } catch (error) {
     return res.status(500).json({ error: "Erro ao autenticar usuário." });
   }

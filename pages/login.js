@@ -47,6 +47,8 @@ const LoginPage = () => {
         nome: usuario.nome,
         email: usuario.email,
         perfil: usuario.perfil,
+        token: data.token,
+        expira_em: data.expira_em,
       });
       router.push("/app");
     } catch (error) {

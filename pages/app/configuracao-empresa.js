@@ -11,9 +11,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import { authenticatedFetch, getAuthToken } from "../../hooks/useSession";
 
 const integracoesIniciais = {
   asaas: { chave: "", configurado: false, editando: true },
@@ -29,10 +30,12 @@ const ConfiguracaoEmpresaPage = () => {
     severity: "success",
     message: "",
   });
+  const [swaggerErro, setSwaggerErro] = useState("");
+  const swaggerContainerRef = useRef(null);
 
   const loadFaixas = async () => {
     try {
-      const response = await fetch("/api/v1/configuracao-empresa/estoque");
+      const response = await authenticatedFetch("/api/v1/configuracao-empresa/estoque");
       if (!response.ok) return;
       const data = await response.json();
       setFaixas(data.faixas || []);
@@ -43,7 +46,7 @@ const ConfiguracaoEmpresaPage = () => {
 
   const loadIntegracoes = async () => {
     try {
-      const response = await fetch("/api/v1/configuracao-empresa/integracoes");
+      const response = await authenticatedFetch("/api/v1/configuracao-empresa/integracoes");
       if (!response.ok) return;
       const data = await response.json();
 
@@ -69,6 +72,55 @@ const ConfiguracaoEmpresaPage = () => {
     loadFaixas();
     loadIntegracoes();
   }, []);
+
+  useEffect(() => {
+    if (tab !== "apis") return;
+
+    const ensureSwaggerAssets = async () => {
+      if (typeof window === "undefined") return;
+      setSwaggerErro("");
+
+      const cssId = "swagger-ui-css";
+      if (!document.getElementById(cssId)) {
+        const link = document.createElement("link");
+        link.id = cssId;
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css";
+        document.head.appendChild(link);
+      }
+
+      if (!window.SwaggerUIBundle) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.body.appendChild(script);
+        });
+      }
+
+      const token = getAuthToken();
+      if (!token || !swaggerContainerRef.current || !window.SwaggerUIBundle) return;
+
+      swaggerContainerRef.current.innerHTML = "";
+      window.SwaggerUIBundle({
+        url: "/api/v1/docs/openapi",
+        domNode: swaggerContainerRef.current,
+        deepLinking: true,
+        requestInterceptor: (request) => ({
+          ...request,
+          headers: {
+            ...(request.headers || {}),
+            Authorization: `Bearer ${token}`,
+          },
+        }),
+      });
+    };
+
+    ensureSwaggerAssets().catch(() => {
+      setSwaggerErro("Não foi possível carregar a documentação Swagger.");
+    });
+  }, [tab]);
 
   const handleFaixaChange = (index, field) => (event) => {
     const value = event.target.value;
@@ -120,7 +172,7 @@ const ConfiguracaoEmpresaPage = () => {
     }
 
     try {
-      const response = await fetch("/api/v1/configuracao-empresa/integracoes", {
+      const response = await authenticatedFetch("/api/v1/configuracao-empresa/integracoes", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provedor, chave }),
@@ -161,7 +213,7 @@ const ConfiguracaoEmpresaPage = () => {
 
   const handleSaveFaixas = async () => {
     try {
-      const response = await fetch("/api/v1/configuracao-empresa/estoque", {
+      const response = await authenticatedFetch("/api/v1/configuracao-empresa/estoque", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ faixas }),
@@ -201,6 +253,7 @@ const ConfiguracaoEmpresaPage = () => {
         <Tabs value={tab} onChange={(_, value) => setTab(value)}>
           <Tab value="estoque" label="Status de Estoque" />
           <Tab value="integracoes" label="Integrações" />
+          <Tab value="apis" label="APIs Internas" />
         </Tabs>
       </Paper>
 
@@ -314,6 +367,18 @@ const ConfiguracaoEmpresaPage = () => {
                 </Grid>
               );
             })}
+          </Stack>
+        </Paper>
+      ) : null}
+
+      {tab === "apis" ? (
+        <Paper sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Documentação técnica dos endpoints internos protegidos por token.
+            </Typography>
+            {swaggerErro ? <Alert severity="error">{swaggerErro}</Alert> : null}
+            <Box ref={swaggerContainerRef} sx={{ minHeight: 560 }} />
           </Stack>
         </Paper>
       ) : null}

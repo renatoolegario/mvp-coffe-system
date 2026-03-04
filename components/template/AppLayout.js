@@ -36,6 +36,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 import { clearSession, getSession } from "../../hooks/useSession";
+import { toPerfilLabel, toPerfilRole } from "../../utils/profile";
 
 const drawerWidth = 260;
 
@@ -60,19 +61,19 @@ const menuGroups = [
       {
         label: "Clientes",
         href: "/app/clientes",
-        roles: ["admin", "vendas"],
+        roles: ["admin", "comum"],
         icon: Handshake,
       },
       {
         label: "Fornecedores",
         href: "/app/fornecedores",
-        roles: ["admin", "financeiro"],
+        roles: ["admin", "comum"],
         icon: LocalShipping,
       },
       {
         label: "Insumos",
         href: "/app/insumos",
-        roles: ["admin", "producao"],
+        roles: ["admin", "comum"],
         icon: Inventory2,
       },
     ],
@@ -85,19 +86,19 @@ const menuGroups = [
       {
         label: "Produção",
         href: "/app/producao",
-        roles: ["admin", "producao"],
+        roles: ["admin", "comum"],
         icon: PrecisionManufacturing,
       },
       {
         label: "Produções em Trânsito",
         href: "/app/retorno-producao",
-        roles: ["admin", "producao"],
+        roles: ["admin", "comum"],
         icon: PrecisionManufacturing,
       },
       {
         label: "Transferências Internas",
         href: "/app/transferencias",
-        roles: ["admin", "producao"],
+        roles: ["admin", "comum"],
         icon: SwapHoriz,
       },
     ],
@@ -110,19 +111,19 @@ const menuGroups = [
       {
         label: "Nova Venda",
         href: "/app/nova-venda",
-        roles: ["admin", "vendas"],
+        roles: ["admin", "comum"],
         icon: PointOfSale,
       },
       {
         label: "Gestão de Vendas",
         href: "/app/vendas",
-        roles: ["admin", "vendas"],
+        roles: ["admin", "comum"],
         icon: ReceiptLong,
       },
       {
         label: "Detalhe do Cliente",
         href: "/app/detalhe-cliente",
-        roles: ["admin", "vendas"],
+        roles: ["admin", "comum"],
         icon: Handshake,
       },
     ],
@@ -142,25 +143,25 @@ const menuGroups = [
       {
         label: "Dashboard Fornecedores",
         href: "/app/dashboard-fornecedores",
-        roles: ["admin", "financeiro"],
+        roles: ["admin", "comum"],
         icon: BarChart,
       },
       {
         label: "Detalhe do Fornecedor",
         href: "/app/detalhe-fornecedor",
-        roles: ["admin", "financeiro"],
+        roles: ["admin", "comum"],
         icon: LocalShipping,
       },
       {
         label: "Contas a Pagar",
         href: "/app/contas-pagar",
-        roles: ["admin", "financeiro"],
+        roles: ["admin", "comum"],
         icon: ReceiptLong,
       },
       {
         label: "Contas a Receber",
         href: "/app/contas-receber",
-        roles: ["admin", "financeiro", "vendas"],
+        roles: ["admin", "comum"],
         icon: ReceiptLong,
       },
     ],
@@ -185,18 +186,19 @@ const AppLayout = ({ title, children }) => {
 
   const filteredGroups = useMemo(() => {
     if (!session) return [];
+    const perfilAtual = toPerfilRole(session.perfil);
     return menuGroups
       .map((group) => {
         if (!group.items) return group;
         return {
           ...group,
           items: group.items.filter((item) =>
-            item.roles ? item.roles.includes(session.perfil) : true,
+            item.roles ? item.roles.includes(perfilAtual) : true,
           ),
         };
       })
       .filter((group) => {
-        if (group.roles && !group.roles.includes(session.perfil)) {
+        if (group.roles && !group.roles.includes(perfilAtual)) {
           return false;
         }
 
@@ -259,7 +261,7 @@ const AppLayout = ({ title, children }) => {
             <Box textAlign="right">
               <Typography variant="body2">{session?.nome}</Typography>
               <Typography variant="caption" color="text.secondary">
-                {session?.perfil}
+                {toPerfilLabel(session?.perfil)}
               </Typography>
             </Box>
             <Avatar
@@ -385,7 +387,7 @@ const AppLayout = ({ title, children }) => {
         <Divider />
         <Box px={2} py={2}>
           <Typography variant="caption" color="text.secondary">
-            Segurança: sessão expira em 8h.
+            Segurança: token expira em 7 dias.
           </Typography>
         </Box>
       </Drawer>

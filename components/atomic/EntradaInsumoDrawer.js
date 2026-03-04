@@ -13,11 +13,12 @@ import {
     Typography,
 } from "@mui/material";
 import { Close } from "@mui/icons-material";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
 
 const parseNumber = (value) => Number(String(value).replace(",", ".")) || 0;
+const toLocalTimestampFromDate = (value) => (value ? `${value} 00:00:00` : "");
 
 const buildParcelasVencimentos = (qtd, previous = []) =>
     Array.from({ length: qtd }, (_, index) => previous[index] || "");
@@ -63,6 +64,13 @@ export default function EntradaInsumoDrawer({ open, onClose }) {
         () => insumos.find((insumo) => insumo.id === insumoId),
         [insumoId, insumos],
     );
+
+    useEffect(() => {
+        if (!insumoSelecionado) return;
+        const unidadeDefault = String(insumoSelecionado.unidade_codigo || "KG").toUpperCase();
+        setModoEntrada(unidadeDefault === "SACO" ? "SACO" : "KG");
+        setKgPorSacoEntrada(String(Number(insumoSelecionado.kg_por_saco) || 1));
+    }, [insumoSelecionado?.id]);
 
     const kgPorSaco =
         parseNumber(kgPorSacoEntrada) ||
@@ -271,7 +279,7 @@ export default function EntradaInsumoDrawer({ open, onClose }) {
             parcelas_qtd: parcelasQtd,
             parcelas_valores: parcelasValores.map(parseNumber),
             parcelas_vencimentos: parcelasVencimentos.map((vencimento) =>
-                new Date(vencimento).toISOString(),
+                toLocalTimestampFromDate(vencimento),
             ),
             parcelas_status: parcelasStatus,
             custos_extras: custosExtras.map((item) => ({
@@ -281,7 +289,7 @@ export default function EntradaInsumoDrawer({ open, onClose }) {
                 parcelas_qtd: item.parcelas_qtd,
                 parcelas_valores: item.parcelas_valores.map(parseNumber),
                 parcelas_vencimentos: item.parcelas_vencimentos.map((vencimento) =>
-                    new Date(vencimento).toISOString(),
+                    toLocalTimestampFromDate(vencimento),
                 ),
                 parcelas_status: item.parcelas_status,
             })),
@@ -353,7 +361,7 @@ export default function EntradaInsumoDrawer({ open, onClose }) {
 
                         <TextField
                             select
-                            label="Flag obrigatório"
+                            label="Unidade de entrada"
                             value={modoEntrada}
                             onChange={(event) => setModoEntrada(event.target.value)}
                             required

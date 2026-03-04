@@ -1,5 +1,7 @@
 import { query, withTransaction } from "../../../infra/database";
-import { conversaoCripto } from "../../../utils/crypto";
+import { encryptIfNeeded } from "../../../utils/crypto";
+import { toPerfilCode } from "../../../utils/profile";
+import { isAdmin, requireAuth } from "../../../infra/auth";
 
 const insertRow = async (client, table, columns, data) => {
   const values = columns.map((column) => data[column] ?? null);
@@ -16,8 +18,26 @@ const getNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const normalizeInsumoTipo = (tipo) =>
-  tipo === "FISICO" ? "FISICO" : "CONSUMIVEL";
+const resolveUnidadeId = async (client, unidadeInput, fallbackCode = "KG") => {
+  const input = String(unidadeInput || "").trim().toUpperCase();
+  if (/^\d+$/.test(input)) {
+    return Number(input);
+  }
+
+  if (input) {
+    const byCode = await client.query(
+      "SELECT id FROM aux_unidade WHERE codigo = $1 LIMIT 1",
+      [input],
+    );
+    if (byCode.rows[0]) return Number(byCode.rows[0].id);
+  }
+
+  const fallback = await client.query(
+    "SELECT id FROM aux_unidade WHERE codigo = $1 LIMIT 1",
+    [fallbackCode],
+  );
+  return Number(fallback.rows[0]?.id || 1);
+};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -25,25 +45,58 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const auth = await requireAuth(req, res);
+  if (!auth) return;
+
   const { action, payload } = req.body || {};
 
   try {
     switch (action) {
       case "addUsuario":
-        await query(
-          "INSERT INTO usuarios (id, nome, email, senha, perfil, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-          [
-            payload.id,
-            payload.nome,
-            payload.email,
-            await conversaoCripto(payload.senha),
-            payload.perfil,
-            payload.ativo,
-            payload.criado_em,
-          ],
-        );
+        {
+          if (!isAdmin(auth)) {
+            return res
+              .status(403)
+              .json({ error: "Apenas administradores podem cadastrar usuários." });
+          }
+
+          const normalizedEmail = String(payload.email || "")
+            .trim()
+            .toLowerCase();
+          const encryptedEmail = encryptIfNeeded(normalizedEmail);
+
+          const existingUserResult = await query(
+            "SELECT id FROM usuarios WHERE email = $1 LIMIT 1",
+            [encryptedEmail],
+          );
+
+          if (existingUserResult.rows[0]) {
+            return res
+              .status(409)
+              .json({ error: "Já existe um usuário com esse email." });
+          }
+
+          await query(
+            "INSERT INTO usuarios (id, nome, email, senha, perfil, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            [
+              payload.id,
+              encryptIfNeeded(payload.nome),
+              encryptedEmail,
+              encryptIfNeeded(payload.senha),
+              toPerfilCode(payload.perfil),
+              payload.ativo,
+              payload.criado_em,
+            ],
+          );
+        }
         break;
       case "toggleUsuario":
+        if (!isAdmin(auth)) {
+          return res
+            .status(403)
+            .json({ error: "Apenas administradores podem alterar usuários." });
+        }
+
         await query("UPDATE usuarios SET ativo = $2 WHERE id = $1", [
           payload.id,
           payload.ativo,
@@ -51,27 +104,39 @@ export default async function handler(req, res) {
         break;
       case "addCliente":
         await query(
-          "INSERT INTO clientes (id, nome, cpf_cnpj, telefone, endereco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+          "INSERT INTO clientes (id, nome, cpf_cnpj, telefone, endereco, ativo, criado_em, protegido) VALUES ($1, $2, $3, $4, $5, $6, $7, false)",
           [
             payload.id,
-            payload.nome,
-            payload.cpf_cnpj,
-            payload.telefone,
-            payload.endereco,
+            encryptIfNeeded(payload.nome),
+            encryptIfNeeded(payload.cpf_cnpj),
+            encryptIfNeeded(payload.telefone),
+            encryptIfNeeded(payload.endereco),
             payload.ativo,
             payload.criado_em,
           ],
         );
         break;
       case "updateCliente":
+        {
+          const clienteResult = await query(
+            "SELECT protegido FROM clientes WHERE id = $1 LIMIT 1",
+            [payload.id],
+          );
+          if (clienteResult.rows[0]?.protegido) {
+            return res.status(403).json({
+              error: "Cliente Balcão é protegido e só pode ser alterado por migration.",
+            });
+          }
+        }
+
         await query(
           "UPDATE clientes SET nome = $2, cpf_cnpj = $3, telefone = $4, endereco = $5 WHERE id = $1",
           [
             payload.id,
-            payload.nome,
-            payload.cpf_cnpj,
-            payload.telefone,
-            payload.endereco,
+            encryptIfNeeded(payload.nome),
+            encryptIfNeeded(payload.cpf_cnpj),
+            encryptIfNeeded(payload.telefone),
+            encryptIfNeeded(payload.endereco),
           ],
         );
         break;
@@ -80,50 +145,105 @@ export default async function handler(req, res) {
           "INSERT INTO fornecedores (id, razao_social, cpf_cnpj, telefone, endereco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
           [
             payload.id,
-            payload.razao_social,
-            payload.cpf_cnpj,
-            payload.telefone,
-            payload.endereco,
+            encryptIfNeeded(payload.razao_social),
+            encryptIfNeeded(payload.cpf_cnpj),
+            encryptIfNeeded(payload.telefone),
+            encryptIfNeeded(payload.endereco),
             payload.ativo,
             payload.criado_em,
           ],
         );
         break;
       case "addInsumo":
-        await query(
-          "INSERT INTO insumos (id, nome, unidade, estoque_minimo, estoque_minimo_unidade, kg_por_saco, preco_kg, tipo, ativo, criado_em, pode_ser_insumo, pode_ser_produzivel, pode_ser_vendido) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
-          [
-            payload.id,
-            payload.nome,
-            payload.unidade,
-            payload.estoque_minimo,
-            payload.estoque_minimo_unidade,
-            payload.kg_por_saco,
-            getNumber(payload.preco_kg),
-            normalizeInsumoTipo(payload.tipo),
-            payload.ativo,
-            payload.criado_em,
-            payload.pode_ser_insumo ?? true,
-            payload.pode_ser_produzivel ?? false,
-            payload.pode_ser_vendido ?? false,
-          ],
-        );
+        await withTransaction(async (client) => {
+          const unidadeId = await resolveUnidadeId(
+            client,
+            payload.unidade_id || payload.unidade_codigo || payload.unidade,
+          );
+          const estoqueMinimoUnidadeId = await resolveUnidadeId(
+            client,
+            payload.estoque_minimo_unidade_id ||
+              payload.estoque_minimo_unidade_codigo ||
+              payload.estoque_minimo_unidade ||
+              payload.unidade_id ||
+              payload.unidade_codigo ||
+              payload.unidade,
+          );
+
+          await client.query(
+            `
+            INSERT INTO insumos (
+              id,
+              nome,
+              estoque_minimo,
+              kg_por_saco,
+              ativo,
+              criado_em,
+              pode_ser_insumo,
+              pode_ser_produzivel,
+              pode_ser_vendido,
+              unidade_id,
+              estoque_minimo_unidade_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            `,
+            [
+              payload.id,
+              payload.nome,
+              getNumber(payload.estoque_minimo),
+              getNumber(payload.kg_por_saco) || 1,
+              payload.ativo,
+              payload.criado_em,
+              payload.pode_ser_insumo ?? true,
+              payload.pode_ser_produzivel ?? false,
+              payload.pode_ser_vendido ?? false,
+              unidadeId,
+              estoqueMinimoUnidadeId,
+            ],
+          );
+        });
         break;
       case "updateInsumo":
-        await query(
-          "UPDATE insumos SET nome = $2, estoque_minimo = $3, estoque_minimo_unidade = $4, kg_por_saco = $5, tipo = $6, pode_ser_insumo = $7, pode_ser_produzivel = $8, pode_ser_vendido = $9 WHERE id = $1",
-          [
-            payload.id,
-            payload.nome,
-            getNumber(payload.estoque_minimo),
-            payload.estoque_minimo_unidade === "saco" ? "saco" : "kg",
-            getNumber(payload.kg_por_saco) || 1,
-            normalizeInsumoTipo(payload.tipo),
-            payload.pode_ser_insumo ?? true,
-            payload.pode_ser_produzivel ?? false,
-            payload.pode_ser_vendido ?? false,
-          ],
-        );
+        await withTransaction(async (client) => {
+          const unidadeId = await resolveUnidadeId(
+            client,
+            payload.unidade_id || payload.unidade_codigo || payload.unidade,
+          );
+          const estoqueMinimoUnidadeId = await resolveUnidadeId(
+            client,
+            payload.estoque_minimo_unidade_id ||
+              payload.estoque_minimo_unidade_codigo ||
+              payload.estoque_minimo_unidade ||
+              payload.unidade_id ||
+              payload.unidade_codigo ||
+              payload.unidade,
+          );
+
+          await client.query(
+            `
+            UPDATE insumos
+            SET nome = $2,
+                estoque_minimo = $3,
+                kg_por_saco = $4,
+                pode_ser_insumo = $5,
+                pode_ser_produzivel = $6,
+                pode_ser_vendido = $7,
+                unidade_id = $8,
+                estoque_minimo_unidade_id = $9
+            WHERE id = $1
+            `,
+            [
+              payload.id,
+              payload.nome,
+              getNumber(payload.estoque_minimo),
+              getNumber(payload.kg_por_saco) || 1,
+              payload.pode_ser_insumo ?? true,
+              payload.pode_ser_produzivel ?? false,
+              payload.pode_ser_vendido ?? false,
+              unidadeId,
+              estoqueMinimoUnidadeId,
+            ],
+          );
+        });
         break;
       case "addEntradaInsumos":
         await withTransaction(async (client) => {
@@ -266,13 +386,15 @@ export default async function handler(req, res) {
           }
 
           const detalhesResult = await client.query(
-            "SELECT dp.*, i.preco_kg FROM detalhes_producao dp JOIN insumos i ON i.id = dp.insumo_id WHERE producao_id = $1",
+            "SELECT dp.* FROM detalhes_producao dp WHERE producao_id = $1",
             [payload.producao_id],
           );
 
           const custoInsumos = detalhesResult.rows.reduce(
             (acc, item) =>
-              acc + getNumber(item.quantidade_kg) * getNumber(item.preco_kg),
+              acc +
+              getNumber(item.quantidade_kg) *
+                getNumber(item.custo_unitario_previsto),
             0,
           );
           const custosAdicionais = payload.custos_adicionais || [];
@@ -411,28 +533,6 @@ export default async function handler(req, res) {
               obs: payload.obs || "",
             },
           );
-
-          const saldoResult = await client.query(
-            "SELECT COALESCE(SUM(quantidade_entrada - quantidade_saida), 0) AS saldo FROM movimento_producao WHERE insumo_id = $1",
-            [producao.insumo_final_id],
-          );
-          const insumoAtualResult = await client.query(
-            "SELECT preco_kg FROM insumos WHERE id = $1",
-            [producao.insumo_final_id],
-          );
-          const saldoAtual = getNumber(saldoResult.rows[0]?.saldo) - pesoReal;
-          const precoAtual = getNumber(insumoAtualResult.rows[0]?.preco_kg);
-          const novoSaldo = saldoAtual + pesoReal;
-          const precoMedioNovo =
-            novoSaldo > 0
-              ? (saldoAtual * precoAtual + pesoReal * custoUnitarioReal) /
-              novoSaldo
-              : custoUnitarioReal;
-
-          await client.query("UPDATE insumos SET preco_kg = $2 WHERE id = $1", [
-            producao.insumo_final_id,
-            precoMedioNovo,
-          ]);
         });
         break;
       case "deleteProducao":
@@ -486,9 +586,37 @@ export default async function handler(req, res) {
               "data_entrega",
               "status_entrega",
               "obs",
+              "tipo_pagamento",
+              "forma_pagamento",
+              "desconto_tipo",
+              "desconto_valor",
+              "desconto_descricao",
+              "acrescimo_tipo",
+              "acrescimo_valor",
+              "acrescimo_descricao",
             ],
             payload.venda,
           );
+
+          for (const item of payload.itens || []) {
+            await insertRow(
+              client,
+              "venda_itens",
+              [
+                "id",
+                "venda_id",
+                "insumo_id",
+                "quantidade_kg",
+                "quantidade_informada",
+                "unidade_id",
+                "kg_por_saco",
+                "preco_unitario",
+                "valor_total",
+                "criado_em",
+              ],
+              item,
+            );
+          }
 
           await insertRow(
             client,
@@ -505,7 +633,7 @@ export default async function handler(req, res) {
             payload.contaReceber,
           );
 
-          for (const parcela of payload.parcelas) {
+          for (const parcela of payload.parcelas || []) {
             await insertRow(
               client,
               "contas_receber_parcelas",
@@ -519,6 +647,15 @@ export default async function handler(req, res) {
                 "data_recebimento",
                 "forma_recebimento",
                 "producao_id",
+                "valor_programado",
+                "valor_recebido",
+                "forma_recebimento_real",
+                "motivo_diferenca",
+                "acao_diferenca",
+                "origem_recebimento",
+                "fornecedor_destino_id",
+                "comprovante_url",
+                "observacao_recebimento",
               ],
               parcela,
             );
@@ -600,13 +737,42 @@ export default async function handler(req, res) {
         break;
       case "marcarParcelaRecebida":
         await withTransaction(async (client) => {
+          const valorRecebido = getNumber(payload.valor_recebido);
+          const valorProgramado =
+            getNumber(payload.valor_programado) || getNumber(payload.valor);
+          const diferenca = Number((valorProgramado - valorRecebido).toFixed(2));
+
           await client.query(
-            "UPDATE contas_receber_parcelas SET status = $2, data_recebimento = $3, forma_recebimento = $4 WHERE id = $1",
+            `
+            UPDATE contas_receber_parcelas
+            SET status = $2,
+                data_recebimento = $3,
+                forma_recebimento = $4,
+                valor_programado = $5,
+                valor_recebido = $6,
+                forma_recebimento_real = $7,
+                motivo_diferenca = $8,
+                acao_diferenca = $9,
+                origem_recebimento = $10,
+                fornecedor_destino_id = $11,
+                comprovante_url = $12,
+                observacao_recebimento = $13
+            WHERE id = $1
+            `,
             [
               payload.id,
               payload.status,
               payload.data_recebimento,
               payload.forma_recebimento,
+              valorProgramado,
+              valorRecebido || null,
+              payload.forma_recebimento_real || payload.forma_recebimento,
+              payload.motivo_diferenca || null,
+              payload.acao_diferenca || null,
+              payload.origem_recebimento || "NORMAL",
+              payload.fornecedor_destino_id || null,
+              payload.comprovante_url || null,
+              payload.observacao_recebimento || null,
             ],
           );
 
@@ -634,12 +800,92 @@ export default async function handler(req, res) {
               },
             );
           }
+
+          if (diferenca > 0 && payload.acao_diferenca === "JOGAR_PROXIMA") {
+            const proximaParcelaResult = await client.query(
+              `
+              SELECT id, valor, valor_programado
+              FROM contas_receber_parcelas
+              WHERE conta_receber_id = $1
+                AND parcela_num > $2
+              ORDER BY parcela_num ASC
+              LIMIT 1
+              `,
+              [payload.conta_receber_id, payload.parcela_num],
+            );
+
+            const proximaParcela = proximaParcelaResult.rows[0];
+            if (proximaParcela) {
+              const baseValor =
+                getNumber(proximaParcela.valor_programado) ||
+                getNumber(proximaParcela.valor);
+              await client.query(
+                `
+                UPDATE contas_receber_parcelas
+                SET valor = $2,
+                    valor_programado = $2
+                WHERE id = $1
+                `,
+                [
+                  proximaParcela.id,
+                  Number((baseValor + diferenca).toFixed(2)),
+                ],
+              );
+            }
+          }
+
+          for (const contaPagar of payload.contasPagar || []) {
+            await insertRow(
+              client,
+              "contas_pagar",
+              [
+                "id",
+                "fornecedor_id",
+                "origem_tipo",
+                "origem_id",
+                "valor_total",
+                "data_emissao",
+                "status",
+                "venda_id",
+              ],
+              contaPagar,
+            );
+          }
+
+          for (const parcelaPagar of payload.parcelasPagar || []) {
+            await insertRow(
+              client,
+              "contas_pagar_parcelas",
+              [
+                "id",
+                "conta_pagar_id",
+                "parcela_num",
+                "vencimento",
+                "valor",
+                "status",
+                "data_pagamento",
+                "forma_pagamento",
+                "producao_id",
+              ],
+              parcelaPagar,
+            );
+          }
         });
         break;
       case "createTransferencia":
         await withTransaction(async (client) => {
           const { transferencia, movimento_origem_id, movimento_destino_id } =
             payload;
+
+          const unidadeOperacaoId = await resolveUnidadeId(
+            client,
+            transferencia.unidade_operacao_id || transferencia.unidade_codigo,
+          );
+
+          const transferenciaData = {
+            ...transferencia,
+            unidade_operacao_id: unidadeOperacaoId,
+          };
 
           await insertRow(
             client,
@@ -652,8 +898,11 @@ export default async function handler(req, res) {
               "custo_unitario",
               "data_transferencia",
               "obs",
+              "unidade_operacao_id",
+              "quantidade_informada",
+              "kg_por_saco_informado",
             ],
-            transferencia,
+            transferenciaData,
           );
 
           await insertRow(
@@ -674,16 +923,16 @@ export default async function handler(req, res) {
             ],
             {
               id: movimento_origem_id,
-              insumo_id: transferencia.origem_id,
+              insumo_id: transferenciaData.origem_id,
               tipo_movimento: "TRANSFERENCIA_SAIDA",
-              custo_unitario: transferencia.custo_unitario,
+              custo_unitario: transferenciaData.custo_unitario,
               quantidade_entrada: 0,
-              quantidade_saida: transferencia.quantidade_kg,
-              data_movimentacao: transferencia.data_transferencia,
+              quantidade_saida: transferenciaData.quantidade_kg,
+              data_movimentacao: transferenciaData.data_transferencia,
               referencia_tipo: "transferencia",
-              referencia_id: transferencia.id,
+              referencia_id: transferenciaData.id,
               producao_id: null,
-              obs: transferencia.obs || "",
+              obs: transferenciaData.obs || "",
             },
           );
 
@@ -705,16 +954,16 @@ export default async function handler(req, res) {
             ],
             {
               id: movimento_destino_id,
-              insumo_id: transferencia.destino_id,
+              insumo_id: transferenciaData.destino_id,
               tipo_movimento: "TRANSFERENCIA_ENTRADA",
-              custo_unitario: transferencia.custo_unitario,
-              quantidade_entrada: transferencia.quantidade_kg,
+              custo_unitario: transferenciaData.custo_unitario,
+              quantidade_entrada: transferenciaData.quantidade_kg,
               quantidade_saida: 0,
-              data_movimentacao: transferencia.data_transferencia,
+              data_movimentacao: transferenciaData.data_transferencia,
               referencia_tipo: "transferencia",
-              referencia_id: transferencia.id,
+              referencia_id: transferenciaData.id,
               producao_id: null,
-              obs: transferencia.obs || "",
+              obs: transferenciaData.obs || "",
             },
           );
         });
@@ -725,6 +974,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true });
   } catch (error) {
+    if (error?.code === "23505") {
+      return res.status(409).json({ error: "Registro duplicado." });
+    }
     return res.status(500).json({ error: "Erro ao executar comando." });
   }
 }
