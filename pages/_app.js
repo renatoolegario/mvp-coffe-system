@@ -1,3 +1,4 @@
+import "../styles/globals.css";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { useEffect } from "react";
 import { useDataStore } from "../hooks/useDataStore";

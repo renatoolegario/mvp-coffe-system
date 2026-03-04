@@ -1,0 +1,204 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-forest: #0f241f;
+  --color-brand-deep: #132e28;
+  --color-brand-panel: #0c1e1a;
+  --color-brand-accent: #f2b705;
+  --color-brand-accent-soft: #f5c84c;
+  --color-brand-text: #f5f7f6;
+  --color-brand-muted: #c7d1ce;
+  --color-brand-divider: #2a3f3a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #0f241f;
+  color: #f5f7f6;
+}
+
+.motion-ready .reveal-lift,
+.motion-ready .reveal-rise,
+.motion-ready .reveal-fade {
+  opacity: 0;
+  filter: blur(8px);
+  transition-property: transform, opacity, filter;
+  transition-duration: 760ms;
+  transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: transform, opacity, filter;
+}
+
+.motion-ready .reveal-lift {
+  transform: translate3d(0, 30px, 0) scale(0.995);
+}
+
+.motion-ready .reveal-rise {
+  transform: translate3d(0, 42px, 0) scale(0.988);
+}
+
+.motion-ready .reveal-fade {
+  transform: translate3d(0, 18px, 0);
+  filter: blur(12px);
+}
+
+.motion-ready .reveal-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0);
+}
+
+.motion-card {
+  transform-style: preserve-3d;
+  transition:
+    transform 520ms cubic-bezier(0.2, 0.75, 0.2, 1),
+    box-shadow 520ms ease,
+    border-color 420ms ease;
+}
+
+.motion-card:hover {
+  transform: translate3d(0, -6px, 0) rotateX(2deg) rotateY(-2deg);
+}
+
+.shimmer-layer {
+  opacity: 0;
+  background: linear-gradient(
+    108deg,
+    transparent 0%,
+    transparent 35%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 65%,
+    transparent 100%
+  );
+}
+
+.motion-card:hover .shimmer-layer {
+  opacity: 1;
+  animation: shimmerSweep 920ms ease;
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 0.75rem;
+  animation: marqueeMove 24s linear infinite;
+}
+
+.marquee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid rgba(199, 209, 206, 0.27);
+  border-radius: 999px;
+  background: rgba(19, 46, 40, 0.76);
+  color: #dce4e1;
+  font-size: 0.78rem;
+  line-height: 1;
+  font-weight: 600;
+  padding: 0.52rem 0.88rem;
+  white-space: nowrap;
+}
+
+.animate-hero-float {
+  animation: heroFloat 6.8s ease-in-out infinite;
+}
+
+.animate-drift-slow {
+  animation: driftSlow 15s ease-in-out infinite;
+}
+
+.animate-drift-reverse {
+  animation: driftReverse 17s ease-in-out infinite;
+}
+
+.whatsapp-float {
+  animation: whatsappPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes shimmerSweep {
+  0% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+@keyframes marqueeMove {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes heroFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes driftSlow {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(16px, -18px, 0);
+  }
+}
+
+@keyframes driftReverse {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-15px, 15px, 0);
+  }
+}
+
+@keyframes whatsappPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(37, 211, 102, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-ready .reveal-lift,
+  .motion-ready .reveal-rise,
+  .motion-ready .reveal-fade {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+
+  .motion-card:hover {
+    transform: none;
+  }
+
+  .animate-hero-float,
+  .animate-drift-slow,
+  .animate-drift-reverse,
+  .marquee-track,
+  .whatsapp-float,
+  .motion-card:hover .shimmer-layer {
+    animation: none !important;
+  }
+}

@@ -47,3 +47,20 @@ npm run migration:up
 ```bash
 npm run dev
 ```
+
+## Sites de suporte (torra e venda de café)
+
+Referências pesquisadas na web em março/2026 para benchmarking de torra, catálogo e operação de e-commerce:
+
+- https://loja.netcafes.com.br/
+- https://amarelocafe.com.br/
+- https://www.luccacafes.com.br/
+- https://www.cafeterroa.com.br/loja
+- https://www.cafebazilli.com.br/loja
+- https://loja.cafetamura.com.br/cafes-especiais
+- https://loja.cafedapreta.com.br/
+- https://www.brazilroasters.com.br/
+- https://benditatorra.com/
+- https://torrarara.com.br/
+- https://coratorrefacao.com/
+- https://arbor.cafe/
