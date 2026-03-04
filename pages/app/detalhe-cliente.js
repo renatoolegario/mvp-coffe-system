@@ -1,15 +1,9 @@
 import {
   Alert,
-  Box,
   Button,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Drawer,
   IconButton,
-  MenuItem,
   Paper,
   Stack,
   Table,
@@ -21,12 +15,14 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close } from "@mui/icons-material";
+import { Close, DownloadRounded } from "@mui/icons-material";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/router";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency, formatDate } from "../../utils/format";
+import { downloadWorkbookXlsx } from "../../utils/xlsx";
 
 const drawerPaperSx = {
   width: { xs: "100%", md: 540 },
@@ -35,16 +31,29 @@ const drawerPaperSx = {
   p: 3,
 };
 
+const exportDate = () => new Date().toISOString().slice(0, 10);
+
+const toFileSafeText = (value) => {
+  const safe = String(value || "cliente")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .toLowerCase();
+  return safe || "cliente";
+};
+
+const boolLabel = (value) => (value ? "Sim" : "Nao");
+
 const DetalheClientePage = () => {
+  const router = useRouter();
   const clientes = useDataStore((state) => state.clientes);
   const vendas = useDataStore((state) => state.vendas);
+  const vendaItens = useDataStore((state) => state.vendaItens || []);
   const contasReceber = useDataStore((state) => state.contasReceber);
   const parcelas = useDataStore((state) => state.contasReceberParcelas);
   const vendaDetalhes = useDataStore((state) => state.vendaDetalhes || []);
+  const insumos = useDataStore((state) => state.insumos || []);
   const updateCliente = useDataStore((state) => state.updateCliente);
-  const marcarParcelaRecebida = useDataStore(
-    (state) => state.marcarParcelaRecebida,
-  );
 
   const [search, setSearch] = useState("");
   const [drawer, setDrawer] = useState({ type: null, clienteId: null });
@@ -54,14 +63,6 @@ const DetalheClientePage = () => {
     cpf_cnpj: "",
     telefone: "",
     endereco: "",
-  });
-  const [confirmModal, setConfirmModal] = useState({
-    open: false,
-    parcelaId: "",
-    vendaId: "",
-    forma_recebimento: "Pix",
-    tipo_ajuste: "SEM_AJUSTE",
-    valor_ajuste: "",
   });
 
   const clientesFiltrados = useMemo(() => {
@@ -101,6 +102,14 @@ const DetalheClientePage = () => {
     return mapa;
   }, [contasReceber]);
 
+  const insumoById = useMemo(() => {
+    const mapa = {};
+    insumos.forEach((insumo) => {
+      mapa[insumo.id] = insumo;
+    });
+    return mapa;
+  }, [insumos]);
+
   const parcelasDrawer = useMemo(() => {
     if (!selectedCliente) return [];
     return selectedClienteVendas.flatMap((venda) => {
@@ -123,6 +132,282 @@ const DetalheClientePage = () => {
     });
   }, [selectedCliente, selectedClienteVendas, vendaDetalhes]);
 
+  const vendaById = useMemo(() => {
+    const mapa = {};
+    selectedClienteVendas.forEach((venda) => {
+      mapa[venda.id] = venda;
+    });
+    return mapa;
+  }, [selectedClienteVendas]);
+
+  const handleExportClientes = () => {
+    if (!clientes.length) return;
+
+    const rows = [...clientes]
+      .sort((a, b) => (a.nome || "").localeCompare(b.nome || ""))
+      .map((cliente) => ({
+        id: cliente.id,
+        nome: cliente.nome || "",
+        cpf_cnpj: cliente.cpf_cnpj || "",
+        telefone: cliente.telefone || "",
+        endereco: cliente.endereco || "",
+        ativo: boolLabel(cliente.ativo),
+        criado_em: formatDate(cliente.criado_em),
+      }));
+
+    downloadWorkbookXlsx({
+      fileName: `clientes_cadastro_${exportDate()}`,
+      sheets: [
+        {
+          name: "Clientes",
+          columns: [
+            { key: "id", header: "ID cliente" },
+            { key: "nome", header: "Nome" },
+            { key: "cpf_cnpj", header: "CPF/CNPJ" },
+            { key: "telefone", header: "Telefone" },
+            { key: "endereco", header: "Endereco" },
+            { key: "ativo", header: "Ativo" },
+            { key: "criado_em", header: "Data de cadastro" },
+          ],
+          rows,
+        },
+      ],
+    });
+  };
+
+  const handleExportHistoricoCliente = () => {
+    if (!selectedCliente || !selectedClienteVendas.length) return;
+
+    const vendaIds = new Set(selectedClienteVendas.map((venda) => venda.id));
+    const parcelasHistorico = parcelasDrawer;
+    const itensHistorico = vendaItens.filter((item) => vendaIds.has(item.venda_id));
+
+    const vendasRows = selectedClienteVendas.map((venda) => {
+      const conta = contasByVendaId[venda.id];
+      const parcelasVenda = parcelasHistorico.filter(
+        (parcela) => parcela.venda.id === venda.id,
+      );
+
+      const totalRecebido = parcelasVenda.reduce((total, parcela) => {
+        return (
+          total +
+          (Number(parcela.valor_recebido) ||
+            Number(parcela.valor_programado) ||
+            Number(parcela.valor) ||
+            0)
+        );
+      }, 0);
+
+      return {
+        venda_id: venda.id,
+        data_venda: formatDate(venda.data_venda),
+        cliente: selectedCliente.nome || "",
+        valor_total: Number(venda.valor_total) || 0,
+        tipo_pagamento: venda.tipo_pagamento || "",
+        forma_pagamento: venda.forma_pagamento || "",
+        parcelas_qtd: Number(venda.parcelas_qtd) || parcelasVenda.length,
+        status_entrega: venda.status_entrega || "",
+        data_programada_entrega: formatDate(venda.data_programada_entrega),
+        data_entrega: formatDate(venda.data_entrega),
+        desconto_tipo: venda.desconto_tipo || "",
+        desconto_valor: Number(venda.desconto_valor) || 0,
+        acrescimo_tipo: venda.acrescimo_tipo || "",
+        acrescimo_valor: Number(venda.acrescimo_valor) || 0,
+        conta_receber_id: conta?.id || "",
+        parcelas_abertas: parcelasVenda.filter((parcela) => parcela.status === "ABERTA")
+          .length,
+        parcelas_recebidas: parcelasVenda.filter(
+          (parcela) => parcela.status === "RECEBIDA",
+        ).length,
+        total_recebido: totalRecebido,
+        observacoes: venda.obs || "",
+      };
+    });
+
+    const itensRows = itensHistorico.map((item) => {
+      const venda = vendaById[item.venda_id];
+      const insumo = insumoById[item.insumo_id];
+      return {
+        venda_id: item.venda_id,
+        data_venda: formatDate(venda?.data_venda),
+        produto: insumo?.nome || item.insumo_id || "",
+        quantidade_informada: Number(item.quantidade_informada) || 0,
+        quantidade_kg: Number(item.quantidade_kg) || 0,
+        preco_unitario: Number(item.preco_unitario) || 0,
+        valor_total_item: Number(item.valor_total) || 0,
+      };
+    });
+
+    const parcelasRows = parcelasHistorico.map((parcela) => ({
+      venda_id: parcela.venda.id,
+      data_venda: formatDate(parcela.venda.data_venda),
+      parcela_num: Number(parcela.parcela_num) || 0,
+      vencimento: formatDate(parcela.vencimento),
+      status: parcela.status || "",
+      valor_programado: Number(parcela.valor_programado) || Number(parcela.valor) || 0,
+      valor_recebido: Number(parcela.valor_recebido) || 0,
+      forma_programada: parcela.forma_recebimento || "",
+      forma_real: parcela.forma_recebimento_real || "",
+      data_recebimento: formatDate(parcela.data_recebimento),
+      origem_recebimento: parcela.origem_recebimento || "",
+      motivo_diferenca: parcela.motivo_diferenca || "",
+      acao_diferenca: parcela.acao_diferenca || "",
+    }));
+
+    const eventosRows = historicoDrawer.map((evento) => ({
+      evento_id: evento.id,
+      venda_id: evento.venda.id,
+      data_evento: formatDate(evento.data_evento),
+      tipo_evento: evento.tipo_evento || "",
+      valor: Number(evento.valor) || 0,
+      descricao: evento.descricao || "",
+    }));
+
+    downloadWorkbookXlsx({
+      fileName: `historico_cliente_${toFileSafeText(selectedCliente.nome)}_${exportDate()}`,
+      sheets: [
+        {
+          name: "Vendas",
+          columns: [
+            { key: "venda_id", header: "ID venda" },
+            { key: "data_venda", header: "Data venda" },
+            { key: "cliente", header: "Cliente" },
+            { key: "valor_total", header: "Valor total" },
+            { key: "tipo_pagamento", header: "Tipo pagamento" },
+            { key: "forma_pagamento", header: "Forma pagamento" },
+            { key: "parcelas_qtd", header: "Parcelas" },
+            { key: "status_entrega", header: "Status entrega" },
+            {
+              key: "data_programada_entrega",
+              header: "Data programada entrega",
+            },
+            { key: "data_entrega", header: "Data entrega" },
+            { key: "desconto_tipo", header: "Tipo desconto" },
+            { key: "desconto_valor", header: "Valor desconto" },
+            { key: "acrescimo_tipo", header: "Tipo acrescimo" },
+            { key: "acrescimo_valor", header: "Valor acrescimo" },
+            { key: "conta_receber_id", header: "Conta a receber" },
+            { key: "parcelas_abertas", header: "Parcelas abertas" },
+            { key: "parcelas_recebidas", header: "Parcelas recebidas" },
+            { key: "total_recebido", header: "Total recebido" },
+            { key: "observacoes", header: "Observacoes" },
+          ],
+          rows: vendasRows,
+        },
+        {
+          name: "Itens venda",
+          columns: [
+            { key: "venda_id", header: "ID venda" },
+            { key: "data_venda", header: "Data venda" },
+            { key: "produto", header: "Produto" },
+            { key: "quantidade_informada", header: "Quantidade informada" },
+            { key: "quantidade_kg", header: "Quantidade kg" },
+            { key: "preco_unitario", header: "Preco unitario" },
+            { key: "valor_total_item", header: "Valor total item" },
+          ],
+          rows: itensRows,
+        },
+        {
+          name: "Parcelas",
+          columns: [
+            { key: "venda_id", header: "ID venda" },
+            { key: "data_venda", header: "Data venda" },
+            { key: "parcela_num", header: "Parcela" },
+            { key: "vencimento", header: "Vencimento" },
+            { key: "status", header: "Status" },
+            { key: "valor_programado", header: "Valor programado" },
+            { key: "valor_recebido", header: "Valor recebido" },
+            { key: "forma_programada", header: "Forma programada" },
+            { key: "forma_real", header: "Forma real" },
+            { key: "data_recebimento", header: "Data recebimento" },
+            { key: "origem_recebimento", header: "Origem recebimento" },
+            { key: "motivo_diferenca", header: "Motivo diferenca" },
+            { key: "acao_diferenca", header: "Acao diferenca" },
+          ],
+          rows: parcelasRows,
+        },
+        {
+          name: "Eventos",
+          columns: [
+            { key: "evento_id", header: "ID evento" },
+            { key: "venda_id", header: "ID venda" },
+            { key: "data_evento", header: "Data evento" },
+            { key: "tipo_evento", header: "Tipo evento" },
+            { key: "valor", header: "Valor" },
+            { key: "descricao", header: "Descricao" },
+          ],
+          rows: eventosRows,
+        },
+      ],
+    });
+  };
+
+  const handleExportParcelasCliente = () => {
+    if (!selectedCliente || !parcelasDrawer.length) return;
+
+    const rows = parcelasDrawer.map((parcela) => ({
+      cliente: selectedCliente.nome || "",
+      venda_id: parcela.venda.id,
+      data_venda: formatDate(parcela.venda.data_venda),
+      valor_venda: Number(parcela.venda.valor_total) || 0,
+      parcela_id: parcela.id,
+      parcela_num: Number(parcela.parcela_num) || 0,
+      status: parcela.status || "",
+      vencimento: formatDate(parcela.vencimento),
+      valor_programado: Number(parcela.valor_programado) || Number(parcela.valor) || 0,
+      valor_recebido: Number(parcela.valor_recebido) || 0,
+      data_recebimento: formatDate(parcela.data_recebimento),
+      forma_recebimento_programada: parcela.forma_recebimento || "",
+      forma_recebimento_real: parcela.forma_recebimento_real || "",
+      origem_recebimento: parcela.origem_recebimento || "",
+      motivo_diferenca: parcela.motivo_diferenca || "",
+      acao_diferenca: parcela.acao_diferenca || "",
+      fornecedor_destino_id: parcela.fornecedor_destino_id || "",
+      comprovante_url: parcela.comprovante_url || "",
+      observacao_recebimento: parcela.observacao_recebimento || "",
+    }));
+
+    downloadWorkbookXlsx({
+      fileName: `parcelas_cliente_${toFileSafeText(selectedCliente.nome)}_${exportDate()}`,
+      sheets: [
+        {
+          name: "Parcelas",
+          columns: [
+            { key: "cliente", header: "Cliente" },
+            { key: "venda_id", header: "ID venda origem" },
+            { key: "data_venda", header: "Data venda origem" },
+            { key: "valor_venda", header: "Valor da venda" },
+            { key: "parcela_id", header: "ID parcela" },
+            { key: "parcela_num", header: "Numero parcela" },
+            { key: "status", header: "Status" },
+            { key: "vencimento", header: "Vencimento" },
+            { key: "valor_programado", header: "Valor programado" },
+            { key: "valor_recebido", header: "Valor recebido" },
+            { key: "data_recebimento", header: "Data recebimento" },
+            {
+              key: "forma_recebimento_programada",
+              header: "Forma recebimento programada",
+            },
+            {
+              key: "forma_recebimento_real",
+              header: "Forma recebimento real",
+            },
+            { key: "origem_recebimento", header: "Origem recebimento" },
+            { key: "motivo_diferenca", header: "Motivo diferenca" },
+            { key: "acao_diferenca", header: "Acao diferenca" },
+            {
+              key: "fornecedor_destino_id",
+              header: "Fornecedor destino (quando houver)",
+            },
+            { key: "comprovante_url", header: "Comprovante URL" },
+            { key: "observacao_recebimento", header: "Observacao recebimento" },
+          ],
+          rows,
+        },
+      ],
+    });
+  };
+
   const handleOpenDrawer = (type, cliente) => {
     setDrawer({ type, clienteId: cliente.id });
     setClienteForm({
@@ -134,21 +419,15 @@ const DetalheClientePage = () => {
     });
   };
 
-  const handleConfirmRecebimento = async () => {
-    await marcarParcelaRecebida({
-      id: confirmModal.parcelaId,
-      venda_id: confirmModal.vendaId,
-      forma_recebimento: confirmModal.forma_recebimento,
-      tipo_ajuste: confirmModal.tipo_ajuste,
-      valor_ajuste: confirmModal.valor_ajuste,
-    });
-    setConfirmModal({
-      open: false,
-      parcelaId: "",
-      vendaId: "",
-      forma_recebimento: "Pix",
-      tipo_ajuste: "SEM_AJUSTE",
-      valor_ajuste: "",
+  const handleIrParaContasReceber = (parcelaId) => {
+    if (!selectedCliente || !parcelaId) return;
+
+    router.push({
+      pathname: "/app/contas-receber",
+      query: {
+        cliente_id: selectedCliente.id,
+        parcela_id: parcelaId,
+      },
     });
   };
 
@@ -157,6 +436,16 @@ const DetalheClientePage = () => {
       <PageHeader
         title="Detalhe do Cliente"
         subtitle="Tabela de clientes com ações para cadastro, histórico e parcelas."
+        action={
+          <Button
+            variant="contained"
+            startIcon={<DownloadRounded />}
+            onClick={handleExportClientes}
+            disabled={!clientes.length}
+          >
+            Baixar clientes
+          </Button>
+        }
       />
 
       <Paper sx={{ p: 3 }}>
@@ -232,6 +521,7 @@ const DetalheClientePage = () => {
         anchor="right"
         open={Boolean(drawer.type)}
         onClose={() => setDrawer({ type: null, clienteId: null })}
+        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
         PaperProps={{ sx: drawerPaperSx }}
       >
         <Stack
@@ -239,17 +529,43 @@ const DetalheClientePage = () => {
           alignItems="center"
           justifyContent="space-between"
           mb={2}
+          spacing={1}
         >
           <Typography variant="h6">
             {drawer.type === "cadastro" ? "Editar dados cadastrais" : null}
             {drawer.type === "historico" ? "Histórico de compras" : null}
             {drawer.type === "parcelas" ? "Parcelas do cliente" : null}
           </Typography>
-          <IconButton
-            onClick={() => setDrawer({ type: null, clienteId: null })}
-          >
-            <Close />
-          </IconButton>
+
+          <Stack direction="row" spacing={1} alignItems="center">
+            {drawer.type === "historico" ? (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<DownloadRounded />}
+                onClick={handleExportHistoricoCliente}
+                disabled={!selectedClienteVendas.length}
+              >
+                Baixar histórico
+              </Button>
+            ) : null}
+
+            {drawer.type === "parcelas" ? (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<DownloadRounded />}
+                onClick={handleExportParcelasCliente}
+                disabled={!parcelasDrawer.length}
+              >
+                Baixar parcelas
+              </Button>
+            ) : null}
+
+            <IconButton onClick={() => setDrawer({ type: null, clienteId: null })}>
+              <Close />
+            </IconButton>
+          </Stack>
         </Stack>
 
         {drawer.type === "cadastro" ? (
@@ -314,8 +630,7 @@ const DetalheClientePage = () => {
                   Venda #{venda.id.slice(0, 8)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {formatDate(venda.data_venda)} •{" "}
-                  {formatCurrency(venda.valor_total)}
+                  {formatDate(venda.data_venda)} • {formatCurrency(venda.valor_total)}
                 </Typography>
               </Paper>
             ))}
@@ -326,8 +641,7 @@ const DetalheClientePage = () => {
                   Ajuste: {evento.tipo_evento}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Venda #{evento.venda.id.slice(0, 8)} •{" "}
-                  {formatDate(evento.data_evento)} •{" "}
+                  Venda #{evento.venda.id.slice(0, 8)} • {formatDate(evento.data_evento)} •{" "}
                   {formatCurrency(evento.valor)}
                 </Typography>
                 <Typography variant="body2">{evento.descricao}</Typography>
@@ -354,8 +668,7 @@ const DetalheClientePage = () => {
                     alignItems="center"
                   >
                     <Typography fontWeight={600}>
-                      Venda #{parcela.venda.id.slice(0, 8)} • Parcela{" "}
-                      {parcela.parcela_num}
+                      Venda #{parcela.venda.id.slice(0, 8)} • Parcela {parcela.parcela_num}
                     </Typography>
                     <Chip
                       label={parcela.status}
@@ -372,16 +685,7 @@ const DetalheClientePage = () => {
                       sx={{ mt: 1 }}
                       size="small"
                       variant="contained"
-                      onClick={() =>
-                        setConfirmModal({
-                          open: true,
-                          parcelaId: parcela.id,
-                          vendaId: parcela.venda.id,
-                          forma_recebimento: "Pix",
-                          tipo_ajuste: "SEM_AJUSTE",
-                          valor_ajuste: "",
-                        })
-                      }
+                      onClick={() => handleIrParaContasReceber(parcela.id)}
                     >
                       Confirmar pagamento
                     </Button>
@@ -398,72 +702,6 @@ const DetalheClientePage = () => {
           </Stack>
         ) : null}
       </Drawer>
-
-      <Dialog
-        open={confirmModal.open}
-        onClose={() => setConfirmModal((prev) => ({ ...prev, open: false }))}
-      >
-        <DialogTitle>Confirmar recebimento da parcela</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} mt={1}>
-            <TextField
-              select
-              label="Forma de recebimento"
-              value={confirmModal.forma_recebimento}
-              onChange={(event) =>
-                setConfirmModal((prev) => ({
-                  ...prev,
-                  forma_recebimento: event.target.value,
-                }))
-              }
-            >
-              <MenuItem value="Pix">Pix</MenuItem>
-              <MenuItem value="Dinheiro">Dinheiro</MenuItem>
-              <MenuItem value="Transferência">Transferência</MenuItem>
-              <MenuItem value="Boleto">Boleto</MenuItem>
-            </TextField>
-            <TextField
-              select
-              label="Ajuste"
-              value={confirmModal.tipo_ajuste}
-              onChange={(event) =>
-                setConfirmModal((prev) => ({
-                  ...prev,
-                  tipo_ajuste: event.target.value,
-                }))
-              }
-            >
-              <MenuItem value="SEM_AJUSTE">Sem ajuste</MenuItem>
-              <MenuItem value="DESCONTO">Desconto</MenuItem>
-              <MenuItem value="JUROS">Juros</MenuItem>
-            </TextField>
-            <TextField
-              label="Valor do ajuste"
-              type="number"
-              value={confirmModal.valor_ajuste}
-              onChange={(event) =>
-                setConfirmModal((prev) => ({
-                  ...prev,
-                  valor_ajuste: event.target.value,
-                }))
-              }
-              disabled={confirmModal.tipo_ajuste === "SEM_AJUSTE"}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() =>
-              setConfirmModal((prev) => ({ ...prev, open: false }))
-            }
-          >
-            Cancelar
-          </Button>
-          <Button variant="contained" onClick={handleConfirmRecebimento}>
-            Confirmar
-          </Button>
-        </DialogActions>
-      </Dialog>
     </AppLayout>
   );
 };

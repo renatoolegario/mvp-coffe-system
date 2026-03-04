@@ -2,7 +2,7 @@
 
 ## Descrição
 
-Cadastro de insumos com tipo de entrada configurável (`kg` ou `saco`) e classificação de uso (`Consumível` ou `Físico`).
+Cadastro de insumos com unidade de trabalho (`kg` ou `saco`), regras de conversão e classificação de finalidade no sistema.
 
 ## Props utilizadas
 
@@ -12,11 +12,17 @@ Cadastro de insumos com tipo de entrada configurável (`kg` ou `saco`) e classif
 
 - Cria insumos.
 - Lista insumos cadastrados.
-- Define conversão de `kg_por_saco` quando o cadastro for em sacos.
-- Permite selecionar e editar o tipo do insumo (`Consumível` por padrão).
+- Quando a unidade for `SACO`, exige `kg_por_saco`.
+- Quando a unidade for `KG`, força `kg_por_saco = 1` e oculta o campo.
+- A unidade selecionada vale para cadastro e estoque mínimo (campo único).
+- Permite classificar finalidade com perguntas objetivas:
+  - pode usar para produzir outro insumo;
+  - pode fabricar internamente;
+  - pode vender ao cliente final.
+- Exporta em XLSX todos os insumos com configurações e estoque atual.
 
 ## Resultado esperado
 
 - Insumos preparados para entradas e produção.
-- Tipo do insumo persistido para diferenciar itens físicos e consumíveis.
-- Estoque mínimo informado na mesma unidade configurada no cadastro (`kg` ou `saco`).
+- Estoque mínimo sempre alinhado com a unidade padrão configurada no cadastro.
+- Download de planilha com visão completa para auditoria e conferência operacional.

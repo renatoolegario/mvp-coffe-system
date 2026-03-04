@@ -70,7 +70,7 @@ export default function EntradaInsumoDrawer({ open, onClose }) {
         const unidadeDefault = String(insumoSelecionado.unidade_codigo || "KG").toUpperCase();
         setModoEntrada(unidadeDefault === "SACO" ? "SACO" : "KG");
         setKgPorSacoEntrada(String(Number(insumoSelecionado.kg_por_saco) || 1));
-    }, [insumoSelecionado?.id]);
+    }, [insumoSelecionado]);
 
     const kgPorSaco =
         parseNumber(kgPorSacoEntrada) ||
@@ -315,7 +315,7 @@ export default function EntradaInsumoDrawer({ open, onClose }) {
     };
 
     return (
-        <Drawer anchor="right" open={open} onClose={onClose} sx={{ zIndex: (theme) => theme.zIndex.drawer + 2 }}>
+        <Drawer anchor="right" open={open} onClose={onClose} sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}>
             <Box sx={{ width: "50vw", minWidth: 450, height: "100vh", display: "flex", flexDirection: "column" }}>
                 <Box display="flex" justifyContent="space-between" alignItems="center" p={2} borderBottom="1px solid #e0e0e0">
                     <Box>

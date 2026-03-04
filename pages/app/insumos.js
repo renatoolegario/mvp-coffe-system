@@ -14,24 +14,35 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close, Edit, PersonAdd, AddBusiness, Search } from "@mui/icons-material";
+import {
+  AddBusiness,
+  Close,
+  DownloadRounded,
+  Edit,
+  PersonAdd,
+  Search,
+} from "@mui/icons-material";
 import { useState, useMemo } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import InsumoLedgerModal from "../../components/atomic/InsumoLedgerModal";
 import EntradaInsumoDrawer from "../../components/atomic/EntradaInsumoDrawer";
 import { useDataStore } from "../../hooks/useDataStore";
+import { downloadWorkbookXlsx } from "../../utils/xlsx";
 
 const initialForm = {
   nome: "",
   kg_por_saco: "1",
   estoque_minimo: "",
   unidade_codigo: "KG",
-  estoque_minimo_unidade_codigo: "KG",
   pode_ser_insumo: true,
   pode_ser_produzivel: false,
   pode_ser_vendido: false,
 };
+
+const isSacoUnidade = (code) => String(code || "KG").toUpperCase() === "SACO";
+const boolLabel = (value) => (value ? "Sim" : "Nao");
+const exportDate = () => new Date().toISOString().slice(0, 10);
 
 const InsumosPage = () => {
   const insumos = useDataStore((state) => state.insumos);
@@ -77,12 +88,88 @@ const InsumosPage = () => {
 
   const handleChange = (field) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    if (field === "unidade_codigo") {
+      const unidadeCodigo = String(value || "KG").toUpperCase();
+      setForm((prev) => ({
+        ...prev,
+        unidade_codigo: unidadeCodigo,
+        kg_por_saco: isSacoUnidade(unidadeCodigo) ? prev.kg_por_saco || "" : "1",
+      }));
+      return;
+    }
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleEditChange = (field) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    if (field === "unidade_codigo") {
+      const unidadeCodigo = String(value || "KG").toUpperCase();
+      setEditForm((prev) => ({
+        ...prev,
+        unidade_codigo: unidadeCodigo,
+        kg_por_saco: isSacoUnidade(unidadeCodigo) ? prev.kg_por_saco || "" : "1",
+      }));
+      return;
+    }
     setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleExportInsumos = () => {
+    if (!insumos.length) {
+      setFeedback({
+        open: true,
+        message: "Nao ha insumos para exportar.",
+        severity: "warning",
+      });
+      return;
+    }
+
+    const rows = insumos.map((insumo) => ({
+      nome: insumo.nome || "",
+      unidade: insumo.unidade_label || insumo.unidade_codigo || "",
+      unidade_codigo: String(insumo.unidade_codigo || "KG").toUpperCase(),
+      kg_por_saco: Number(insumo.kg_por_saco) || 1,
+      estoque_minimo: Number(insumo.estoque_minimo) || 0,
+      estoque_atual_kg: Number(insumo.saldo_kg) || 0,
+      custo_medio_kg: Number(insumo.custo_medio_kg) || 0,
+      usar_como_insumo: boolLabel(insumo.pode_ser_insumo),
+      produzir_internamente: boolLabel(insumo.pode_ser_produzivel),
+      vender_cliente: boolLabel(insumo.pode_ser_vendido),
+    }));
+
+    downloadWorkbookXlsx({
+      fileName: `insumos_configuracoes_estoque_${exportDate()}`,
+      sheets: [
+        {
+          name: "Insumos",
+          columns: [
+            { key: "nome", header: "Insumo" },
+            { key: "unidade", header: "Unidade padrao" },
+            { key: "unidade_codigo", header: "Codigo unidade" },
+            { key: "kg_por_saco", header: "Kg por saco" },
+            { key: "estoque_minimo", header: "Estoque minimo" },
+            { key: "estoque_atual_kg", header: "Estoque atual (kg)" },
+            { key: "custo_medio_kg", header: "Custo medio (R$/kg)" },
+            {
+              key: "usar_como_insumo",
+              header: "Pode usar para produzir outro insumo?",
+            },
+            {
+              key: "produzir_internamente",
+              header: "Pode fabricar internamente?",
+            },
+            { key: "vender_cliente", header: "Pode vender ao cliente final?" },
+          ],
+          rows,
+        },
+      ],
+    });
+
+    setFeedback({
+      open: true,
+      message: "Exportacao XLSX concluida.",
+      severity: "success",
+    });
   };
 
   const handleSubmit = async (event) => {
@@ -96,7 +183,11 @@ const InsumosPage = () => {
       return;
     }
 
-    if (Number(form.kg_por_saco) <= 0) {
+    const unidadeCodigo = String(form.unidade_codigo || "KG").toUpperCase();
+    const isSaco = isSacoUnidade(unidadeCodigo);
+    const kgPorSaco = isSaco ? Number(form.kg_por_saco) : 1;
+
+    if (isSaco && kgPorSaco <= 0) {
       setFeedback({
         open: true,
         message: "Informe quantos kg vêm em cada saco.",
@@ -107,8 +198,10 @@ const InsumosPage = () => {
 
     await addInsumo({
       ...form,
+      unidade_codigo: unidadeCodigo,
+      estoque_minimo_unidade_codigo: unidadeCodigo,
       estoque_minimo: Number(form.estoque_minimo) || 0,
-      kg_por_saco: Number(form.kg_por_saco) || 1,
+      kg_por_saco: kgPorSaco || 1,
     });
     setForm(initialForm);
     setDrawerOpen(false);
@@ -123,11 +216,11 @@ const InsumosPage = () => {
     setEditingInsumoId(insumo.id);
     setEditForm({
       nome: insumo.nome || "",
-      kg_por_saco: String(Number(insumo.kg_por_saco) || 1),
+      kg_por_saco: isSacoUnidade(insumo.unidade_codigo)
+        ? String(Number(insumo.kg_por_saco) || 1)
+        : "1",
       estoque_minimo: String(Number(insumo.estoque_minimo) || 0),
-      unidade_codigo: insumo.unidade_codigo || "KG",
-      estoque_minimo_unidade_codigo:
-        insumo.estoque_minimo_unidade_codigo || "KG",
+      unidade_codigo: String(insumo.unidade_codigo || "KG").toUpperCase(),
       pode_ser_insumo: insumo.pode_ser_insumo ?? true,
       pode_ser_produzivel: insumo.pode_ser_produzivel ?? false,
       pode_ser_vendido: insumo.pode_ser_vendido ?? false,
@@ -147,7 +240,11 @@ const InsumosPage = () => {
       return;
     }
 
-    if (Number(editForm.kg_por_saco) <= 0) {
+    const unidadeCodigo = String(editForm.unidade_codigo || "KG").toUpperCase();
+    const isSaco = isSacoUnidade(unidadeCodigo);
+    const kgPorSaco = isSaco ? Number(editForm.kg_por_saco) : 1;
+
+    if (isSaco && kgPorSaco <= 0) {
       setFeedback({
         open: true,
         message: "Informe quantos kg vêm em cada saco.",
@@ -159,11 +256,10 @@ const InsumosPage = () => {
     await updateInsumo({
       id: editingInsumoId,
       nome: editForm.nome,
-      kg_por_saco: Number(editForm.kg_por_saco) || 1,
+      kg_por_saco: kgPorSaco || 1,
       estoque_minimo: Number(editForm.estoque_minimo) || 0,
-      unidade_codigo: editForm.unidade_codigo || "KG",
-      estoque_minimo_unidade_codigo:
-        editForm.estoque_minimo_unidade_codigo || "KG",
+      unidade_codigo: unidadeCodigo,
+      estoque_minimo_unidade_codigo: unidadeCodigo,
       pode_ser_insumo: editForm.pode_ser_insumo,
       pode_ser_produzivel: editForm.pode_ser_produzivel,
       pode_ser_vendido: editForm.pode_ser_vendido,
@@ -209,16 +305,29 @@ const InsumosPage = () => {
               <Typography variant="h6">
                 Insumos cadastrados
               </Typography>
-              <TextField
-                size="small"
-                placeholder="Buscar insumo..."
-                value={filtroNome}
-                onChange={(e) => setFiltroNome(e.target.value)}
-                InputProps={{
-                  startAdornment: <Search color="action" sx={{ mr: 1 }} />,
-                }}
-                sx={{ width: { xs: "100%", sm: 300 } }}
-              />
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
+                <TextField
+                  size="small"
+                  placeholder="Buscar insumo..."
+                  value={filtroNome}
+                  onChange={(e) => setFiltroNome(e.target.value)}
+                  InputProps={{
+                    startAdornment: <Search color="action" sx={{ mr: 1 }} />,
+                  }}
+                  sx={{ width: { xs: "100%", sm: 300 } }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadRounded />}
+                  onClick={handleExportInsumos}
+                >
+                  Baixar XLSX
+                </Button>
+              </Stack>
             </Stack>
             <Stack spacing={2}>
               {insumosFiltrados.map((insumo) => (
@@ -232,18 +341,23 @@ const InsumosPage = () => {
                     <Box>
                       <Typography fontWeight={600}>{insumo.nome}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Unidade de cadastro: {insumo.unidade_label || insumo.unidade_codigo || "-"} • Kg por saco:{" "}
-                        {Number(insumo.kg_por_saco) || 1}
+                        Unidade de cadastro: {insumo.unidade_label || insumo.unidade_codigo || "-"}
+                        {isSacoUnidade(insumo.unidade_codigo)
+                          ? ` • Kg por saco: ${Number(insumo.kg_por_saco) || 1}`
+                          : ""}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Estoque mínimo: {insumo.estoque_minimo || "-"}{" "}
-                        {insumo.estoque_minimo_unidade_label || insumo.estoque_minimo_unidade_codigo || "KG"}
+                        {insumo.unidade_label || insumo.unidade_codigo || "KG"}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Estoque atual: {(Number(insumo.saldo_kg) || 0).toFixed(2)} kg
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Finalidade: {[
-                          insumo.pode_ser_insumo ? "Insumo" : "",
-                          insumo.pode_ser_produzivel ? "Produzível" : "",
-                          insumo.pode_ser_vendido ? "Venda" : "",
+                          insumo.pode_ser_insumo ? "Usar para produzir" : "",
+                          insumo.pode_ser_produzivel ? "Fabricar internamente" : "",
+                          insumo.pode_ser_vendido ? "Vender ao cliente" : "",
                         ].filter(Boolean).join(" • ") || "Nenhuma"}
                       </Typography>
                     </Box>
@@ -280,7 +394,7 @@ const InsumosPage = () => {
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 2 }}
+        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
         PaperProps={{ sx: { width: "50vw", minWidth: 450, height: "100vh", p: 3 } }}
       >
         <Stack
@@ -303,16 +417,8 @@ const InsumosPage = () => {
               required
             />
             <TextField
-              label="Kg por saco"
-              type="number"
-              value={form.kg_por_saco}
-              onChange={handleChange("kg_por_saco")}
-              inputProps={{ min: 0.01, step: "0.01" }}
-              required
-            />
-            <TextField
               select
-              label="Unidade padrão"
+              label="Unidade"
               value={form.unidade_codigo}
               onChange={handleChange("unidade_codigo")}
               required
@@ -323,6 +429,16 @@ const InsumosPage = () => {
                 </MenuItem>
               ))}
             </TextField>
+            {isSacoUnidade(form.unidade_codigo) ? (
+              <TextField
+                label="Kg por saco"
+                type="number"
+                value={form.kg_por_saco}
+                onChange={handleChange("kg_por_saco")}
+                inputProps={{ min: 0.01, step: "0.01" }}
+                required
+              />
+            ) : null}
             <TextField
               label="Estoque mínimo"
               type="number"
@@ -330,19 +446,6 @@ const InsumosPage = () => {
               onChange={handleChange("estoque_minimo")}
               inputProps={{ min: 0, step: "0.01" }}
             />
-            <TextField
-              select
-              label="Unidade do estoque mínimo"
-              value={form.estoque_minimo_unidade_codigo}
-              onChange={handleChange("estoque_minimo_unidade_codigo")}
-              required
-            >
-              {unidadesOptions.map((unidade) => (
-                <MenuItem key={unidade.id} value={unidade.codigo}>
-                  {unidade.label}
-                </MenuItem>
-              ))}
-            </TextField>
             <Typography variant="subtitle2" mt={2}>
               Finalidade no sistema
             </Typography>
@@ -353,7 +456,7 @@ const InsumosPage = () => {
                   onChange={handleChange("pode_ser_insumo")}
                 />
               }
-              label="Pode ser usado como INSUMO"
+              label="Pode ser usada como insumo? (Posso usar para produzir outro insumo)"
             />
             <FormControlLabel
               control={
@@ -362,7 +465,7 @@ const InsumosPage = () => {
                   onChange={handleChange("pode_ser_produzivel")}
                 />
               }
-              label="Pode ser PRODUZIDO internamente"
+              label="Pode ser produzida internamente? (Posso fabricar ela)"
             />
             <FormControlLabel
               control={
@@ -371,7 +474,7 @@ const InsumosPage = () => {
                   onChange={handleChange("pode_ser_vendido")}
                 />
               }
-              label="Pode ser VENDIDO ao cliente final"
+              label="Pode ser vendida ao cliente final? (Posso vender)"
             />
             <Button type="submit" variant="contained">
               Salvar insumo
@@ -384,7 +487,7 @@ const InsumosPage = () => {
         anchor="right"
         open={editDrawerOpen}
         onClose={() => setEditDrawerOpen(false)}
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 2 }}
+        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
         PaperProps={{
           sx: { width: "50vw", minWidth: 450, height: "100vh", p: 3 },
         }}
@@ -409,16 +512,8 @@ const InsumosPage = () => {
               required
             />
             <TextField
-              label="Kg por saco"
-              type="number"
-              value={editForm.kg_por_saco}
-              onChange={handleEditChange("kg_por_saco")}
-              inputProps={{ min: 0.01, step: "0.01" }}
-              required
-            />
-            <TextField
               select
-              label="Unidade padrão"
+              label="Unidade"
               value={editForm.unidade_codigo}
               onChange={handleEditChange("unidade_codigo")}
               required
@@ -429,6 +524,16 @@ const InsumosPage = () => {
                 </MenuItem>
               ))}
             </TextField>
+            {isSacoUnidade(editForm.unidade_codigo) ? (
+              <TextField
+                label="Kg por saco"
+                type="number"
+                value={editForm.kg_por_saco}
+                onChange={handleEditChange("kg_por_saco")}
+                inputProps={{ min: 0.01, step: "0.01" }}
+                required
+              />
+            ) : null}
             <TextField
               label="Estoque mínimo"
               type="number"
@@ -436,19 +541,6 @@ const InsumosPage = () => {
               onChange={handleEditChange("estoque_minimo")}
               inputProps={{ min: 0, step: "0.01" }}
             />
-            <TextField
-              select
-              label="Unidade do estoque mínimo"
-              value={editForm.estoque_minimo_unidade_codigo}
-              onChange={handleEditChange("estoque_minimo_unidade_codigo")}
-              required
-            >
-              {unidadesOptions.map((unidade) => (
-                <MenuItem key={unidade.id} value={unidade.codigo}>
-                  {unidade.label}
-                </MenuItem>
-              ))}
-            </TextField>
             <Typography variant="subtitle2" mt={2}>
               Finalidade no sistema
             </Typography>
@@ -459,7 +551,7 @@ const InsumosPage = () => {
                   onChange={handleEditChange("pode_ser_insumo")}
                 />
               }
-              label="Pode ser usado como INSUMO"
+              label="Pode ser usada como insumo? (Posso usar para produzir outro insumo)"
             />
             <FormControlLabel
               control={
@@ -468,7 +560,7 @@ const InsumosPage = () => {
                   onChange={handleEditChange("pode_ser_produzivel")}
                 />
               }
-              label="Pode ser PRODUZIDO internamente"
+              label="Pode ser produzida internamente? (Posso fabricar ela)"
             />
             <FormControlLabel
               control={
@@ -477,7 +569,7 @@ const InsumosPage = () => {
                   onChange={handleEditChange("pode_ser_vendido")}
                 />
               }
-              label="Pode ser VENDIDO ao cliente final"
+              label="Pode ser vendida ao cliente final? (Posso vender)"
             />
             <Button onClick={() => setEditDrawerOpen(false)}>Cancelar</Button>
             <Button type="submit" variant="contained">

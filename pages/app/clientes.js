@@ -16,15 +16,23 @@ import { useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
+import { isValidCpfCnpj, normalizeCpfCnpj } from "../../utils/document";
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const ClientesPage = () => {
   const clientes = useDataStore((state) => state.clientes);
   const addCliente = useDataStore((state) => state.addCliente);
   const [form, setForm] = useState({
     nome: "",
+    email: "",
     cpf_cnpj: "",
     telefone: "",
     endereco: "",
+  });
+  const [errors, setErrors] = useState({
+    email: "",
+    cpf_cnpj: "",
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [feedback, setFeedback] = useState({
@@ -34,11 +42,16 @@ const ClientesPage = () => {
   });
 
   const handleChange = (field) => (event) => {
+    if (field === "email" || field === "cpf_cnpj") {
+      setErrors((prev) => ({ ...prev, [field]: "" }));
+    }
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+    setErrors({ email: "", cpf_cnpj: "" });
+
     if (!form.nome.trim()) {
       setFeedback({
         open: true,
@@ -48,9 +61,66 @@ const ClientesPage = () => {
       return;
     }
 
-    addCliente(form);
+    const normalizedEmail = String(form.email || "")
+      .trim()
+      .toLowerCase();
+    const normalizedCpfCnpj = normalizeCpfCnpj(form.cpf_cnpj);
+    const nextErrors = { email: "", cpf_cnpj: "" };
+
+    if (!normalizedEmail) {
+      nextErrors.email = "Informe o email do cliente.";
+    } else if (!isValidEmail(normalizedEmail)) {
+      nextErrors.email = "Informe um email válido.";
+    } else if (
+      clientes.some(
+        (cliente) =>
+          String(cliente.email || "")
+            .trim()
+            .toLowerCase() === normalizedEmail,
+      )
+    ) {
+      nextErrors.email = "Já existe um cliente com este email.";
+    }
+
+    if (!normalizedCpfCnpj) {
+      nextErrors.cpf_cnpj = "Informe o CPF/CNPJ do cliente.";
+    } else if (!isValidCpfCnpj(normalizedCpfCnpj)) {
+      nextErrors.cpf_cnpj = "CPF/CNPJ inválido.";
+    } else if (
+      clientes.some(
+        (cliente) => normalizeCpfCnpj(cliente.cpf_cnpj) === normalizedCpfCnpj,
+      )
+    ) {
+      nextErrors.cpf_cnpj = "Já existe um cliente com este CPF/CNPJ.";
+    }
+
+    if (nextErrors.email || nextErrors.cpf_cnpj) {
+      setErrors(nextErrors);
+      setFeedback({
+        open: true,
+        message: nextErrors.email || nextErrors.cpf_cnpj,
+        severity: "error",
+      });
+      return;
+    }
+
+    const result = await addCliente({
+      ...form,
+      email: normalizedEmail,
+    });
+
+    if (!result?.ok) {
+      setFeedback({
+        open: true,
+        message: result?.error || "Não foi possível cadastrar o cliente.",
+        severity: "error",
+      });
+      return;
+    }
+
     setForm({
       nome: "",
+      email: "",
       cpf_cnpj: "",
       telefone: "",
       endereco: "",
@@ -92,6 +162,9 @@ const ClientesPage = () => {
                     {cliente.cpf_cnpj || "CPF/CNPJ não informado"} •{" "}
                     {cliente.telefone || "Sem telefone"}
                   </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {cliente.email || "Sem email"}
+                  </Typography>
                   {cliente.protegido ? (
                     <Typography variant="caption" color="warning.main">
                       Cliente protegido por regra de sistema.
@@ -113,6 +186,7 @@ const ClientesPage = () => {
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
         PaperProps={{ sx: { width: { xs: "100%", sm: 360 }, p: 3 } }}
       >
         <Stack
@@ -135,9 +209,21 @@ const ClientesPage = () => {
               required
             />
             <TextField
+              label="Email"
+              type="email"
+              value={form.email}
+              onChange={handleChange("email")}
+              required
+              error={Boolean(errors.email)}
+              helperText={errors.email}
+            />
+            <TextField
               label="CPF/CNPJ"
               value={form.cpf_cnpj}
               onChange={handleChange("cpf_cnpj")}
+              required
+              error={Boolean(errors.cpf_cnpj)}
+              helperText={errors.cpf_cnpj}
             />
             <TextField
               label="Telefone"

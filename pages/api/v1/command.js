@@ -1,7 +1,9 @@
 import { query, withTransaction } from "../../../infra/database";
-import { encryptIfNeeded } from "../../../utils/crypto";
+import { decryptIfNeeded, encryptIfNeeded } from "../../../utils/crypto";
 import { toPerfilCode } from "../../../utils/profile";
+import { isValidCpfCnpj, normalizeCpfCnpj } from "../../../utils/document";
 import { isAdmin, requireAuth } from "../../../infra/auth";
+import { randomUUID } from "crypto";
 
 const insertRow = async (client, table, columns, data) => {
   const values = columns.map((column) => data[column] ?? null);
@@ -16,6 +18,39 @@ const insertRow = async (client, table, columns, data) => {
 const getNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeContaPagarParcela = (parcela = {}, dataLancamento) => {
+  const statusRaw = String(parcela.status || "").trim().toUpperCase();
+  const isPago = statusRaw === "PAGA" || statusRaw === "PAGO";
+  return {
+    ...parcela,
+    vencimento: parcela.vencimento || dataLancamento,
+    status: isPago ? "PAGA" : "ABERTA",
+    data_pagamento: isPago ? parcela.data_pagamento || dataLancamento : null,
+    forma_pagamento: isPago ? parcela.forma_pagamento || "Entrada manual" : null,
+  };
+};
+
+const normalizeEmail = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const findDuplicateInEncryptedColumn = async ({
+  queryText,
+  column,
+  normalizedValue,
+  normalizeValue,
+}) => {
+  if (!normalizedValue) return false;
+  const result = await query(queryText);
+  return result.rows.some(
+    (row) =>
+      normalizeValue(decryptIfNeeded(row[column] || "")) === normalizedValue,
+  );
 };
 
 const resolveUnidadeId = async (client, unidadeInput, fallbackCode = "KG") => {
@@ -103,18 +138,67 @@ export default async function handler(req, res) {
         ]);
         break;
       case "addCliente":
-        await query(
-          "INSERT INTO clientes (id, nome, cpf_cnpj, telefone, endereco, ativo, criado_em, protegido) VALUES ($1, $2, $3, $4, $5, $6, $7, false)",
-          [
-            payload.id,
-            encryptIfNeeded(payload.nome),
-            encryptIfNeeded(payload.cpf_cnpj),
-            encryptIfNeeded(payload.telefone),
-            encryptIfNeeded(payload.endereco),
-            payload.ativo,
-            payload.criado_em,
-          ],
-        );
+        {
+          const nome = String(payload.nome || "").trim();
+          const emailNormalizado = normalizeEmail(payload.email);
+          const cpfCnpjRaw = String(payload.cpf_cnpj || "").trim();
+          const cpfCnpjNormalizado = normalizeCpfCnpj(cpfCnpjRaw);
+
+          if (!nome) {
+            return res.status(400).json({ error: "Nome do cliente é obrigatório." });
+          }
+          if (!emailNormalizado) {
+            return res.status(400).json({ error: "Email do cliente é obrigatório." });
+          }
+          if (!isValidEmail(emailNormalizado)) {
+            return res.status(400).json({ error: "Email do cliente é inválido." });
+          }
+          if (!cpfCnpjNormalizado) {
+            return res.status(400).json({ error: "CPF/CNPJ do cliente é obrigatório." });
+          }
+          if (!isValidCpfCnpj(cpfCnpjNormalizado)) {
+            return res.status(400).json({ error: "CPF/CNPJ do cliente é inválido." });
+          }
+
+          const emailJaExiste = await findDuplicateInEncryptedColumn({
+            queryText: "SELECT email FROM clientes WHERE COALESCE(email, '') <> ''",
+            column: "email",
+            normalizedValue: emailNormalizado,
+            normalizeValue: normalizeEmail,
+          });
+          if (emailJaExiste) {
+            return res
+              .status(409)
+              .json({ error: "Já existe um cliente com este email." });
+          }
+
+          const cpfCnpjJaExiste = await findDuplicateInEncryptedColumn({
+            queryText:
+              "SELECT cpf_cnpj FROM clientes WHERE COALESCE(cpf_cnpj, '') <> ''",
+            column: "cpf_cnpj",
+            normalizedValue: cpfCnpjNormalizado,
+            normalizeValue: normalizeCpfCnpj,
+          });
+          if (cpfCnpjJaExiste) {
+            return res
+              .status(409)
+              .json({ error: "Já existe um cliente com este CPF/CNPJ." });
+          }
+
+          await query(
+            "INSERT INTO clientes (id, nome, email, cpf_cnpj, telefone, endereco, ativo, criado_em, protegido) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)",
+            [
+              payload.id,
+              encryptIfNeeded(nome),
+              encryptIfNeeded(emailNormalizado),
+              encryptIfNeeded(cpfCnpjRaw),
+              encryptIfNeeded(payload.telefone),
+              encryptIfNeeded(payload.endereco),
+              payload.ativo,
+              payload.criado_em,
+            ],
+          );
+        }
         break;
       case "updateCliente":
         {
@@ -141,18 +225,77 @@ export default async function handler(req, res) {
         );
         break;
       case "addFornecedor":
-        await query(
-          "INSERT INTO fornecedores (id, razao_social, cpf_cnpj, telefone, endereco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-          [
-            payload.id,
-            encryptIfNeeded(payload.razao_social),
-            encryptIfNeeded(payload.cpf_cnpj),
-            encryptIfNeeded(payload.telefone),
-            encryptIfNeeded(payload.endereco),
-            payload.ativo,
-            payload.criado_em,
-          ],
-        );
+        {
+          const razaoSocial = String(payload.razao_social || "").trim();
+          const emailNormalizado = normalizeEmail(payload.email);
+          const cpfCnpjRaw = String(payload.cpf_cnpj || "").trim();
+          const cpfCnpjNormalizado = normalizeCpfCnpj(cpfCnpjRaw);
+
+          if (!razaoSocial) {
+            return res
+              .status(400)
+              .json({ error: "Razão social do fornecedor é obrigatória." });
+          }
+          if (!emailNormalizado) {
+            return res
+              .status(400)
+              .json({ error: "Email do fornecedor é obrigatório." });
+          }
+          if (!isValidEmail(emailNormalizado)) {
+            return res
+              .status(400)
+              .json({ error: "Email do fornecedor é inválido." });
+          }
+          if (!cpfCnpjNormalizado) {
+            return res
+              .status(400)
+              .json({ error: "CPF/CNPJ do fornecedor é obrigatório." });
+          }
+          if (!isValidCpfCnpj(cpfCnpjNormalizado)) {
+            return res
+              .status(400)
+              .json({ error: "CPF/CNPJ do fornecedor é inválido." });
+          }
+
+          const emailJaExiste = await findDuplicateInEncryptedColumn({
+            queryText: "SELECT email FROM fornecedores WHERE COALESCE(email, '') <> ''",
+            column: "email",
+            normalizedValue: emailNormalizado,
+            normalizeValue: normalizeEmail,
+          });
+          if (emailJaExiste) {
+            return res
+              .status(409)
+              .json({ error: "Já existe um fornecedor com este email." });
+          }
+
+          const cpfCnpjJaExiste = await findDuplicateInEncryptedColumn({
+            queryText:
+              "SELECT cpf_cnpj FROM fornecedores WHERE COALESCE(cpf_cnpj, '') <> ''",
+            column: "cpf_cnpj",
+            normalizedValue: cpfCnpjNormalizado,
+            normalizeValue: normalizeCpfCnpj,
+          });
+          if (cpfCnpjJaExiste) {
+            return res
+              .status(409)
+              .json({ error: "Já existe um fornecedor com este CPF/CNPJ." });
+          }
+
+          await query(
+            "INSERT INTO fornecedores (id, razao_social, email, cpf_cnpj, telefone, endereco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            [
+              payload.id,
+              encryptIfNeeded(razaoSocial),
+              encryptIfNeeded(emailNormalizado),
+              encryptIfNeeded(cpfCnpjRaw),
+              encryptIfNeeded(payload.telefone),
+              encryptIfNeeded(payload.endereco),
+              payload.ativo,
+              payload.criado_em,
+            ],
+          );
+        }
         break;
       case "addInsumo":
         await withTransaction(async (client) => {
@@ -160,15 +303,7 @@ export default async function handler(req, res) {
             client,
             payload.unidade_id || payload.unidade_codigo || payload.unidade,
           );
-          const estoqueMinimoUnidadeId = await resolveUnidadeId(
-            client,
-            payload.estoque_minimo_unidade_id ||
-              payload.estoque_minimo_unidade_codigo ||
-              payload.estoque_minimo_unidade ||
-              payload.unidade_id ||
-              payload.unidade_codigo ||
-              payload.unidade,
-          );
+          const estoqueMinimoUnidadeId = unidadeId;
 
           await client.query(
             `
@@ -208,15 +343,7 @@ export default async function handler(req, res) {
             client,
             payload.unidade_id || payload.unidade_codigo || payload.unidade,
           );
-          const estoqueMinimoUnidadeId = await resolveUnidadeId(
-            client,
-            payload.estoque_minimo_unidade_id ||
-              payload.estoque_minimo_unidade_codigo ||
-              payload.estoque_minimo_unidade ||
-              payload.unidade_id ||
-              payload.unidade_codigo ||
-              payload.unidade,
-          );
+          const estoqueMinimoUnidadeId = unidadeId;
 
           await client.query(
             `
@@ -247,6 +374,19 @@ export default async function handler(req, res) {
         break;
       case "addEntradaInsumos":
         await withTransaction(async (client) => {
+          const dataLancamento =
+            payload?.movimento?.data_movimentacao || new Date().toISOString();
+          const parcelasNormalizadas = (payload.parcelas || []).map((parcela) =>
+            normalizeContaPagarParcela(parcela, dataLancamento),
+          );
+          const parcelasPorConta = parcelasNormalizadas.reduce((acc, parcela) => {
+            const contaId = parcela.conta_pagar_id;
+            if (!contaId) return acc;
+            if (!acc.has(contaId)) acc.set(contaId, []);
+            acc.get(contaId).push(parcela);
+            return acc;
+          }, new Map());
+
           await insertRow(
             client,
             "movimento_producao",
@@ -267,6 +407,12 @@ export default async function handler(req, res) {
           );
 
           for (const contaPagar of payload.contasPagar || []) {
+            const parcelasConta = parcelasPorConta.get(contaPagar.id) || [];
+            const statusConta =
+              parcelasConta.length &&
+              parcelasConta.every((parcela) => parcela.status === "PAGA")
+                ? "PAGO"
+                : "ABERTO";
             await insertRow(
               client,
               "contas_pagar",
@@ -280,11 +426,14 @@ export default async function handler(req, res) {
                 "status",
                 "venda_id",
               ],
-              contaPagar,
+              {
+                ...contaPagar,
+                status: statusConta,
+              },
             );
           }
 
-          for (const parcela of payload.parcelas || []) {
+          for (const parcela of parcelasNormalizadas) {
             await insertRow(
               client,
               "contas_pagar_parcelas",
@@ -571,6 +720,19 @@ export default async function handler(req, res) {
         break;
       case "addVenda":
         await withTransaction(async (client) => {
+          const clienteId = payload?.venda?.cliente_id || payload?.contaReceber?.cliente_id;
+          const tipoPagamento = String(payload?.venda?.tipo_pagamento || "A_VISTA").toUpperCase();
+          const clienteResult = await client.query(
+            "SELECT protegido FROM clientes WHERE id = $1 LIMIT 1",
+            [clienteId],
+          );
+          const clienteProtegido = Boolean(clienteResult.rows[0]?.protegido);
+          if (clienteProtegido && tipoPagamento === "A_PRAZO") {
+            const error = new Error("Cliente Balcão só pode ser vendido à vista.");
+            error.statusCode = 400;
+            throw error;
+          }
+
           await insertRow(
             client,
             "vendas",
@@ -598,7 +760,47 @@ export default async function handler(req, res) {
             payload.venda,
           );
 
+          const itensNormalizados = [];
           for (const item of payload.itens || []) {
+            const unidadeId = await resolveUnidadeId(
+              client,
+              item.unidade_id || item.unidade_codigo || "KG",
+            );
+            const unidadeResult = await client.query(
+              "SELECT codigo FROM aux_unidade WHERE id = $1 LIMIT 1",
+              [unidadeId],
+            );
+            const unidadeCodigo = String(
+              unidadeResult.rows[0]?.codigo || item.unidade_codigo || "KG",
+            )
+              .trim()
+              .toUpperCase();
+
+            const insumoResult = await client.query(
+              "SELECT kg_por_saco FROM insumos WHERE id = $1 LIMIT 1",
+              [item.insumo_id],
+            );
+            const kgPorSacoInsumo = getNumber(insumoResult.rows[0]?.kg_por_saco) || 1;
+            const quantidadeInformada = getNumber(
+              item.quantidade_informada ?? item.quantidade,
+            );
+            const kgPorSacoItem = getNumber(item.kg_por_saco) || kgPorSacoInsumo;
+            const quantidadeKg =
+              unidadeCodigo === "SACO"
+                ? quantidadeInformada * kgPorSacoItem
+                : quantidadeInformada;
+            const precoUnitario = getNumber(item.preco_unitario ?? item.preco_unit);
+            const itemNormalizado = {
+              ...item,
+              unidade_id: unidadeId,
+              quantidade_kg: Number(quantidadeKg.toFixed(6)),
+              quantidade_informada: quantidadeInformada,
+              kg_por_saco: unidadeCodigo === "SACO" ? kgPorSacoItem : null,
+              preco_unitario: precoUnitario,
+              valor_total: Number((quantidadeInformada * precoUnitario).toFixed(2)),
+            };
+            itensNormalizados.push(itemNormalizado);
+
             await insertRow(
               client,
               "venda_itens",
@@ -614,7 +816,57 @@ export default async function handler(req, res) {
                 "valor_total",
                 "criado_em",
               ],
-              item,
+              itemNormalizado,
+            );
+          }
+
+          for (const item of itensNormalizados) {
+            if (!item.insumo_id || getNumber(item.quantidade_kg) <= 0) continue;
+            const custoResult = await client.query(
+              `
+              SELECT
+                CASE
+                  WHEN COALESCE(SUM(quantidade_entrada), 0) > 0 THEN
+                    SUM(quantidade_entrada * custo_unitario) /
+                    NULLIF(SUM(quantidade_entrada), 0)
+                  ELSE 0
+                END AS custo_medio_kg
+              FROM movimento_producao
+              WHERE insumo_id = $1
+              `,
+              [item.insumo_id],
+            );
+            const custoMedioKg = getNumber(custoResult.rows[0]?.custo_medio_kg);
+
+            await insertRow(
+              client,
+              "movimento_producao",
+              [
+                "id",
+                "insumo_id",
+                "tipo_movimento",
+                "custo_unitario",
+                "quantidade_entrada",
+                "quantidade_saida",
+                "data_movimentacao",
+                "referencia_tipo",
+                "referencia_id",
+                "producao_id",
+                "obs",
+              ],
+              {
+                id: randomUUID(),
+                insumo_id: item.insumo_id,
+                tipo_movimento: "SAIDA_VENDA",
+                custo_unitario: custoMedioKg,
+                quantidade_entrada: 0,
+                quantidade_saida: getNumber(item.quantidade_kg),
+                data_movimentacao: payload.venda.data_venda,
+                referencia_tipo: "venda",
+                referencia_id: payload.venda.id,
+                producao_id: null,
+                obs: `Baixa de estoque da venda ${String(payload.venda.id || "").slice(0, 8)}`,
+              },
             );
           }
 
@@ -725,15 +977,54 @@ export default async function handler(req, res) {
         });
         break;
       case "marcarParcelaPaga":
-        await query(
-          "UPDATE contas_pagar_parcelas SET status = $2, data_pagamento = $3, forma_pagamento = $4 WHERE id = $1",
-          [
-            payload.id,
-            payload.status,
-            payload.data_pagamento,
-            payload.forma_pagamento,
-          ],
-        );
+        await withTransaction(async (client) => {
+          await client.query(
+            "UPDATE contas_pagar_parcelas SET status = $2, data_pagamento = $3, forma_pagamento = $4 WHERE id = $1",
+            [
+              payload.id,
+              payload.status,
+              payload.data_pagamento,
+              payload.forma_pagamento,
+            ],
+          );
+
+          for (const contaPagar of payload.contasPagar || []) {
+            await insertRow(
+              client,
+              "contas_pagar",
+              [
+                "id",
+                "fornecedor_id",
+                "origem_tipo",
+                "origem_id",
+                "valor_total",
+                "data_emissao",
+                "status",
+                "venda_id",
+              ],
+              contaPagar,
+            );
+          }
+
+          for (const parcelaPagar of payload.parcelasPagar || []) {
+            await insertRow(
+              client,
+              "contas_pagar_parcelas",
+              [
+                "id",
+                "conta_pagar_id",
+                "parcela_num",
+                "vencimento",
+                "valor",
+                "status",
+                "data_pagamento",
+                "forma_pagamento",
+                "producao_id",
+              ],
+              parcelaPagar,
+            );
+          }
+        });
         break;
       case "marcarParcelaRecebida":
         await withTransaction(async (client) => {
@@ -974,6 +1265,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true });
   } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message || "Requisição inválida." });
+    }
     if (error?.code === "23505") {
       return res.status(409).json({ error: "Registro duplicado." });
     }

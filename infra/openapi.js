@@ -163,6 +163,23 @@ export const openApiSpec = {
         responses: { 200: { description: "Integração atualizada" } },
       },
     },
+    "/configuracao-empresa/feedback": {
+      get: {
+        summary:
+          "Listar feedbacks com filtros opcionais por status e modo admin",
+        responses: { 200: { description: "Feedbacks listados" } },
+      },
+      post: {
+        summary: "Criar novo feedback",
+        responses: { 201: { description: "Feedback criado" } },
+      },
+    },
+    "/configuracao-empresa/feedback/{id}/finalizar": {
+      patch: {
+        summary: "Finalizar feedback pendente",
+        responses: { 200: { description: "Feedback finalizado" } },
+      },
+    },
     "/system/seed": {
       post: {
         summary: "Recriar dados base do sistema",

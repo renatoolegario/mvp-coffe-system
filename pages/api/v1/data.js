@@ -90,6 +90,7 @@ const decodeClientes = (rows = []) =>
   rows.map((row) => ({
     ...row,
     nome: decryptIfNeeded(row.nome),
+    email: decryptIfNeeded(row.email),
     cpf_cnpj: decryptIfNeeded(row.cpf_cnpj),
     telefone: decryptIfNeeded(row.telefone),
     endereco: decryptIfNeeded(row.endereco),
@@ -99,6 +100,7 @@ const decodeFornecedores = (rows = []) =>
   rows.map((row) => ({
     ...row,
     razao_social: decryptIfNeeded(row.razao_social),
+    email: decryptIfNeeded(row.email),
     cpf_cnpj: decryptIfNeeded(row.cpf_cnpj),
     telefone: decryptIfNeeded(row.telefone),
     endereco: decryptIfNeeded(row.endereco),

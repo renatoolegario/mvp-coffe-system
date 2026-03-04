@@ -73,6 +73,7 @@ export default async function handler(req, res) {
           [
             "id",
             "nome",
+            "email",
             "cpf_cnpj",
             "telefone",
             "endereco",
@@ -83,6 +84,11 @@ export default async function handler(req, res) {
           {
             ...cliente,
             nome: encryptIfNeeded(cliente.nome),
+            email: encryptIfNeeded(
+              String(cliente.email || "")
+                .trim()
+                .toLowerCase(),
+            ),
             cpf_cnpj: encryptIfNeeded(cliente.cpf_cnpj),
             telefone: encryptIfNeeded(cliente.telefone),
             endereco: encryptIfNeeded(cliente.endereco),
@@ -98,6 +104,7 @@ export default async function handler(req, res) {
           [
             "id",
             "razao_social",
+            "email",
             "cpf_cnpj",
             "telefone",
             "endereco",
@@ -107,6 +114,11 @@ export default async function handler(req, res) {
           {
             ...fornecedor,
             razao_social: encryptIfNeeded(fornecedor.razao_social),
+            email: encryptIfNeeded(
+              String(fornecedor.email || "")
+                .trim()
+                .toLowerCase(),
+            ),
             cpf_cnpj: encryptIfNeeded(fornecedor.cpf_cnpj),
             telefone: encryptIfNeeded(fornecedor.telefone),
             endereco: encryptIfNeeded(fornecedor.endereco),

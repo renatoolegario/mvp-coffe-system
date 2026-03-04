@@ -78,15 +78,11 @@ Telas
 
 ### 5) Gestão de Fornecedores + Compras
 Funções
-- Dashboard de fornecedores:
-  - total em aberto, vencidos, pagos
-- Detalhe do fornecedor:
-  - histórico de compras
-  - histórico de pagamentos (parcelas)
+- Cadastro e manutenção de fornecedores.
+- Vinculação de fornecedores às compras, custos extras e contas a pagar.
 
 Telas
-- Dashboard Fornecedores
-- Detalhe do Fornecedor
+- Gestão de Fornecedores
 
 ---
 

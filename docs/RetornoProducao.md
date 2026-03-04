@@ -2,7 +2,7 @@
 
 ## Descrição
 
-Tela dedicada ao retorno da produção (status 2), com confirmação de peso real e custos adicionais.
+Tela dedicada ao retorno da produção (status 2), com acompanhamento de pendências e histórico.
 
 ## Props utilizadas
 
@@ -10,12 +10,19 @@ Tela dedicada ao retorno da produção (status 2), com confirmação de peso rea
 
 ## Funções internas
 
-- Lista produções pendentes.
-- Permite informar peso real, taxa real e custos adicionais.
+- Exibe duas abas:
+  - `Produções pendentes`
+  - `Histórico de Produções`
+- Coluna de `ID` com botão de cópia (ícone) para facilitar auditoria.
+- Ação `Detalhes` disponível em pendentes e histórico, exibindo insumos enviados na OP e custos já lançados.
+- Ação `Confirmar retorno` com ícone.
+- Formulário de retorno exibido em menu lateral direito (`Drawer`) com altura total da viewport e largura de 30% em desktop.
 - Finaliza produção via `confirmarRetornoProducao`.
-- Exibe lista de produções pendentes e libera o formulário completo após clicar em `Confirmar Retorno`.
+- Permite estornar produção via `cancelarProducao`.
 
 ## Resultado esperado
 
-- Produção finalizada com status 2.
+- Produções pendentes e histórico acessíveis por abas.
+- Dados da ordem de produção consultáveis via ação de detalhes.
+- Produção finalizada com status 2 ao confirmar retorno.
 - Entrada do produto final e lançamentos financeiros vinculados à produção.

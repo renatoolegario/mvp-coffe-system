@@ -44,7 +44,9 @@ Registro de compras de insumos com conversão obrigatória para `kg`, parcelamen
 ## Regras de pagamento
 
 - Parcelas iniciam com status padrão `A prazo (não pago)`.
-- Se o status for `Pago`, a parcela é registrada como `PAGA` já na criação.
+- Toda parcela é persistida com `vencimento`.
+- Se o status for `Pago`, a parcela é registrada como `PAGA` já na criação e `data_pagamento` recebe a data/hora do lançamento da entrada.
+- Se o status for `A prazo`, a parcela fica `ABERTA` e sem `data_pagamento`.
 - Custos extras seguem a mesma lógica de status e parcelamento da entrada principal.
 
 ## Resultado esperado

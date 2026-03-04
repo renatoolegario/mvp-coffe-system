@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 import { getParcelas } from "../utils/stock";
 import { getAuthHeaders } from "./useSession";
-import { toLocalDateTime } from "../utils/datetime";
+import { addDaysLocalDateTime, toLocalDateTime } from "../utils/datetime";
 import { toPerfilCode } from "../utils/profile";
 
 const nowIso = () => toLocalDateTime();
@@ -41,7 +41,16 @@ const apiFetch = async (path, options) => {
   });
 
   if (!response.ok) {
-    throw new Error("Erro ao comunicar com a API.");
+    let errorMessage = "Erro ao comunicar com a API.";
+    try {
+      const errorBody = await response.json();
+      if (errorBody?.error) {
+        errorMessage = errorBody.error;
+      }
+    } catch (error) {
+      errorMessage = "Erro ao comunicar com a API.";
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();
@@ -88,6 +97,28 @@ const resolveUnidadeByCode = (unidades = [], code = "KG") => {
     unidades[0] ||
     null
   );
+};
+
+const buildParcelaPagamento = ({
+  parcelaNum,
+  valor,
+  vencimento,
+  contaPagarId,
+  statusInput,
+  dataLancamento,
+}) => {
+  const statusRaw = String(statusInput || "A_PRAZO").trim().toUpperCase();
+  const isPago = statusRaw === "PAGO" || statusRaw === "PAGA";
+  return {
+    id: uuidv4(),
+    conta_pagar_id: contaPagarId,
+    parcela_num: parcelaNum,
+    vencimento: vencimento || dataLancamento,
+    valor,
+    status: isPago ? "PAGA" : "ABERTA",
+    data_pagamento: isPago ? dataLancamento : null,
+    forma_pagamento: isPago ? "Entrada manual" : null,
+  };
 };
 
 export const useDataStore = create((set, get) => ({
@@ -140,17 +171,22 @@ export const useDataStore = create((set, get) => ({
     }
   },
   addCliente: async (payload) => {
+    const email = String(payload.email || "")
+      .trim()
+      .toLowerCase();
     const cliente = {
       id: uuidv4(),
       ativo: true,
       criado_em: nowIso(),
       ...payload,
+      email,
     };
     try {
       await sendCommand("addCliente", cliente);
       set((state) => ({ clientes: [...state.clientes, cliente] }));
+      return { ok: true };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   updateCliente: async ({ id, ...payload }) => {
@@ -176,17 +212,22 @@ export const useDataStore = create((set, get) => ({
     }
   },
   addFornecedor: async (payload) => {
+    const email = String(payload.email || "")
+      .trim()
+      .toLowerCase();
     const fornecedor = {
       id: uuidv4(),
       ativo: true,
       criado_em: nowIso(),
       ...payload,
+      email,
     };
     try {
       await sendCommand("addFornecedor", fornecedor);
       set((state) => ({ fornecedores: [...state.fornecedores, fornecedor] }));
+      return { ok: true };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   addInsumo: async (payload) => {
@@ -195,10 +236,7 @@ export const useDataStore = create((set, get) => ({
       unidades,
       payload.unidade_codigo || "KG",
     );
-    const unidadeEstoque = resolveUnidadeByCode(
-      unidades,
-      payload.estoque_minimo_unidade_codigo || unidadeDefault?.codigo || "KG",
-    );
+    const unidadeEstoque = unidadeDefault;
     const kgPorSaco = Number(payload.kg_por_saco) || 1;
 
     const insumo = {
@@ -234,13 +272,7 @@ export const useDataStore = create((set, get) => ({
       unidades,
       payload.unidade_codigo || current.unidade_codigo || "KG",
     );
-    const unidadeEstoque = resolveUnidadeByCode(
-      unidades,
-      payload.estoque_minimo_unidade_codigo ||
-        current.estoque_minimo_unidade_codigo ||
-        unidadePadrao?.codigo ||
-        "KG",
-    );
+    const unidadeEstoque = unidadePadrao;
 
     const updated = {
       ...current,
@@ -311,15 +343,6 @@ export const useDataStore = create((set, get) => ({
       obs: obs || "",
     };
     const contaPagarId = uuidv4();
-    const contaPagar = {
-      id: contaPagarId,
-      fornecedor_id,
-      origem_tipo: "entrada_insumos",
-      origem_id: entradaId,
-      valor_total,
-      data_emissao: dataEntrada,
-      status: "ABERTO",
-    };
     const parcelasBase = Array.isArray(parcelas_valores)
       ? parcelas_valores.map((valor, index) => ({
         parcela_num: index + 1,
@@ -327,25 +350,27 @@ export const useDataStore = create((set, get) => ({
         vencimento: parcelas_vencimentos?.[index] || dataEntrada,
       }))
       : getParcelas(valor_total, parcelas_qtd);
-    const parcelas = parcelasBase.map((parcela) => ({
-      id: uuidv4(),
-      conta_pagar_id: contaPagarId,
-      parcela_num: parcela.parcela_num,
-      vencimento: parcela.vencimento || dataEntrada,
-      valor: parcela.valor,
-      status:
-        (parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") === "PAGO"
-          ? "PAGA"
-          : "ABERTA",
-      data_pagamento:
-        (parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") === "PAGO"
-          ? dataEntrada
-          : null,
-      forma_pagamento:
-        (parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") === "PAGO"
-          ? "Entrada manual"
-          : null,
-    }));
+    const parcelas = parcelasBase.map((parcela) =>
+      buildParcelaPagamento({
+        parcelaNum: parcela.parcela_num,
+        valor: parcela.valor,
+        vencimento: parcela.vencimento || parcelas_vencimentos?.[parcela.parcela_num - 1],
+        contaPagarId,
+        statusInput: parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO",
+        dataLancamento: dataEntrada,
+      }),
+    );
+    const contaPagar = {
+      id: contaPagarId,
+      fornecedor_id,
+      origem_tipo: "entrada_insumos",
+      origem_id: entradaId,
+      valor_total,
+      data_emissao: dataEntrada,
+      status: parcelas.every((parcela) => parcela.status === "PAGA")
+        ? "PAGO"
+        : "ABERTO",
+    };
     const custosExtras = (custos_extras || []).map((item) => {
       const contaPagarExtraId = uuidv4();
       const valorTotalExtra = Number(item.valor_total) || 0;
@@ -358,6 +383,19 @@ export const useDataStore = create((set, get) => ({
         }))
         : getParcelas(valorTotalExtra, parcelasQtdExtra);
 
+      const parcelasExtra = parcelasBaseExtra.map((parcela) =>
+        buildParcelaPagamento({
+          parcelaNum: parcela.parcela_num,
+          valor: parcela.valor,
+          vencimento:
+            item.parcelas_vencimentos?.[parcela.parcela_num - 1] ||
+            parcela.vencimento,
+          contaPagarId: contaPagarExtraId,
+          statusInput: item.parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO",
+          dataLancamento: dataEntrada,
+        }),
+      );
+
       const contaPagarExtra = {
         id: contaPagarExtraId,
         fornecedor_id: item.fornecedor_id,
@@ -365,27 +403,10 @@ export const useDataStore = create((set, get) => ({
         origem_id: entradaId,
         valor_total: valorTotalExtra,
         data_emissao: dataEntrada,
-        status: "ABERTO",
+        status: parcelasExtra.every((parcela) => parcela.status === "PAGA")
+          ? "PAGO"
+          : "ABERTO",
       };
-
-      const parcelasExtra = parcelasBaseExtra.map((parcela) => {
-        const statusPagamento =
-          (item.parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO") ===
-            "PAGO"
-            ? "PAGO"
-            : "A_PRAZO";
-        return {
-          id: uuidv4(),
-          conta_pagar_id: contaPagarExtraId,
-          parcela_num: parcela.parcela_num,
-          vencimento:
-            item.parcelas_vencimentos?.[parcela.parcela_num - 1] || dataEntrada,
-          valor: parcela.valor,
-          status: statusPagamento === "PAGO" ? "PAGA" : "ABERTA",
-          data_pagamento: statusPagamento === "PAGO" ? dataEntrada : null,
-          forma_pagamento: statusPagamento === "PAGO" ? "Entrada manual" : null,
-        };
-      });
 
       return {
         contaPagar: contaPagarExtra,
@@ -718,6 +739,7 @@ export const useDataStore = create((set, get) => ({
         quantidade_kg: quantidadeKg,
         quantidade_informada: quantidadeInformada,
         unidade_id: unidade?.id || null,
+        unidade_codigo: unidade?.codigo || "KG",
         kg_por_saco: unidade?.codigo === "SACO" ? kgPorSaco : null,
         preco_unitario: precoUnitario,
         valor_total: Number((quantidadeInformada * precoUnitario).toFixed(2)),
@@ -743,8 +765,9 @@ export const useDataStore = create((set, get) => ({
         vendaDetalhes,
       });
       await get().loadData();
+      return { vendaId };
     } catch (error) {
-      return;
+      return null;
     }
   },
   confirmarEntregaVenda: async ({ venda_id, data_entrega, custos_extras }) => {
@@ -815,24 +838,69 @@ export const useDataStore = create((set, get) => ({
       return;
     }
   },
-  marcarParcelaPaga: async (id) => {
+  marcarParcelaPaga: async (input) => {
+    const payload = typeof input === "string" ? { id: input } : input || {};
     const parcelaAtual = get().contasPagarParcelas.find(
-      (parcela) => parcela.id === id,
+      (parcela) => parcela.id === payload.id,
     );
     if (!parcelaAtual) return;
+
+    const contaAtual = get().contasPagar.find(
+      (conta) => conta.id === parcelaAtual.conta_pagar_id,
+    );
+    const dataPagamento = nowIso();
+    const valorOriginal = Number(payload.valor_original ?? parcelaAtual.valor) || 0;
+    const valorPago =
+      payload.valor_pago === null || payload.valor_pago === undefined
+        ? valorOriginal
+        : Math.max(0, Number(payload.valor_pago) || 0);
+    const diferenca = Number((valorOriginal - valorPago).toFixed(2));
+    const gerarNovaCobranca =
+      diferenca > 0 &&
+      payload.acao_diferenca === "JOGAR_PROXIMA" &&
+      Boolean(contaAtual?.fornecedor_id);
+
+    const contaPagarDiferenca = gerarNovaCobranca
+      ? {
+        id: uuidv4(),
+        fornecedor_id: contaAtual?.fornecedor_id || null,
+        origem_tipo: "diferenca_pagamento_conta_pagar",
+        origem_id: parcelaAtual.id,
+        valor_total: diferenca,
+        data_emissao: dataPagamento,
+        status: "ABERTO",
+        venda_id: contaAtual?.venda_id || null,
+      }
+      : null;
+
+    const parcelaPagarDiferenca = contaPagarDiferenca
+      ? {
+        id: uuidv4(),
+        conta_pagar_id: contaPagarDiferenca.id,
+        parcela_num: 1,
+        vencimento: addDaysLocalDateTime(7),
+        valor: diferenca,
+        status: "ABERTA",
+        data_pagamento: null,
+        forma_pagamento: null,
+        producao_id: null,
+      }
+      : null;
+
     const updated = {
       ...parcelaAtual,
       status: "PAGA",
-      data_pagamento: nowIso(),
-      forma_pagamento: "Transferência",
+      data_pagamento: dataPagamento,
+      forma_pagamento: payload.forma_pagamento || "Transferência",
     };
+
     try {
-      await sendCommand("marcarParcelaPaga", updated);
-      set((state) => ({
-        contasPagarParcelas: state.contasPagarParcelas.map((parcela) =>
-          parcela.id === id ? updated : parcela,
-        ),
-      }));
+      await sendCommand("marcarParcelaPaga", {
+        ...updated,
+        contasPagar: contaPagarDiferenca ? [contaPagarDiferenca] : [],
+        parcelasPagar: parcelaPagarDiferenca ? [parcelaPagarDiferenca] : [],
+      });
+      await get().loadData();
     } catch (error) {
       return;
     }

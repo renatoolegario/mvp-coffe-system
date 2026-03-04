@@ -126,6 +126,7 @@ const UsuariosPage = () => {
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
         PaperProps={{
           sx: { width: { xs: "100%", sm: 360 }, p: 3 },
         }}

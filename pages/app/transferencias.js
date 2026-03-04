@@ -56,7 +56,7 @@ const TransferenciasPage = () => {
         const unidadeDefault = String(origemSelecionada.unidade_codigo || "KG").toUpperCase();
         setUnidadeOperacao(unidadeDefault === "SACO" ? "SACO" : "KG");
         setKgPorSacoInformado(String(Number(origemSelecionada.kg_por_saco) || 1));
-    }, [origemSelecionada?.id]);
+    }, [origemSelecionada]);
 
     const quantidadeInfo = toNumber(quantidadeInformada);
     const kgPorSaco = toNumber(kgPorSacoInformado) || Number(origemSelecionada?.kg_por_saco) || 1;
@@ -97,7 +97,7 @@ const TransferenciasPage = () => {
         <AppLayout>
             <PageHeader
                 title="Transferências Internas"
-                subtitle="Transfira estoque em KG ou SACO, com conversão explícita para KG."
+                subtitle="Escreva (Ex: Transferir Saco 23kg Tipo A para Agranel Balcão)"
             />
             <Grid container spacing={3}>
                 <Grid item xs={12} lg={8}>

@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -11,7 +12,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/router";
+import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
@@ -22,7 +24,32 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const toDateKey = (value) => {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isDateBetween = (value, start, end) => {
+  const current = toDateKey(value);
+  if (!current) return false;
+  if (start && current < start) return false;
+  if (end && current > end) return false;
+  return true;
+};
+
+const readQueryValue = (value) => {
+  if (Array.isArray(value)) return value[0] || "";
+  if (!value) return "";
+  return String(value);
+};
+
 const ContasReceberPage = () => {
+  const router = useRouter();
   const contas = useDataStore((state) => state.contasReceber);
   const parcelas = useDataStore((state) => state.contasReceberParcelas);
   const clientes = useDataStore((state) => state.clientes);
@@ -30,6 +57,10 @@ const ContasReceberPage = () => {
   const auxFormasPagamento = useDataStore((state) => state.auxFormasPagamento);
   const marcarParcelaRecebida = useDataStore((state) => state.marcarParcelaRecebida);
 
+  const [clienteFiltroId, setClienteFiltroId] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [contaSelecionadaId, setContaSelecionadaId] = useState("");
   const [selecionadas, setSelecionadas] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -43,10 +74,127 @@ const ContasReceberPage = () => {
   const [comprovanteUrl, setComprovanteUrl] = useState("");
   const [observacao, setObservacao] = useState("");
 
+  const clienteFiltroFromUrl = readQueryValue(router.query.cliente_id);
+  const parcelaFiltroId = readQueryValue(router.query.parcela_id);
+
   const parcelasAbertas = useMemo(
     () => parcelas.filter((parcela) => parcela.status === "ABERTA"),
     [parcelas],
   );
+
+  const contaById = useMemo(() => {
+    const map = {};
+    contas.forEach((conta) => {
+      map[conta.id] = conta;
+    });
+    return map;
+  }, [contas]);
+
+  const clienteById = useMemo(() => {
+    const map = {};
+    clientes.forEach((cliente) => {
+      map[cliente.id] = cliente;
+    });
+    return map;
+  }, [clientes]);
+
+  const parcelasAbertasFiltradas = useMemo(
+    () =>
+      parcelasAbertas.filter((parcela) => {
+        if (!isDateBetween(parcela.vencimento, dataInicio, dataFim)) {
+          return false;
+        }
+
+        const conta = contaById[parcela.conta_receber_id];
+        if (clienteFiltroId && conta?.cliente_id !== clienteFiltroId) {
+          return false;
+        }
+
+        if (parcelaFiltroId && parcela.id !== parcelaFiltroId) {
+          return false;
+        }
+
+        return true;
+      }),
+    [parcelasAbertas, dataInicio, dataFim, contaById, clienteFiltroId, parcelaFiltroId],
+  );
+
+  const contasFiltradas = useMemo(
+    () =>
+      contas.filter((conta) => {
+        if (clienteFiltroId && conta.cliente_id !== clienteFiltroId) {
+          return false;
+        }
+        return parcelasAbertasFiltradas.some(
+          (parcela) => parcela.conta_receber_id === conta.id,
+        );
+      }),
+    [contas, clienteFiltroId, parcelasAbertasFiltradas],
+  );
+
+  useEffect(() => {
+    if (!clienteFiltroFromUrl) return;
+    setClienteFiltroId((prev) =>
+      prev === clienteFiltroFromUrl ? prev : clienteFiltroFromUrl,
+    );
+  }, [clienteFiltroFromUrl]);
+
+  useEffect(() => {
+    if (!parcelaFiltroId) return;
+    const parcelaAlvo = parcelasAbertas.find((parcela) => parcela.id === parcelaFiltroId);
+    if (!parcelaAlvo) return;
+
+    const contaAlvo = contaById[parcelaAlvo.conta_receber_id];
+    if (contaAlvo?.cliente_id) {
+      setClienteFiltroId((prev) =>
+        prev === contaAlvo.cliente_id ? prev : contaAlvo.cliente_id,
+      );
+    }
+
+    setContaSelecionadaId((prev) =>
+      prev === parcelaAlvo.conta_receber_id ? prev : parcelaAlvo.conta_receber_id,
+    );
+
+    setSelecionadas((prev) => {
+      if (prev.length === 1 && prev[0] === parcelaAlvo.id) return prev;
+      return [parcelaAlvo.id];
+    });
+  }, [parcelaFiltroId, parcelasAbertas, contaById]);
+
+  useEffect(() => {
+    if (
+      contaSelecionadaId &&
+      !contasFiltradas.some((conta) => conta.id === contaSelecionadaId)
+    ) {
+      setContaSelecionadaId("");
+      setSelecionadas([]);
+    }
+  }, [contaSelecionadaId, contasFiltradas]);
+
+  const parcelasContaSelecionada = useMemo(() => {
+    if (!contaSelecionadaId) return [];
+    let rows = parcelas
+      .filter((parcela) => parcela.conta_receber_id === contaSelecionadaId)
+      .sort((a, b) => a.parcela_num - b.parcela_num);
+    if (parcelaFiltroId) {
+      rows = rows.filter((parcela) => parcela.id === parcelaFiltroId);
+    }
+    return rows;
+  }, [parcelas, contaSelecionadaId, parcelaFiltroId]);
+
+  const parcelasAbertasContaSelecionada = useMemo(
+    () =>
+      parcelasContaSelecionada.filter((parcela) => parcela.status === "ABERTA"),
+    [parcelasContaSelecionada],
+  );
+
+  useEffect(() => {
+    const validIds = new Set(parcelasAbertasContaSelecionada.map((parcela) => parcela.id));
+    setSelecionadas((prev) => {
+      const next = prev.filter((id) => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [parcelasAbertasContaSelecionada]);
 
   const formasPagamento = useMemo(
     () =>
@@ -66,16 +214,21 @@ const ContasReceberPage = () => {
   const totalSelecionado = useMemo(
     () =>
       selecionadas.reduce((acc, id) => {
-        const parcela = parcelasAbertas.find((item) => item.id === id);
+        const parcela = parcelasAbertasContaSelecionada.find((item) => item.id === id);
         return acc + toNumber(parcela?.valor_programado || parcela?.valor);
       }, 0),
-    [selecionadas, parcelasAbertas],
+    [selecionadas, parcelasAbertasContaSelecionada],
   );
 
   const toggleSelecionada = (id) => {
     setSelecionadas((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
     );
+  };
+
+  const handleToggleConta = (contaId) => {
+    setContaSelecionadaId((prev) => (prev === contaId ? "" : contaId));
+    setSelecionadas([]);
   };
 
   const abrirConfirmacao = () => {
@@ -89,7 +242,9 @@ const ContasReceberPage = () => {
     const valorRecebidoNormalizado =
       valorRecebido === "" ? null : Math.max(0, toNumber(valorRecebido));
 
-    const parcelaReferencia = parcelasAbertas.find((parcela) => parcela.id === selecionadas[0]);
+    const parcelaReferencia = parcelasAbertasContaSelecionada.find(
+      (parcela) => parcela.id === selecionadas[0],
+    );
     const valorProgramadoRef = toNumber(
       parcelaReferencia?.valor_programado || parcelaReferencia?.valor,
     );
@@ -127,12 +282,83 @@ const ContasReceberPage = () => {
     setObservacao("");
   };
 
+  const filtrosViaUrlAtivos = Boolean(clienteFiltroFromUrl || parcelaFiltroId);
+
+  const limparFiltrosViaUrl = () => {
+    router.replace({ pathname: router.pathname, query: {} }, undefined, {
+      shallow: true,
+    });
+    if (clienteFiltroFromUrl) {
+      setClienteFiltroId("");
+    }
+    if (parcelaFiltroId) {
+      setContaSelecionadaId("");
+      setSelecionadas([]);
+    }
+  };
+
   return (
     <AppLayout>
       <PageHeader
         title="Contas a Receber"
-        subtitle="Confirme recebimentos com ajuste de valor, método e recebimento especial."
+        subtitle="Filtre por cliente, selecione uma fatura e confirme as parcelas em aberto."
       />
+
+      {filtrosViaUrlAtivos ? (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={limparFiltrosViaUrl}>
+              Limpar filtro rápido
+            </Button>
+          }
+        >
+          Filtro aplicado por atalho da página de clientes
+          {clienteFiltroId && clienteById[clienteFiltroId]?.nome
+            ? `: ${clienteById[clienteFiltroId].nome}`
+            : ""}
+          {parcelaFiltroId ? ` • Parcela ${parcelaFiltroId.slice(0, 8)}` : ""}
+        </Alert>
+      ) : null}
+
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Stack spacing={2}>
+          <Typography variant="h6">Filtros</Typography>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+            <TextField
+              select
+              label="Cliente"
+              value={clienteFiltroId}
+              onChange={(event) => setClienteFiltroId(event.target.value)}
+              fullWidth
+            >
+              <MenuItem value="">Todos os clientes</MenuItem>
+              {clientes.map((cliente) => (
+                <MenuItem key={cliente.id} value={cliente.id}>
+                  {cliente.nome}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              type="date"
+              label="Vencimento de"
+              InputLabelProps={{ shrink: true }}
+              value={dataInicio}
+              onChange={(event) => setDataInicio(event.target.value)}
+              fullWidth
+            />
+            <TextField
+              type="date"
+              label="Vencimento até"
+              InputLabelProps={{ shrink: true }}
+              value={dataFim}
+              onChange={(event) => setDataFim(event.target.value)}
+              fullWidth
+            />
+          </Stack>
+        </Stack>
+      </Paper>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={5}>
@@ -141,25 +367,41 @@ const ContasReceberPage = () => {
               Faturas em aberto
             </Typography>
             <Stack spacing={2}>
-              {contas
-                .filter((conta) =>
-                  parcelasAbertas.some((parcela) => parcela.conta_receber_id === conta.id),
-                )
-                .map((conta) => (
-                  <Paper key={conta.id} variant="outlined" sx={{ p: 2 }}>
-                    <Typography fontWeight={600}>Fatura #{conta.id.slice(0, 8)}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Cliente: {clientes.find((item) => item.id === conta.cliente_id)?.nome || "-"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Valor: {formatCurrency(conta.valor_total)} • Emissão: {formatDate(conta.data_emissao)}
-                    </Typography>
-                  </Paper>
-                ))}
+              {contasFiltradas.map((conta) => {
+                const clienteNome =
+                  clientes.find((item) => item.id === conta.cliente_id)?.nome || "-";
+                const parcelasAbertasConta = parcelasAbertasFiltradas.filter(
+                  (parcela) => parcela.conta_receber_id === conta.id,
+                ).length;
 
-              {!contas.length ? (
+                return (
+                  <Paper key={conta.id} variant="outlined" sx={{ p: 2 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                      <Checkbox
+                        checked={contaSelecionadaId === conta.id}
+                        onChange={() => handleToggleConta(conta.id)}
+                      />
+                      <Box sx={{ flex: 1 }}>
+                        <Typography fontWeight={600}>Fatura #{conta.id.slice(0, 8)}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Cliente: {clienteNome}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Valor: {formatCurrency(conta.valor_total)} • Emissão:{" "}
+                          {formatDate(conta.data_emissao)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Parcelas em aberto no filtro: {parcelasAbertasConta}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Paper>
+                );
+              })}
+
+              {!contasFiltradas.length ? (
                 <Typography variant="body2" color="text.secondary">
-                  Nenhuma conta a receber registrada.
+                  Nenhuma fatura encontrada com parcela em aberto para o filtro aplicado.
                 </Typography>
               ) : null}
             </Stack>
@@ -169,7 +411,7 @@ const ContasReceberPage = () => {
         <Grid item xs={12} md={7}>
           <Paper sx={{ p: 3 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6">Parcelas abertas</Typography>
+              <Typography variant="h6">Parcelas da fatura selecionada</Typography>
               <Button
                 variant="contained"
                 disabled={!selecionadas.length}
@@ -180,10 +422,17 @@ const ContasReceberPage = () => {
             </Stack>
 
             <Stack spacing={1.5}>
-              {parcelasAbertas.map((parcela) => (
+              {!contaSelecionadaId ? (
+                <Typography variant="body2" color="text.secondary">
+                  Selecione uma fatura para listar as parcelas.
+                </Typography>
+              ) : null}
+
+              {parcelasContaSelecionada.map((parcela) => (
                 <Paper key={parcela.id} variant="outlined" sx={{ p: 2 }}>
                   <Stack direction="row" spacing={1.5} alignItems="center">
                     <Checkbox
+                      disabled={parcela.status !== "ABERTA"}
                       checked={selecionadas.includes(parcela.id)}
                       onChange={() => toggleSelecionada(parcela.id)}
                     />
@@ -197,14 +446,17 @@ const ContasReceberPage = () => {
                       <Typography variant="body2" color="text.secondary">
                         Programado: {formatCurrency(parcela.valor_programado || parcela.valor)}
                       </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Status: {parcela.status}
+                      </Typography>
                     </Box>
                   </Stack>
                 </Paper>
               ))}
 
-              {!parcelasAbertas.length ? (
+              {contaSelecionadaId && !parcelasContaSelecionada.length ? (
                 <Typography variant="body2" color="text.secondary">
-                  Não há parcelas em aberto.
+                  Não há parcelas para esta fatura.
                 </Typography>
               ) : null}
             </Stack>
@@ -216,6 +468,7 @@ const ContasReceberPage = () => {
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
         PaperProps={{ sx: { width: { xs: "100%", md: "46%" }, p: 3 } }}
       >
         <Typography variant="h6" fontWeight={700} gutterBottom>

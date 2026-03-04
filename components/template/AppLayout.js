@@ -15,7 +15,6 @@ import {
   Typography,
 } from "@mui/material";
 import {
-  BarChart,
   Dashboard,
   ExpandLess,
   ExpandMore,
@@ -29,7 +28,6 @@ import {
   PrecisionManufacturing,
   ReceiptLong,
   Settings,
-  StackedLineChart,
   SwapHoriz,
 } from "@mui/icons-material";
 import Link from "next/link";
@@ -47,6 +45,13 @@ const menuGroups = [
     label: "Visão Geral",
     icon: Dashboard,
     href: "/app",
+  },
+  {
+    id: "cronograma",
+    label: "Cronograma",
+    icon: FactCheck,
+    href: "/cronograma",
+    roles: ["admin", "comum"],
   },
   {
     id: "cadastros",
@@ -130,29 +135,10 @@ const menuGroups = [
     ],
   },
   {
-    id: "configuracao",
-    label: "Configuração da Empresa",
-    icon: Settings,
-    href: "/app/configuracao-empresa",
-    roles: ["admin"],
-  },
-  {
     id: "financeiro",
     label: "Financeiro",
     icon: ReceiptLong,
     items: [
-      {
-        label: "Dashboard Fornecedores",
-        href: "/app/dashboard-fornecedores",
-        roles: ["admin", "comum"],
-        icon: BarChart,
-      },
-      {
-        label: "Detalhe do Fornecedor",
-        href: "/app/detalhe-fornecedor",
-        roles: ["admin", "comum"],
-        icon: LocalShipping,
-      },
       {
         label: "Contas a Pagar",
         href: "/app/contas-pagar",
@@ -166,6 +152,13 @@ const menuGroups = [
         icon: ReceiptLong,
       },
     ],
+  },
+  {
+    id: "configuracao",
+    label: "Configuração da Empresa",
+    icon: Settings,
+    href: "/app/configuracao-empresa",
+    roles: ["admin"],
   },
 ];
 
