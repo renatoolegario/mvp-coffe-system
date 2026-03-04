@@ -40,6 +40,7 @@ const preparacaoAntesD0 = [
   "Capturar todos os fornecedores.",
   "Capturar todos os colaboradores (usuários) e definir tarefas.",
   "Capturar todos os insumos e realizar contagem de estoque.",
+  "Criação de conta Asaas e geração da API de integração.",
   "Contagem sugerida: inventário no início da semana e auditoria na sexta para confrontar as baixas e reduzir retrabalho.",
   "Capturar contas a pagar com fornecedor, data de pagamento e valores.",
   "Capturar contas a receber com cliente, data prevista, valores e método de pagamento.",

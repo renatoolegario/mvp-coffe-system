@@ -1,47 +1,91 @@
 {
   "meta": {
-    "seed_version": "2.0.0",
-    "generated_at": "2026-02-04T12:00:00-03:00",
+    "seed_version": "2.1.0",
+    "generated_at": "2026-03-04T12:00:00-03:00",
     "currency": "BRL",
     "timezone": "America/Sao_Paulo"
   },
   "usuarios": [
     {
       "id": "e4cf26b5-4f59-4687-839a-35f5db1fbb7c",
-      "nome": "Administrador",
-      "email": "admin@cafemvp.com",
-      "senha_hash": "mvp_admin_123",
+      "nome": "Administrador Geral",
+      "email": "admin@mvpcoffee.local",
+      "senha_hash": "Admin@123",
       "perfil": 1,
       "ativo": true,
       "criado_em": "2026-01-01T09:00:00"
+    },
+    {
+      "id": "d5b32119-cdfd-43be-a3f2-42b3ec7f4f8d",
+      "nome": "Gestor Financeiro",
+      "email": "financeiro@mvpcoffee.local",
+      "senha_hash": "Finance@123",
+      "perfil": 1,
+      "ativo": true,
+      "criado_em": "2026-01-01T09:10:00"
+    },
+    {
+      "id": "0fa511f4-ce90-4be0-bf91-b2da4e8c0fa2",
+      "nome": "Operador Estoque",
+      "email": "estoque@mvpcoffee.local",
+      "senha_hash": "Estoque@123",
+      "perfil": 2,
+      "ativo": true,
+      "criado_em": "2026-01-01T09:20:00"
+    },
+    {
+      "id": "74fe6f35-6c22-4f8d-8676-6ddfd078f391",
+      "nome": "Operador Comercial",
+      "email": "comercial@mvpcoffee.local",
+      "senha_hash": "Comercial@123",
+      "perfil": 2,
+      "ativo": true,
+      "criado_em": "2026-01-01T09:30:00"
     }
   ],
   "clientes": [
     {
+      "id": "2d6b6eca-6db6-44f3-beb9-676fc850ca4d",
+      "nome": "Cliente Balcão",
+      "email": "balcao@mvpcoffee.local",
+      "cpf_cnpj": "487.123.220-40",
+      "telefone": "",
+      "endereco": "",
+      "ativo": true,
+      "protegido": true,
+      "criado_em": "2026-01-01T10:00:00"
+    },
+    {
       "id": "7a032fb3-bca9-4ab7-bc2f-8bd4b930c560",
       "nome": "Cafeteria Central",
-      "cpf_cnpj": "12.345.678/0001-10",
+      "email": "cafeteria.central@mvpcafe.local",
+      "cpf_cnpj": "12.345.678/0001-95",
       "telefone": "(34) 99999-1001",
       "endereco": "Uberlândia - MG",
       "ativo": true,
+      "protegido": false,
       "criado_em": "2026-01-10T10:00:00"
     },
     {
       "id": "0e491fac-9228-4258-9f2d-98f2189c1828",
       "nome": "Empório do Café",
-      "cpf_cnpj": "45.111.222/0001-90",
+      "email": "emporio.cafe@mvpcafe.local",
+      "cpf_cnpj": "45.111.222/0001-10",
       "telefone": "(34) 99999-1002",
       "endereco": "Patos de Minas - MG",
       "ativo": true,
+      "protegido": false,
       "criado_em": "2026-01-12T10:00:00"
     },
     {
       "id": "d1d3f905-bd89-4f9e-ba8d-5f199799901a",
       "nome": "Mercado Santo Grão",
-      "cpf_cnpj": "09.888.777/0001-55",
+      "email": "mercado.grao@mvpcafe.local",
+      "cpf_cnpj": "09.888.777/0001-09",
       "telefone": "(34) 99999-1003",
       "endereco": "Araxá - MG",
       "ativo": true,
+      "protegido": false,
       "criado_em": "2026-01-15T10:00:00"
     }
   ],
@@ -49,7 +93,8 @@
     {
       "id": "b341d2ec-2046-42ef-90ea-f0c0f7fa3070",
       "razao_social": "AgroInsumos Minas",
-      "cpf_cnpj": "11.222.333/0001-44",
+      "email": "agroinsumos@mvpcafe.local",
+      "cpf_cnpj": "11.222.333/0001-81",
       "telefone": "(34) 99999-2001",
       "endereco": "Uberaba - MG",
       "ativo": true,
@@ -58,7 +103,8 @@
     {
       "id": "f33f5fa3-3d30-45d9-92d0-9fd77995a51b",
       "razao_social": "Embalagens Brasil",
-      "cpf_cnpj": "22.333.444/0001-55",
+      "email": "embalagens@mvpcafe.local",
+      "cpf_cnpj": "22.333.444/0001-81",
       "telefone": "(34) 99999-2002",
       "endereco": "Franca - SP",
       "ativo": true,
@@ -67,28 +113,80 @@
     {
       "id": "87937fce-e3b0-4bda-87f8-aab0ca2314a7",
       "razao_social": "Transportes Cerrado",
-      "cpf_cnpj": "33.444.555/0001-66",
+      "email": "transportes.cerrado@mvpcafe.local",
+      "cpf_cnpj": "33.444.555/0001-81",
       "telefone": "(34) 99999-2003",
       "endereco": "Ribeirão Preto - SP",
       "ativo": true,
       "criado_em": "2026-01-06T09:00:00"
+    },
+    {
+      "id": "276e3a27-e271-4479-85c8-9fee64ea3c40",
+      "razao_social": "Logística Serra Azul",
+      "email": "logistica.serra.azul@mvpcafe.local",
+      "cpf_cnpj": "66.777.888/0001-81",
+      "telefone": "(34) 99999-2004",
+      "endereco": "Uberlândia - MG",
+      "ativo": true,
+      "criado_em": "2026-01-07T09:00:00"
     }
   ],
   "insumos": [
     {
       "id": "ins_001",
-      "nome": "Café Verde",
-      "unidade": "kg",
-      "estoque_minimo": 50,
-      "estoque_minimo_unidade": "kg",
-      "kg_por_saco": 1,
-      "preco_kg": 12.5,
-      "tipo": "CONSUMIVEL",
+      "nome": "Café Tipo A Agranel",
+      "unidade": "KG",
+      "estoque_minimo": 120,
+      "estoque_minimo_unidade": "KG",
+      "kg_por_saco": 23,
+      "pode_ser_insumo": true,
+      "pode_ser_produzivel": false,
+      "pode_ser_vendido": true,
       "ativo": true,
       "criado_em": "2026-01-04T08:30:00"
+    },
+    {
+      "id": "ins_002",
+      "nome": "Café Tipo B Agranel",
+      "unidade": "KG",
+      "estoque_minimo": 100,
+      "estoque_minimo_unidade": "KG",
+      "kg_por_saco": 23,
+      "pode_ser_insumo": true,
+      "pode_ser_produzivel": false,
+      "pode_ser_vendido": true,
+      "ativo": true,
+      "criado_em": "2026-01-04T08:40:00"
+    },
+    {
+      "id": "ins_003",
+      "nome": "Saco Tipo A 23kg",
+      "unidade": "SACO",
+      "estoque_minimo": 30,
+      "estoque_minimo_unidade": "SACO",
+      "kg_por_saco": 23,
+      "pode_ser_insumo": true,
+      "pode_ser_produzivel": true,
+      "pode_ser_vendido": true,
+      "ativo": true,
+      "criado_em": "2026-01-04T08:50:00"
+    },
+    {
+      "id": "ins_004",
+      "nome": "Mistura Especial Torrada",
+      "unidade": "KG",
+      "estoque_minimo": 50,
+      "estoque_minimo_unidade": "KG",
+      "kg_por_saco": 23,
+      "pode_ser_insumo": false,
+      "pode_ser_produzivel": true,
+      "pode_ser_vendido": true,
+      "ativo": true,
+      "criado_em": "2026-01-04T09:00:00"
     }
   ],
   "vendas": [],
+  "venda_itens": [],
   "contas_pagar": [],
   "contas_pagar_parcelas": [],
   "contas_receber": [],
@@ -97,5 +195,6 @@
   "detalhes_producao": [],
   "custos_adicionais_producao": [],
   "movimento_producao": [],
-  "venda_detalhes": []
+  "venda_detalhes": [],
+  "transferencias": []
 }
