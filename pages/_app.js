@@ -1,6 +1,7 @@
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { useEffect } from "react";
 import { useDataStore } from "../hooks/useDataStore";
+import { getAuthToken } from "../hooks/useSession";
 
 const theme = createTheme({
   palette: {
@@ -102,7 +103,8 @@ const App = ({ Component, pageProps }) => {
   const hydrated = useDataStore((state) => state.hydrated);
 
   useEffect(() => {
-    if (!hydrated) {
+    const token = getAuthToken();
+    if (!hydrated && token) {
       loadData();
     }
   }, [hydrated, loadData]);

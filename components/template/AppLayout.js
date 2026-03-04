@@ -37,6 +37,7 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 import { clearSession, getSession } from "../../hooks/useSession";
 import { toPerfilLabel, toPerfilRole } from "../../utils/profile";
+import { useDataStore } from "../../hooks/useDataStore";
 
 const drawerWidth = 260;
 
@@ -170,6 +171,8 @@ const menuGroups = [
 
 const AppLayout = ({ title, children }) => {
   const router = useRouter();
+  const loadData = useDataStore((state) => state.loadData);
+  const hydrated = useDataStore((state) => state.hydrated);
   const [session, setSession] = useState(null);
   const [ready, setReady] = useState(false);
   const [openGroups, setOpenGroups] = useState({});
@@ -183,6 +186,11 @@ const AppLayout = ({ title, children }) => {
     setSession(current);
     setReady(true);
   }, [router]);
+
+  useEffect(() => {
+    if (!ready || hydrated) return;
+    loadData();
+  }, [ready, hydrated, loadData, router.asPath]);
 
   const filteredGroups = useMemo(() => {
     if (!session) return [];
