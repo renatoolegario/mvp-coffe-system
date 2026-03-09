@@ -315,8 +315,21 @@ export default function EntradaInsumoDrawer({ open, onClose }) {
     };
 
     return (
-        <Drawer anchor="right" open={open} onClose={onClose} sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}>
-            <Box sx={{ width: "50vw", minWidth: 450, height: "100vh", display: "flex", flexDirection: "column" }}>
+        <Drawer
+            anchor="right"
+            open={open}
+            onClose={onClose}
+            sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
+        >
+            <Box
+                sx={{
+                    width: { xs: "100%", md: "30vw" },
+                    minWidth: { md: 360 },
+                    height: "100vh",
+                    display: "flex",
+                    flexDirection: "column",
+                }}
+            >
                 <Box display="flex" justifyContent="space-between" alignItems="center" p={2} borderBottom="1px solid #e0e0e0">
                     <Box>
                         <Typography variant="h6">Nova Entrada de Estoque</Typography>

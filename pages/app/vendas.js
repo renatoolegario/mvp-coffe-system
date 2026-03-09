@@ -26,6 +26,7 @@ import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
+import { downloadWorkbookXlsx } from "../../utils/xlsx";
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const monthPattern = /^\d{4}-\d{2}$/;
@@ -97,11 +98,6 @@ const isDateWithinRange = (dateValue, start, end) => {
   if (end && dateValue > end) return false;
   return true;
 };
-
-const csvEscape = (value) =>
-  `"${String(value ?? "")
-    .replace(/\r?\n/g, " ")
-    .replace(/"/g, '""')}"`;
 
 const buildCalendarDays = (monthValue, salesByDate) => {
   if (!monthPattern.test(String(monthValue || ""))) return [];
@@ -348,32 +344,9 @@ const VendasPage = () => {
   }, [vendas, normalizedInterval.start, normalizedInterval.end, overdueIds]);
 
   const handleDownloadSales = () => {
-    if (typeof window === "undefined" || !exportSales.length) return;
+    if (!exportSales.length) return;
 
     const today = todayDate();
-    const headers = [
-      "venda_id",
-      "cliente",
-      "data_venda",
-      "data_programada_entrega",
-      "data_entrega",
-      "status_entrega",
-      "entrega_atrasada",
-      "valor_venda",
-      "produtos",
-      "tipo_pagamento",
-      "forma_pagamento_venda",
-      "parcela_num",
-      "status_parcela",
-      "data_vencimento",
-      "data_pagamento",
-      "valor_programado_parcela",
-      "valor_recebido_parcela",
-      "forma_recebimento_real",
-      "observacoes_venda",
-      "observacao_pagamento",
-    ];
-
     const rows = [];
 
     exportSales.forEach((venda) => {
@@ -394,7 +367,7 @@ const VendasPage = () => {
         data_entrega: deliveredDate,
         status_entrega: venda.status_entrega || "PENDENTE",
         entrega_atrasada: isOverdue ? "SIM" : "NAO",
-        valor_venda: Number(venda.valor_total || 0).toFixed(2),
+        valor_venda: Number(venda.valor_total || 0),
         produtos: produtosByVendaId.get(venda.id) || "-",
         tipo_pagamento: venda.tipo_pagamento || "-",
         forma_pagamento_venda: venda.forma_pagamento || "-",
@@ -423,13 +396,11 @@ const VendasPage = () => {
           status_parcela: parcela.status || "",
           data_vencimento: normalizeDateValue(parcela.vencimento),
           data_pagamento: normalizeDateValue(parcela.data_recebimento),
-          valor_programado_parcela: Number(
-            parcela.valor_programado ?? parcela.valor ?? 0,
-          ).toFixed(2),
+          valor_programado_parcela: Number(parcela.valor_programado ?? parcela.valor ?? 0),
           valor_recebido_parcela:
             parcela.valor_recebido === null || parcela.valor_recebido === undefined
               ? ""
-              : Number(parcela.valor_recebido).toFixed(2),
+              : Number(parcela.valor_recebido),
           forma_recebimento_real:
             parcela.forma_recebimento_real || parcela.forma_recebimento || "",
           observacao_pagamento: parcela.observacao_recebimento || "",
@@ -437,21 +408,37 @@ const VendasPage = () => {
       });
     });
 
-    const csv = [
-      headers.join(";"),
-      ...rows.map((row) => headers.map((key) => csvEscape(row[key])).join(";")),
-    ].join("\n");
-
-    const fileName = `vendas_${normalizedInterval.start || "inicio"}_a_${normalizedInterval.end || "fim"}.csv`;
-    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
+    downloadWorkbookXlsx({
+      fileName: `vendas_${normalizedInterval.start || "inicio"}_a_${normalizedInterval.end || "fim"}_e_atrasadas`,
+      sheets: [
+        {
+          name: "Vendas",
+          columns: [
+            { key: "venda_id", header: "ID venda" },
+            { key: "cliente", header: "Cliente" },
+            { key: "data_venda", header: "Data venda" },
+            { key: "data_programada_entrega", header: "Data programada entrega" },
+            { key: "data_entrega", header: "Data entrega" },
+            { key: "status_entrega", header: "Status entrega" },
+            { key: "entrega_atrasada", header: "Entrega atrasada" },
+            { key: "valor_venda", header: "Valor venda" },
+            { key: "produtos", header: "Produtos" },
+            { key: "tipo_pagamento", header: "Tipo pagamento" },
+            { key: "forma_pagamento_venda", header: "Forma pagamento (venda)" },
+            { key: "parcela_num", header: "Parcela" },
+            { key: "status_parcela", header: "Status parcela" },
+            { key: "data_vencimento", header: "Data vencimento" },
+            { key: "data_pagamento", header: "Data pagamento" },
+            { key: "valor_programado_parcela", header: "Valor programado parcela" },
+            { key: "valor_recebido_parcela", header: "Valor recebido parcela" },
+            { key: "forma_recebimento_real", header: "Forma recebimento real" },
+            { key: "observacoes_venda", header: "Observações venda" },
+            { key: "observacao_pagamento", header: "Observação pagamento" },
+          ],
+          rows,
+        },
+      ],
+    });
   };
 
   const applyMonth = (nextMonth) => {
@@ -801,6 +788,7 @@ const VendasPage = () => {
         onClose={() => setAlertModalOpen(false)}
         maxWidth="md"
         fullWidth
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
       >
         <DialogTitle sx={{ pr: 6 }}>
           Entregas atrasadas sem baixa ({overdueSales.length})
@@ -857,11 +845,13 @@ const VendasPage = () => {
         open={Boolean(vendaSelecionada)}
         onClose={() => setVendaSelecionada(null)}
         ModalProps={{
-          sx: { zIndex: (theme) => theme.zIndex.tooltip + 1 },
+          sx: { zIndex: (theme) => theme.zIndex.modal + 20 },
         }}
         PaperProps={{
           sx: {
-            width: { xs: "100%", md: "46%" },
+            width: { xs: "100%", md: "30vw" },
+            minWidth: { md: 360 },
+            height: "100vh",
             p: 3,
           },
         }}

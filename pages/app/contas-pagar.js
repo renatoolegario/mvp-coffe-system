@@ -8,12 +8,15 @@ import {
   DialogContent,
   DialogTitle,
   Grid,
+  IconButton,
   MenuItem,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
@@ -43,6 +46,68 @@ const isDateBetween = (value, start, end) => {
   return true;
 };
 
+const monthPattern = /^\d{4}-\d{2}$/;
+
+const toMonthValue = (value = new Date()) => {
+  const dateKey = toDateKey(value);
+  return dateKey ? dateKey.slice(0, 7) : "";
+};
+
+const getMonthRange = (monthValue) => {
+  if (!monthPattern.test(String(monthValue || ""))) {
+    return getMonthRange(toMonthValue(new Date()));
+  }
+  const [year, month] = monthValue.split("-").map((item) => Number(item) || 0);
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  return {
+    start: toDateKey(start),
+    end: toDateKey(end),
+  };
+};
+
+const shiftMonth = (monthValue, offset) => {
+  const safeMonth = monthPattern.test(String(monthValue || ""))
+    ? monthValue
+    : toMonthValue(new Date());
+  const [year, month] = safeMonth.split("-").map((item) => Number(item) || 0);
+  const date = new Date(year, month - 1, 1);
+  date.setMonth(date.getMonth() + offset);
+  return toMonthValue(date);
+};
+
+const buildCalendarDays = (monthValue, summaryByDate) => {
+  if (!monthPattern.test(String(monthValue || ""))) return [];
+  const [year, month] = monthValue.split("-").map((item) => Number(item) || 0);
+  const firstDay = new Date(year, month - 1, 1);
+  const firstWeekDay = firstDay.getDay();
+  const totalDays = new Date(year, month, 0).getDate();
+  const cells = [];
+
+  for (let index = 0; index < firstWeekDay; index += 1) {
+    cells.push({ key: `empty-start-${index}`, isCurrentMonth: false });
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const date = toDateKey(new Date(year, month - 1, day));
+    const summary = summaryByDate.get(date) || { total: 0, count: 0 };
+    cells.push({
+      key: date,
+      date,
+      day,
+      total: summary.total,
+      count: summary.count,
+      isCurrentMonth: true,
+    });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push({ key: `empty-end-${cells.length}`, isCurrentMonth: false });
+  }
+
+  return cells;
+};
+
 const ContasPagarPage = () => {
   const contas = useDataStore((state) => state.contasPagar);
   const parcelas = useDataStore((state) => state.contasPagarParcelas);
@@ -50,9 +115,14 @@ const ContasPagarPage = () => {
   const auxFormasPagamento = useDataStore((state) => state.auxFormasPagamento);
   const marcarParcelaPaga = useDataStore((state) => state.marcarParcelaPaga);
 
+  const initialMonth = toMonthValue(new Date());
+  const initialRange = getMonthRange(initialMonth);
+
   const [fornecedorFiltroId, setFornecedorFiltroId] = useState("");
-  const [dataInicio, setDataInicio] = useState("");
-  const [dataFim, setDataFim] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(initialMonth);
+  const [dataInicio, setDataInicio] = useState(initialRange.start);
+  const [dataFim, setDataFim] = useState(initialRange.end);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
   const [contaSelecionadaId, setContaSelecionadaId] = useState("");
   const [confirmModal, setConfirmModal] = useState({
     open: false,
@@ -85,10 +155,19 @@ const ContasPagarPage = () => {
 
   const parcelasAbertasFiltradas = useMemo(
     () =>
-      parcelasAbertas.filter((parcela) =>
-        isDateBetween(parcela.vencimento, dataInicio, dataFim),
-      ),
-    [parcelasAbertas, dataInicio, dataFim],
+      parcelasAbertas.filter((parcela) => {
+        if (!isDateBetween(parcela.vencimento, dataInicio, dataFim)) {
+          return false;
+        }
+        if (
+          selectedCalendarDate &&
+          toDateKey(parcela.vencimento) !== selectedCalendarDate
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [parcelasAbertas, dataInicio, dataFim, selectedCalendarDate],
   );
 
   const contasFiltradas = useMemo(
@@ -103,6 +182,46 @@ const ContasPagarPage = () => {
       }),
     [contas, fornecedorFiltroId, parcelasAbertasFiltradas],
   );
+
+  const parcelasResumoCalendario = useMemo(
+    () =>
+      parcelasAbertas.filter((parcela) => {
+        const conta = contas.find((item) => item.id === parcela.conta_pagar_id);
+        if (fornecedorFiltroId && conta?.fornecedor_id !== fornecedorFiltroId) {
+          return false;
+        }
+        return true;
+      }),
+    [parcelasAbertas, contas, fornecedorFiltroId],
+  );
+
+  const resumoCalendarioPorDia = useMemo(() => {
+    const summary = new Map();
+    parcelasResumoCalendario.forEach((parcela) => {
+      const date = toDateKey(parcela.vencimento);
+      if (!date) return;
+      const current = summary.get(date) || { total: 0, count: 0 };
+      summary.set(date, {
+        total: current.total + toNumber(parcela.valor),
+        count: current.count + 1,
+      });
+    });
+    return summary;
+  }, [parcelasResumoCalendario]);
+
+  const calendarDays = useMemo(
+    () => buildCalendarDays(calendarMonth, resumoCalendarioPorDia),
+    [calendarMonth, resumoCalendarioPorDia],
+  );
+
+  const applyMonth = (nextMonth) => {
+    if (!monthPattern.test(String(nextMonth || ""))) return;
+    setCalendarMonth(nextMonth);
+    const range = getMonthRange(nextMonth);
+    setDataInicio(range.start);
+    setDataFim(range.end);
+    setSelectedCalendarDate("");
+  };
 
   useEffect(() => {
     if (
@@ -197,27 +316,57 @@ const ContasPagarPage = () => {
       <Paper sx={{ p: 3, mb: 3 }}>
         <Stack spacing={2}>
           <Typography variant="h6">Filtros</Typography>
+          <TextField
+            select
+            label="Fornecedor"
+            value={fornecedorFiltroId}
+            onChange={(event) => setFornecedorFiltroId(event.target.value)}
+            fullWidth
+          >
+            <MenuItem value="">Todos os fornecedores</MenuItem>
+            {fornecedores.map((fornecedor) => (
+              <MenuItem key={fornecedor.id} value={fornecedor.id}>
+                {fornecedor.razao_social}
+              </MenuItem>
+            ))}
+          </TextField>
+
           <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <TextField
-              select
-              label="Fornecedor"
-              value={fornecedorFiltroId}
-              onChange={(event) => setFornecedorFiltroId(event.target.value)}
-              fullWidth
-            >
-              <MenuItem value="">Todos os fornecedores</MenuItem>
-              {fornecedores.map((fornecedor) => (
-                <MenuItem key={fornecedor.id} value={fornecedor.id}>
-                  {fornecedor.razao_social}
-                </MenuItem>
-              ))}
-            </TextField>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 220 }}>
+              <IconButton
+                size="small"
+                onClick={() => applyMonth(shiftMonth(calendarMonth, -1))}
+              >
+                <ChevronLeftRoundedIcon />
+              </IconButton>
+              <TextField
+                type="month"
+                label="Mês"
+                InputLabelProps={{ shrink: true }}
+                value={calendarMonth}
+                onChange={(event) => applyMonth(event.target.value)}
+                fullWidth
+              />
+              <IconButton
+                size="small"
+                onClick={() => applyMonth(shiftMonth(calendarMonth, 1))}
+              >
+                <ChevronRightRoundedIcon />
+              </IconButton>
+            </Stack>
             <TextField
               type="date"
               label="Vencimento de"
               InputLabelProps={{ shrink: true }}
               value={dataInicio}
-              onChange={(event) => setDataInicio(event.target.value)}
+              onChange={(event) => {
+                const nextStart = event.target.value;
+                setDataInicio(nextStart);
+                if (nextStart) {
+                  setCalendarMonth(nextStart.slice(0, 7));
+                }
+                setSelectedCalendarDate("");
+              }}
               fullWidth
             />
             <TextField
@@ -225,10 +374,86 @@ const ContasPagarPage = () => {
               label="Vencimento até"
               InputLabelProps={{ shrink: true }}
               value={dataFim}
-              onChange={(event) => setDataFim(event.target.value)}
+              onChange={(event) => {
+                setDataFim(event.target.value);
+                setSelectedCalendarDate("");
+              }}
               fullWidth
             />
           </Stack>
+
+          <Typography variant="subtitle2" color="text.secondary">
+            Calendário mensal de vencimentos
+          </Typography>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gap: 1,
+            }}
+          >
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((weekDay) => (
+              <Typography
+                key={weekDay}
+                variant="caption"
+                color="text.secondary"
+                textAlign="center"
+              >
+                {weekDay}
+              </Typography>
+            ))}
+
+            {calendarDays.map((day) => {
+              if (!day.isCurrentMonth) {
+                return <Box key={day.key} sx={{ minHeight: 84 }} />;
+              }
+
+              const inRange = isDateBetween(day.date, dataInicio, dataFim);
+              const isSelected = day.date === selectedCalendarDate;
+
+              return (
+                <Paper
+                  key={day.key}
+                  onClick={() =>
+                    setSelectedCalendarDate((current) =>
+                      current === day.date ? "" : day.date,
+                    )
+                  }
+                  sx={{
+                    p: 1,
+                    cursor: "pointer",
+                    minHeight: 84,
+                    border: isSelected ? "2px solid" : "1px solid",
+                    borderColor: isSelected
+                      ? "primary.main"
+                      : inRange
+                        ? "success.light"
+                        : "divider",
+                  }}
+                >
+                  <Typography variant="body2" fontWeight={700}>
+                    {day.day}
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: "block" }}>
+                    {formatCurrency(day.total)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {day.count} parcela(s)
+                  </Typography>
+                </Paper>
+              );
+            })}
+          </Box>
+          {selectedCalendarDate ? (
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="body2" color="text.secondary">
+                Dia selecionado: {formatDate(selectedCalendarDate)}
+              </Typography>
+              <Button size="small" onClick={() => setSelectedCalendarDate("")}>
+                Limpar dia
+              </Button>
+            </Stack>
+          ) : null}
         </Stack>
       </Paper>
 
@@ -329,7 +554,13 @@ const ContasPagarPage = () => {
         </Grid>
       </Grid>
 
-      <Dialog open={confirmModal.open} onClose={handleFecharModal} fullWidth maxWidth="sm">
+      <Dialog
+        open={confirmModal.open}
+        onClose={handleFecharModal}
+        fullWidth
+        maxWidth="sm"
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
+      >
         <DialogTitle>Confirmar pagamento da parcela</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={1}>

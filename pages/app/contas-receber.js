@@ -6,12 +6,15 @@ import {
   Drawer,
   FormControlLabel,
   Grid,
+  IconButton,
   MenuItem,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
@@ -48,6 +51,68 @@ const readQueryValue = (value) => {
   return String(value);
 };
 
+const monthPattern = /^\d{4}-\d{2}$/;
+
+const toMonthValue = (value = new Date()) => {
+  const dateKey = toDateKey(value);
+  return dateKey ? dateKey.slice(0, 7) : "";
+};
+
+const getMonthRange = (monthValue) => {
+  if (!monthPattern.test(String(monthValue || ""))) {
+    return getMonthRange(toMonthValue(new Date()));
+  }
+  const [year, month] = monthValue.split("-").map((item) => Number(item) || 0);
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  return {
+    start: toDateKey(start),
+    end: toDateKey(end),
+  };
+};
+
+const shiftMonth = (monthValue, offset) => {
+  const safeMonth = monthPattern.test(String(monthValue || ""))
+    ? monthValue
+    : toMonthValue(new Date());
+  const [year, month] = safeMonth.split("-").map((item) => Number(item) || 0);
+  const date = new Date(year, month - 1, 1);
+  date.setMonth(date.getMonth() + offset);
+  return toMonthValue(date);
+};
+
+const buildCalendarDays = (monthValue, summaryByDate) => {
+  if (!monthPattern.test(String(monthValue || ""))) return [];
+  const [year, month] = monthValue.split("-").map((item) => Number(item) || 0);
+  const firstDay = new Date(year, month - 1, 1);
+  const firstWeekDay = firstDay.getDay();
+  const totalDays = new Date(year, month, 0).getDate();
+  const cells = [];
+
+  for (let index = 0; index < firstWeekDay; index += 1) {
+    cells.push({ key: `empty-start-${index}`, isCurrentMonth: false });
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const date = toDateKey(new Date(year, month - 1, day));
+    const summary = summaryByDate.get(date) || { total: 0, count: 0 };
+    cells.push({
+      key: date,
+      date,
+      day,
+      total: summary.total,
+      count: summary.count,
+      isCurrentMonth: true,
+    });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push({ key: `empty-end-${cells.length}`, isCurrentMonth: false });
+  }
+
+  return cells;
+};
+
 const ContasReceberPage = () => {
   const router = useRouter();
   const contas = useDataStore((state) => state.contasReceber);
@@ -57,9 +122,14 @@ const ContasReceberPage = () => {
   const auxFormasPagamento = useDataStore((state) => state.auxFormasPagamento);
   const marcarParcelaRecebida = useDataStore((state) => state.marcarParcelaRecebida);
 
+  const initialMonth = toMonthValue(new Date());
+  const initialRange = getMonthRange(initialMonth);
+
   const [clienteFiltroId, setClienteFiltroId] = useState("");
-  const [dataInicio, setDataInicio] = useState("");
-  const [dataFim, setDataFim] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(initialMonth);
+  const [dataInicio, setDataInicio] = useState(initialRange.start);
+  const [dataFim, setDataFim] = useState(initialRange.end);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
   const [contaSelecionadaId, setContaSelecionadaId] = useState("");
   const [selecionadas, setSelecionadas] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -101,7 +171,18 @@ const ContasReceberPage = () => {
   const parcelasAbertasFiltradas = useMemo(
     () =>
       parcelasAbertas.filter((parcela) => {
-        if (!isDateBetween(parcela.vencimento, dataInicio, dataFim)) {
+        if (
+          !parcelaFiltroId &&
+          !isDateBetween(parcela.vencimento, dataInicio, dataFim)
+        ) {
+          return false;
+        }
+
+        if (
+          selectedCalendarDate &&
+          !parcelaFiltroId &&
+          toDateKey(parcela.vencimento) !== selectedCalendarDate
+        ) {
           return false;
         }
 
@@ -116,7 +197,15 @@ const ContasReceberPage = () => {
 
         return true;
       }),
-    [parcelasAbertas, dataInicio, dataFim, contaById, clienteFiltroId, parcelaFiltroId],
+    [
+      parcelasAbertas,
+      dataInicio,
+      dataFim,
+      selectedCalendarDate,
+      contaById,
+      clienteFiltroId,
+      parcelaFiltroId,
+    ],
   );
 
   const contasFiltradas = useMemo(
@@ -219,6 +308,49 @@ const ContasReceberPage = () => {
       }, 0),
     [selecionadas, parcelasAbertasContaSelecionada],
   );
+
+  const parcelasResumoCalendario = useMemo(
+    () =>
+      parcelasAbertas.filter((parcela) => {
+        const conta = contaById[parcela.conta_receber_id];
+        if (clienteFiltroId && conta?.cliente_id !== clienteFiltroId) {
+          return false;
+        }
+        if (parcelaFiltroId && parcela.id !== parcelaFiltroId) {
+          return false;
+        }
+        return true;
+      }),
+    [parcelasAbertas, contaById, clienteFiltroId, parcelaFiltroId],
+  );
+
+  const resumoCalendarioPorDia = useMemo(() => {
+    const summary = new Map();
+    parcelasResumoCalendario.forEach((parcela) => {
+      const date = toDateKey(parcela.vencimento);
+      if (!date) return;
+      const current = summary.get(date) || { total: 0, count: 0 };
+      summary.set(date, {
+        total: current.total + toNumber(parcela.valor_programado || parcela.valor),
+        count: current.count + 1,
+      });
+    });
+    return summary;
+  }, [parcelasResumoCalendario]);
+
+  const calendarDays = useMemo(
+    () => buildCalendarDays(calendarMonth, resumoCalendarioPorDia),
+    [calendarMonth, resumoCalendarioPorDia],
+  );
+
+  const applyMonth = (nextMonth) => {
+    if (!monthPattern.test(String(nextMonth || ""))) return;
+    setCalendarMonth(nextMonth);
+    const range = getMonthRange(nextMonth);
+    setDataInicio(range.start);
+    setDataFim(range.end);
+    setSelectedCalendarDate("");
+  };
 
   const toggleSelecionada = (id) => {
     setSelecionadas((prev) =>
@@ -325,27 +457,57 @@ const ContasReceberPage = () => {
       <Paper sx={{ p: 3, mb: 3 }}>
         <Stack spacing={2}>
           <Typography variant="h6">Filtros</Typography>
+          <TextField
+            select
+            label="Cliente"
+            value={clienteFiltroId}
+            onChange={(event) => setClienteFiltroId(event.target.value)}
+            fullWidth
+          >
+            <MenuItem value="">Todos os clientes</MenuItem>
+            {clientes.map((cliente) => (
+              <MenuItem key={cliente.id} value={cliente.id}>
+                {cliente.nome}
+              </MenuItem>
+            ))}
+          </TextField>
+
           <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <TextField
-              select
-              label="Cliente"
-              value={clienteFiltroId}
-              onChange={(event) => setClienteFiltroId(event.target.value)}
-              fullWidth
-            >
-              <MenuItem value="">Todos os clientes</MenuItem>
-              {clientes.map((cliente) => (
-                <MenuItem key={cliente.id} value={cliente.id}>
-                  {cliente.nome}
-                </MenuItem>
-              ))}
-            </TextField>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 220 }}>
+              <IconButton
+                size="small"
+                onClick={() => applyMonth(shiftMonth(calendarMonth, -1))}
+              >
+                <ChevronLeftRoundedIcon />
+              </IconButton>
+              <TextField
+                type="month"
+                label="Mês"
+                InputLabelProps={{ shrink: true }}
+                value={calendarMonth}
+                onChange={(event) => applyMonth(event.target.value)}
+                fullWidth
+              />
+              <IconButton
+                size="small"
+                onClick={() => applyMonth(shiftMonth(calendarMonth, 1))}
+              >
+                <ChevronRightRoundedIcon />
+              </IconButton>
+            </Stack>
             <TextField
               type="date"
               label="Vencimento de"
               InputLabelProps={{ shrink: true }}
               value={dataInicio}
-              onChange={(event) => setDataInicio(event.target.value)}
+              onChange={(event) => {
+                const nextStart = event.target.value;
+                setDataInicio(nextStart);
+                if (nextStart) {
+                  setCalendarMonth(nextStart.slice(0, 7));
+                }
+                setSelectedCalendarDate("");
+              }}
               fullWidth
             />
             <TextField
@@ -353,10 +515,86 @@ const ContasReceberPage = () => {
               label="Vencimento até"
               InputLabelProps={{ shrink: true }}
               value={dataFim}
-              onChange={(event) => setDataFim(event.target.value)}
+              onChange={(event) => {
+                setDataFim(event.target.value);
+                setSelectedCalendarDate("");
+              }}
               fullWidth
             />
           </Stack>
+
+          <Typography variant="subtitle2" color="text.secondary">
+            Calendário mensal de vencimentos
+          </Typography>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gap: 1,
+            }}
+          >
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((weekDay) => (
+              <Typography
+                key={weekDay}
+                variant="caption"
+                color="text.secondary"
+                textAlign="center"
+              >
+                {weekDay}
+              </Typography>
+            ))}
+
+            {calendarDays.map((day) => {
+              if (!day.isCurrentMonth) {
+                return <Box key={day.key} sx={{ minHeight: 84 }} />;
+              }
+
+              const inRange = isDateBetween(day.date, dataInicio, dataFim);
+              const isSelected = day.date === selectedCalendarDate;
+
+              return (
+                <Paper
+                  key={day.key}
+                  onClick={() =>
+                    setSelectedCalendarDate((current) =>
+                      current === day.date ? "" : day.date,
+                    )
+                  }
+                  sx={{
+                    p: 1,
+                    cursor: "pointer",
+                    minHeight: 84,
+                    border: isSelected ? "2px solid" : "1px solid",
+                    borderColor: isSelected
+                      ? "primary.main"
+                      : inRange
+                        ? "success.light"
+                        : "divider",
+                  }}
+                >
+                  <Typography variant="body2" fontWeight={700}>
+                    {day.day}
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: "block" }}>
+                    {formatCurrency(day.total)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {day.count} parcela(s)
+                  </Typography>
+                </Paper>
+              );
+            })}
+          </Box>
+          {selectedCalendarDate ? (
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="body2" color="text.secondary">
+                Dia selecionado: {formatDate(selectedCalendarDate)}
+              </Typography>
+              <Button size="small" onClick={() => setSelectedCalendarDate("")}>
+                Limpar dia
+              </Button>
+            </Stack>
+          ) : null}
         </Stack>
       </Paper>
 
@@ -468,8 +706,15 @@ const ContasReceberPage = () => {
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
-        PaperProps={{ sx: { width: { xs: "100%", md: "46%" }, p: 3 } }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
+        PaperProps={{
+          sx: {
+            width: { xs: "100%", md: "30vw" },
+            minWidth: { md: 360 },
+            height: "100vh",
+            p: 3,
+          },
+        }}
       >
         <Typography variant="h6" fontWeight={700} gutterBottom>
           Confirmação de recebimento

@@ -166,12 +166,12 @@ export default function InsumoLedgerModal({ open, onClose, insumo }) {
         anchor="right"
         open={open}
         onClose={onClose}
-        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
       >
         <Box
           sx={{
-            width: "50vw",
-            minWidth: 450,
+            width: { xs: "100%", md: "30vw" },
+            minWidth: { md: 360 },
             height: "100vh",
             display: "flex",
             flexDirection: "column",

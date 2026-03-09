@@ -23,6 +23,7 @@ const baseState = {
   contasReceberParcelas: [],
   vendaDetalhes: [],
   producoes: [],
+  producaoResultados: [],
   detalhesProducao: [],
   custosAdicionaisProducao: [],
   movimentoProducao: [],
@@ -443,7 +444,7 @@ export const useDataStore = create((set, get) => ({
     }
   },
   createProducao: async ({
-    insumo_final_id,
+    produtos_programados,
     modo_geracao,
     detalhes,
     obs,
@@ -451,6 +452,24 @@ export const useDataStore = create((set, get) => ({
   }) => {
     const dataProducao = nowIso();
     const producaoId = uuidv4();
+    const produtosProgramadosMap = new Map();
+    (produtos_programados || []).forEach((item) => {
+      const insumoId = String(item?.insumo_id || "").trim();
+      const quantidadePlanejadaKg = Number(item?.quantidade_planejada_kg) || 0;
+      if (!insumoId || quantidadePlanejadaKg <= 0) return;
+      produtosProgramadosMap.set(
+        insumoId,
+        (produtosProgramadosMap.get(insumoId) || 0) + quantidadePlanejadaKg,
+      );
+    });
+
+    const produtosProgramados = Array.from(
+      produtosProgramadosMap.entries(),
+    ).map(([insumo_id, quantidade_planejada_kg]) => ({
+      insumo_id,
+      quantidade_planejada_kg: Number(quantidade_planejada_kg.toFixed(6)),
+    }));
+
     const detalhesProducao = (detalhes || []).map((item) => {
       const insumo = get().insumos.find((i) => i.id === item.insumo_id);
       const custoUnitario = Number(insumo?.custo_medio_kg) || 0;
@@ -465,6 +484,17 @@ export const useDataStore = create((set, get) => ({
         custo_total_previsto: quantidadeKg * custoUnitario,
       };
     });
+
+    if (!detalhesProducao.length) {
+      return { ok: false, error: "Adicione ao menos um insumo na produção." };
+    }
+
+    const insumo_final_id =
+      produtosProgramados[0]?.insumo_id || detalhesProducao[0]?.insumo_id || null;
+
+    if (!insumo_final_id) {
+      return { ok: false, error: "Não foi possível definir a produção." };
+    }
 
     const custo_total_previsto = detalhesProducao.reduce(
       (acc, item) => acc + Number(item.custo_total_previsto || 0),
@@ -481,33 +511,63 @@ export const useDataStore = create((set, get) => ({
       anexo_base64: anexo_base64 || null,
       custo_total_previsto,
     };
+    const producaoResultados = produtosProgramados.map((item) => ({
+      id: uuidv4(),
+      producao_id: producaoId,
+      insumo_id: item.insumo_id,
+      tipo_resultado: "PROGRAMADO",
+      quantidade_planejada_kg: item.quantidade_planejada_kg,
+      quantidade_real_kg: null,
+      criado_em: dataProducao,
+    }));
 
     try {
       await sendCommand("createProducao", {
         producao,
         detalhes: detalhesProducao,
+        resultados: producaoResultados,
       });
       set((state) => ({
         producoes: [...state.producoes, producao],
+        producaoResultados: [...state.producaoResultados, ...producaoResultados],
         detalhesProducao: [...state.detalhesProducao, ...detalhesProducao],
       }));
+      return { ok: true, producaoId };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   confirmarRetornoProducao: async ({
     producao_id,
-    peso_real,
-    taxa_conversao_real,
+    resultados_retorno,
     custos_adicionais,
     obs,
     anexo_base64,
   }) => {
     const dataConfirmacao = nowIso();
+    const resultadosNormalizados = (resultados_retorno || [])
+      .map((item) => ({
+        resultado_id: item?.resultado_id || null,
+        insumo_id: String(item?.insumo_id || "").trim(),
+        tipo_resultado: String(item?.tipo_resultado || "PROGRAMADO")
+          .trim()
+          .toUpperCase(),
+        quantidade_planejada_kg: Number(item?.quantidade_planejada_kg) || 0,
+        quantidade_real_kg: Number(item?.quantidade_real_kg) || 0,
+      }))
+      .filter((item) => item.insumo_id && item.quantidade_real_kg > 0);
+
+    if (!resultadosNormalizados.length) return;
+
+    const peso_real = resultadosNormalizados.reduce(
+      (acc, item) => acc + item.quantidade_real_kg,
+      0,
+    );
+
     const payload = {
       producao_id,
       peso_real,
-      taxa_conversao_real,
+      resultados_retorno: resultadosNormalizados,
       custos_adicionais: (custos_adicionais || []).map((item) => ({
         id: uuidv4(),
         conta_pagar_id: uuidv4(),
@@ -519,7 +579,6 @@ export const useDataStore = create((set, get) => ({
         forma_pagamento: item.forma_pagamento || null,
       })),
       data_confirmacao: dataConfirmacao,
-      movimento_entrada_id: uuidv4(),
       obs: obs || "",
       anexo_base64: anexo_base64 || null,
     };
@@ -527,8 +586,9 @@ export const useDataStore = create((set, get) => ({
     try {
       await sendCommand("confirmarRetornoProducao", payload);
       await get().loadData();
+      return { ok: true };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   deleteProducao: async (producaoId) => {

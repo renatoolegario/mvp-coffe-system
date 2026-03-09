@@ -394,8 +394,15 @@ const InsumosPage = () => {
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
-        PaperProps={{ sx: { width: "50vw", minWidth: 450, height: "100vh", p: 3 } }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
+        PaperProps={{
+          sx: {
+            width: { xs: "100%", md: "30vw" },
+            minWidth: { md: 360 },
+            height: "100vh",
+            p: 3,
+          },
+        }}
       >
         <Stack
           direction="row"
@@ -487,9 +494,14 @@ const InsumosPage = () => {
         anchor="right"
         open={editDrawerOpen}
         onClose={() => setEditDrawerOpen(false)}
-        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
         PaperProps={{
-          sx: { width: "50vw", minWidth: 450, height: "100vh", p: 3 },
+          sx: {
+            width: { xs: "100%", md: "30vw" },
+            minWidth: { md: 360 },
+            height: "100vh",
+            p: 3,
+          },
         }}
       >
         <Stack

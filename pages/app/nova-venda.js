@@ -1126,7 +1126,7 @@ const NovaVendaPage = () => {
         anchor="right"
         open={historicoOpen}
         onClose={() => setHistoricoOpen(false)}
-        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
         PaperProps={{
           sx: {
             width: { xs: "100%", md: "30vw" },

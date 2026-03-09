@@ -25,12 +25,18 @@ import AddIcon from "@mui/icons-material/Add";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CloseIcon from "@mui/icons-material/Close";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency, formatDate } from "../../utils/format";
+
+const FALLBACK_UNIDADES = [
+  { id: "kg", codigo: "KG", label: "Quilograma" },
+  { id: "saco", codigo: "SACO", label: "Saco" },
+];
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -43,6 +49,15 @@ const createCustoAdicional = () => ({
   valor: "",
   status_pagamento: "PENDENTE",
   forma_pagamento: "",
+});
+
+const createResultadoRetornoExtra = () => ({
+  resultado_id: "",
+  insumo_id: "",
+  tipo_resultado: "EXTRA",
+  quantidade_planejada_kg: 0,
+  quantidade: "",
+  unidade: "KG",
 });
 
 const getStatusLabel = (status) => {
@@ -69,10 +84,35 @@ const getStatusColor = (status) => {
   }
 };
 
+const getDuplicatedIds = (rows = []) => {
+  const countById = new Map();
+  rows.forEach((row) => {
+    const id = String(row.insumo_id || "").trim();
+    if (!id) return;
+    countById.set(id, (countById.get(id) || 0) + 1);
+  });
+  return new Set(
+    Array.from(countById.entries())
+      .filter(([, total]) => total > 1)
+      .map(([id]) => id),
+  );
+};
+
+const getQuantidadeKg = (registro, insumo) => {
+  const quantidade = toNumber(registro.quantidade);
+  if (!insumo) return 0;
+  if (registro.unidade === "SACO") {
+    return quantidade * (toNumber(insumo.kg_por_saco) || 1);
+  }
+  return quantidade;
+};
+
 const RetornoProducaoPage = () => {
   const insumos = useDataStore((state) => state.insumos);
+  const auxUnidades = useDataStore((state) => state.auxUnidades);
   const fornecedores = useDataStore((state) => state.fornecedores);
   const producoes = useDataStore((state) => state.producoes);
+  const producaoResultados = useDataStore((state) => state.producaoResultados);
   const detalhesProducao = useDataStore((state) => state.detalhesProducao);
   const custosAdicionaisProducao = useDataStore(
     (state) => state.custosAdicionaisProducao,
@@ -87,11 +127,29 @@ const RetornoProducaoPage = () => {
   const [drawerMode, setDrawerMode] = useState("retorno");
   const [producaoSelecionadaId, setProducaoSelecionadaId] = useState("");
   const [idCopiado, setIdCopiado] = useState("");
-  const [sacosRetornados, setSacosRetornados] = useState("");
+  const [resultadosRetorno, setResultadosRetorno] = useState([
+    createResultadoRetornoExtra(),
+  ]);
   const [obsRetorno, setObsRetorno] = useState("");
+  const [erroRetorno, setErroRetorno] = useState("");
   const [custosAdicionais, setCustosAdicionais] = useState([
     createCustoAdicional(),
   ]);
+
+  const unidadesDisponiveis = useMemo(
+    () => (auxUnidades?.length ? auxUnidades : FALLBACK_UNIDADES),
+    [auxUnidades],
+  );
+
+  const insumosProduziveis = useMemo(
+    () => {
+      const filtrados = insumos.filter((insumo) =>
+        Boolean(insumo.pode_ser_produzivel),
+      );
+      return filtrados.length ? filtrados : insumos;
+    },
+    [insumos],
+  );
 
   const producoesPendentes = useMemo(
     () => producoes.filter((producao) => producao.status === "PENDENTE"),
@@ -116,6 +174,30 @@ const RetornoProducaoPage = () => {
     [detalhesProducao, producaoSelecionadaId],
   );
 
+  const resultadosDaProducaoSelecionada = useMemo(
+    () =>
+      producaoResultados.filter(
+        (resultado) => resultado.producao_id === producaoSelecionadaId,
+      ),
+    [producaoResultados, producaoSelecionadaId],
+  );
+
+  const resultadosProgramadosDaProducao = useMemo(
+    () =>
+      resultadosDaProducaoSelecionada.filter(
+        (item) => String(item.tipo_resultado || "").toUpperCase() === "PROGRAMADO",
+      ),
+    [resultadosDaProducaoSelecionada],
+  );
+
+  const resultadosExtrasDaProducao = useMemo(
+    () =>
+      resultadosDaProducaoSelecionada.filter(
+        (item) => String(item.tipo_resultado || "").toUpperCase() === "EXTRA",
+      ),
+    [resultadosDaProducaoSelecionada],
+  );
+
   const custosDaProducaoSelecionada = useMemo(
     () =>
       custosAdicionaisProducao.filter(
@@ -124,18 +206,25 @@ const RetornoProducaoPage = () => {
     [custosAdicionaisProducao, producaoSelecionadaId],
   );
 
-  const insumoFinalSelecionado = useMemo(
-    () => insumos.find((item) => item.id === producaoSelecionada?.insumo_final_id),
-    [insumos, producaoSelecionada],
+  const consumoEnviadoKg = useMemo(
+    () =>
+      detalhesDaProducaoSelecionada.reduce(
+        (acc, detalhe) => acc + toNumber(detalhe.quantidade_kg),
+        0,
+      ),
+    [detalhesDaProducaoSelecionada],
   );
 
-  const sacosPrevistos = useMemo(() => {
-    const totalKg = detalhesDaProducaoSelecionada.reduce(
-      (acc, detalhe) => acc + toNumber(detalhe.quantidade_kg),
+  const retornoProgramadoKg = useMemo(() => {
+    const totalProgramado = resultadosProgramadosDaProducao.reduce(
+      (acc, item) => acc + toNumber(item.quantidade_planejada_kg),
       0,
     );
-    return (totalKg * 0.75) / 23;
-  }, [detalhesDaProducaoSelecionada]);
+    if (totalProgramado > 0) return totalProgramado;
+    return consumoEnviadoKg * 0.75;
+  }, [resultadosProgramadosDaProducao, consumoEnviadoKg]);
+
+  const sacosPrevistos = retornoProgramadoKg / 23;
 
   const totalCustosAdicionais = useMemo(
     () =>
@@ -146,10 +235,125 @@ const RetornoProducaoPage = () => {
     [custosDaProducaoSelecionada],
   );
 
+  const programadosInsumosIds = useMemo(
+    () =>
+      new Set(
+        resultadosProgramadosDaProducao
+          .map((item) => String(item.insumo_id || "").trim())
+          .filter(Boolean),
+      ),
+    [resultadosProgramadosDaProducao],
+  );
+
+  const extrasIdsDuplicados = useMemo(
+    () =>
+      getDuplicatedIds(
+        resultadosRetorno.filter((item) => item.tipo_resultado === "EXTRA"),
+      ),
+    [resultadosRetorno],
+  );
+
+  const resultadosRetornoComMetadados = useMemo(
+    () =>
+      resultadosRetorno.map((item) => {
+        const insumoId = String(item.insumo_id || "").trim();
+        const insumo = insumos.find((registro) => registro.id === insumoId);
+        const quantidadeKg = getQuantidadeKg(item, insumo);
+        const isExtra = item.tipo_resultado === "EXTRA";
+        const hasInput = Boolean(insumoId || toNumber(item.quantidade) > 0);
+        const duplicadoExtra = isExtra && extrasIdsDuplicados.has(insumoId);
+        const conflitaProgramado = isExtra && programadosInsumosIds.has(insumoId);
+        const invalido =
+          hasInput &&
+          (!insumoId || quantidadeKg <= 0 || duplicadoExtra || conflitaProgramado);
+
+        return {
+          ...item,
+          insumo,
+          insumo_id: insumoId,
+          quantidadeKg,
+          hasInput,
+          duplicadoExtra,
+          conflitaProgramado,
+          invalido,
+          preenchido: Boolean(insumoId) && quantidadeKg > 0,
+        };
+      }),
+    [resultadosRetorno, insumos, extrasIdsDuplicados, programadosInsumosIds],
+  );
+
+  const resultadosParaEnvio = useMemo(
+    () =>
+      resultadosRetornoComMetadados
+        .filter((item) => item.preenchido && !item.invalido)
+        .map((item) => ({
+          resultado_id: item.resultado_id || null,
+          insumo_id: item.insumo_id,
+          tipo_resultado: item.tipo_resultado,
+          quantidade_planejada_kg: toNumber(item.quantidade_planejada_kg),
+          quantidade_real_kg: item.quantidadeKg,
+        })),
+    [resultadosRetornoComMetadados],
+  );
+
+  const totalRetornoKg = useMemo(
+    () =>
+      resultadosParaEnvio.reduce(
+        (acc, item) => acc + toNumber(item.quantidade_real_kg),
+        0,
+      ),
+    [resultadosParaEnvio],
+  );
+
+  const programadosComPendencia = useMemo(
+    () =>
+      resultadosRetornoComMetadados.some(
+        (item) => item.tipo_resultado === "PROGRAMADO" && !item.preenchido,
+      ),
+    [resultadosRetornoComMetadados],
+  );
+
+  const linhasInvalidas = useMemo(
+    () => resultadosRetornoComMetadados.some((item) => item.invalido),
+    [resultadosRetornoComMetadados],
+  );
+
+  const podeConfirmarRetorno =
+    Boolean(producaoSelecionadaId) &&
+    resultadosParaEnvio.length > 0 &&
+    totalRetornoKg > 0 &&
+    !programadosComPendencia &&
+    !linhasInvalidas;
+
   const resetFormulario = () => {
-    setSacosRetornados("");
+    setResultadosRetorno([createResultadoRetornoExtra()]);
     setObsRetorno("");
+    setErroRetorno("");
     setCustosAdicionais([createCustoAdicional()]);
+  };
+
+  const buildResultadosRetorno = (producaoId) => {
+    const programados = producaoResultados.filter(
+      (item) =>
+        item.producao_id === producaoId &&
+        String(item.tipo_resultado || "").toUpperCase() === "PROGRAMADO",
+    );
+
+    if (!programados.length) {
+      return [createResultadoRetornoExtra()];
+    }
+
+    return programados.map((item) => {
+      const insumo = insumos.find((registro) => registro.id === item.insumo_id);
+      return {
+        resultado_id: item.id,
+        insumo_id: item.insumo_id,
+        tipo_resultado: "PROGRAMADO",
+        quantidade_planejada_kg: toNumber(item.quantidade_planejada_kg),
+        quantidade: "",
+        unidade: String(insumo?.unidade_codigo || "KG").toUpperCase(),
+      };
+    });
   };
 
   const fecharDrawer = () => {
@@ -167,12 +371,45 @@ const RetornoProducaoPage = () => {
     );
   };
 
+  const handleChangeResultadoRetorno = (index, field, value) => {
+    setResultadosRetorno((prev) =>
+      prev.map((item, currentIndex) => {
+        if (currentIndex !== index) return item;
+
+        if (field === "insumo_id") {
+          const insumo = insumos.find((registro) => registro.id === value);
+          return {
+            ...item,
+            insumo_id: value,
+            unidade: String(insumo?.unidade_codigo || "KG").toUpperCase(),
+          };
+        }
+
+        return { ...item, [field]: value };
+      }),
+    );
+  };
+
+  const handleAdicionarProdutoRetorno = () => {
+    setResultadosRetorno((prev) => [...prev, createResultadoRetornoExtra()]);
+  };
+
+  const handleRemoverProdutoRetorno = (index) => {
+    setResultadosRetorno((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, current) => current !== index);
+    });
+  };
+
   const handleSelecionarProducaoParaRetorno = (producaoId) => {
     if (!producaoId) return;
     setDrawerMode("retorno");
     setProducaoSelecionadaId(producaoId);
     setDrawerAberto(true);
-    resetFormulario();
+    setErroRetorno("");
+    setObsRetorno("");
+    setCustosAdicionais([createCustoAdicional()]);
+    setResultadosRetorno(buildResultadosRetorno(producaoId));
   };
 
   const handleVerDetalhes = (producaoId) => {
@@ -180,6 +417,7 @@ const RetornoProducaoPage = () => {
     setDrawerMode("detalhes");
     setProducaoSelecionadaId(producaoId);
     setDrawerAberto(true);
+    setErroRetorno("");
   };
 
   const handleCopiarId = async (producaoId) => {
@@ -203,8 +441,19 @@ const RetornoProducaoPage = () => {
 
   const handleConfirmarRetorno = async (event) => {
     event.preventDefault();
-    const sacos = toNumber(sacosRetornados);
-    if (!producaoSelecionadaId || sacos <= 0) return;
+
+    if (!podeConfirmarRetorno) {
+      if (programadosComPendencia) {
+        setErroRetorno(
+          "Preencha a quantidade de chegada para todos os produtos programados.",
+        );
+      } else if (linhasInvalidas) {
+        setErroRetorno("Revise os produtos extras antes de confirmar.");
+      } else {
+        setErroRetorno("Informe ao menos um produto retornado com quantidade.");
+      }
+      return;
+    }
 
     const custosValidos = custosAdicionais
       .map((item) => ({
@@ -213,13 +462,17 @@ const RetornoProducaoPage = () => {
       }))
       .filter((item) => item.valor > 0 && item.descricao);
 
-    await confirmarRetornoProducao({
+    const resultado = await confirmarRetornoProducao({
       producao_id: producaoSelecionadaId,
-      peso_real: sacos * 23,
-      taxa_conversao_real: 0,
+      resultados_retorno: resultadosParaEnvio,
       custos_adicionais: custosValidos,
       obs: obsRetorno,
     });
+
+    if (resultado?.ok === false) {
+      setErroRetorno(resultado.error || "Não foi possível confirmar o retorno.");
+      return;
+    }
 
     fecharDrawer();
   };
@@ -228,7 +481,7 @@ const RetornoProducaoPage = () => {
     if (!producaoSelecionadaId) return;
     if (
       confirm(
-        "Tem certeza que deseja cancelar (estornar) esta produção? Os insumos retornarão ao estoque disponível."
+        "Tem certeza que deseja cancelar (estornar) esta produção? Os insumos retornarão ao estoque disponível.",
       )
     ) {
       await cancelarProducao(producaoSelecionadaId);
@@ -249,11 +502,54 @@ const RetornoProducaoPage = () => {
     </Stack>
   );
 
+  const renderResultadosHistorico = () => {
+    const linhas = [
+      ...resultadosProgramadosDaProducao.map((item) => ({
+        ...item,
+        tipo_resultado: "PROGRAMADO",
+      })),
+      ...resultadosExtrasDaProducao.map((item) => ({
+        ...item,
+        tipo_resultado: "EXTRA",
+      })),
+    ];
+
+    if (!linhas.length) {
+      return (
+        <TableRow>
+          <TableCell colSpan={4} align="center">
+            Nenhum produto de retorno registrado.
+          </TableCell>
+        </TableRow>
+      );
+    }
+
+    return linhas.map((item) => {
+      const insumo = insumos.find((registro) => registro.id === item.insumo_id);
+      return (
+        <TableRow key={item.id}>
+          <TableCell>{insumo?.nome || "Produto"}</TableCell>
+          <TableCell>
+            {item.tipo_resultado === "PROGRAMADO" ? "Programado" : "Extra"}
+          </TableCell>
+          <TableCell align="right">
+            {toNumber(item.quantidade_planejada_kg).toFixed(2)}
+          </TableCell>
+          <TableCell align="right">
+            {item.quantidade_real_kg === null || item.quantidade_real_kg === undefined
+              ? "-"
+              : toNumber(item.quantidade_real_kg).toFixed(2)}
+          </TableCell>
+        </TableRow>
+      );
+    });
+  };
+
   return (
     <AppLayout>
       <PageHeader
         title="Produções em Trânsito"
-        subtitle="Etapa 2: Acompanhar ordens abertas, confirmar retorno, atualizar custos e dar entrada do produto final."
+        subtitle="Etapa 2: confirmar retorno informando os produtos recebidos, unidade e quantidade."
       />
       <Paper sx={{ p: 2, mb: 3 }}>
         <Tabs value={tabAtiva} onChange={(_, value) => setTabAtiva(value)}>
@@ -286,18 +582,12 @@ const RetornoProducaoPage = () => {
                       <TableCell>{renderCellId(item.id)}</TableCell>
                       <TableCell>{formatDate(item.data_producao)}</TableCell>
                       <TableCell align="right">
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          justifyContent="flex-end"
-                        >
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Button
                             size="small"
                             variant="contained"
                             startIcon={<CheckCircleOutlineIcon />}
-                            onClick={() =>
-                              handleSelecionarProducaoParaRetorno(item.id)
-                            }
+                            onClick={() => handleSelecionarProducaoParaRetorno(item.id)}
                           >
                             Confirmar retorno
                           </Button>
@@ -375,7 +665,7 @@ const RetornoProducaoPage = () => {
         anchor="right"
         open={drawerAberto}
         onClose={fecharDrawer}
-        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
         PaperProps={{
           sx: {
             width: { xs: "100%", md: "30vw" },
@@ -415,10 +705,13 @@ const RetornoProducaoPage = () => {
                   Data: {formatDate(producaoSelecionada.data_producao)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Produto final: {insumoFinalSelecionado?.nome || "-"}
+                  Insumos enviados: {consumoEnviadoKg.toFixed(2)} kg
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Produtos programados: {resultadosProgramadosDaProducao.length}
                 </Typography>
                 <Typography variant="body2" color="primary" fontWeight={600}>
-                  Retorno esperado: ≈ {sacosPrevistos.toFixed(1)} sacos de 23kg
+                  Retorno estimado: ≈ {sacosPrevistos.toFixed(1)} sacos de 23kg
                 </Typography>
                 {producaoSelecionada.peso_real ? (
                   <Typography variant="body2" color="text.secondary">
@@ -468,6 +761,21 @@ const RetornoProducaoPage = () => {
               </Table>
             </Paper>
 
+            <Typography variant="subtitle2">Produtos de retorno</Typography>
+            <Paper variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Produto</TableCell>
+                    <TableCell>Tipo</TableCell>
+                    <TableCell align="right">Planejado (kg)</TableCell>
+                    <TableCell align="right">Real (kg)</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>{renderResultadosHistorico()}</TableBody>
+              </Table>
+            </Paper>
+
             {custosDaProducaoSelecionada.length ? (
               <>
                 <Typography variant="subtitle2">Custos adicionais lançados</Typography>
@@ -507,21 +815,142 @@ const RetornoProducaoPage = () => {
                 ) : (
                   <Box component="form" onSubmit={handleConfirmarRetorno}>
                     <Stack spacing={2}>
-                      <TextField
-                        label="Quantidade de Sacos (23kg) recebidos"
-                        type="number"
-                        value={sacosRetornados}
-                        onChange={(event) => setSacosRetornados(event.target.value)}
-                        required
-                      />
+                      <Typography variant="subtitle2">Produtos recebidos no retorno</Typography>
+
+                      {resultadosRetornoComMetadados.map((item, index) => (
+                        <Paper key={`retorno-${index}`} variant="outlined" sx={{ p: 2 }}>
+                          <Grid container spacing={1.5} alignItems="center">
+                            <Grid item xs={12} md={5}>
+                              {item.tipo_resultado === "PROGRAMADO" ? (
+                                <>
+                                  <Typography variant="body2" fontWeight={700}>
+                                    {item.insumo?.nome || "Produto programado"}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Programado na criação da OP
+                                  </Typography>
+                                </>
+                              ) : (
+                                <TextField
+                                  select
+                                  label="Produto"
+                                  value={item.insumo_id}
+                                  onChange={(event) =>
+                                    handleChangeResultadoRetorno(
+                                      index,
+                                      "insumo_id",
+                                      event.target.value,
+                                    )
+                                  }
+                                  fullWidth
+                                >
+                                  {insumosProduziveis.map((insumo) => (
+                                    <MenuItem key={insumo.id} value={insumo.id}>
+                                      {insumo.nome}
+                                    </MenuItem>
+                                  ))}
+                                </TextField>
+                              )}
+                            </Grid>
+
+                            <Grid item xs={12} md={2}>
+                              <TextField
+                                select
+                                label="Unidade"
+                                value={item.unidade}
+                                onChange={(event) =>
+                                  handleChangeResultadoRetorno(
+                                    index,
+                                    "unidade",
+                                    event.target.value,
+                                  )
+                                }
+                                fullWidth
+                              >
+                                {unidadesDisponiveis.map((unidade) => (
+                                  <MenuItem key={unidade.id} value={unidade.codigo}>
+                                    {unidade.label}
+                                  </MenuItem>
+                                ))}
+                              </TextField>
+                            </Grid>
+
+                            <Grid item xs={12} md={2}>
+                              <TextField
+                                label="Quantidade"
+                                type="number"
+                                value={item.quantidade}
+                                onChange={(event) =>
+                                  handleChangeResultadoRetorno(
+                                    index,
+                                    "quantidade",
+                                    event.target.value,
+                                  )
+                                }
+                                fullWidth
+                              />
+                            </Grid>
+
+                            <Grid item xs={12} md={2}>
+                              <Typography variant="body2">
+                                {item.quantidadeKg.toFixed(2)} kg
+                              </Typography>
+                              {item.tipo_resultado === "PROGRAMADO" ? (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Planejado: {toNumber(item.quantidade_planejada_kg).toFixed(2)} kg
+                                </Typography>
+                              ) : null}
+                              {item.tipo_resultado === "PROGRAMADO" && !item.preenchido ? (
+                                <Typography variant="caption" color="error.main" display="block">
+                                  Informe a quantidade recebida
+                                </Typography>
+                              ) : null}
+                              {item.tipo_resultado === "EXTRA" && item.duplicadoExtra ? (
+                                <Typography variant="caption" color="error.main" display="block">
+                                  Produto extra duplicado
+                                </Typography>
+                              ) : null}
+                              {item.tipo_resultado === "EXTRA" && item.conflitaProgramado ? (
+                                <Typography variant="caption" color="error.main" display="block">
+                                  Já existe como programado
+                                </Typography>
+                              ) : null}
+                            </Grid>
+
+                            <Grid item xs={12} md={1}>
+                              {item.tipo_resultado === "EXTRA" ? (
+                                <IconButton
+                                  onClick={() => handleRemoverProdutoRetorno(index)}
+                                  disabled={resultadosRetorno.length <= 1}
+                                >
+                                  <DeleteOutlineIcon />
+                                </IconButton>
+                              ) : null}
+                            </Grid>
+                          </Grid>
+                        </Paper>
+                      ))}
+
+                      <Button
+                        variant="outlined"
+                        startIcon={<AddIcon />}
+                        onClick={handleAdicionarProdutoRetorno}
+                      >
+                        Adicionar novo produto
+                      </Button>
+
+                      <Paper variant="outlined" sx={{ p: 1.5 }}>
+                        <Typography variant="body2" fontWeight={700}>
+                          Total retornado informado: {totalRetornoKg.toFixed(2)} kg
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          O custo total da produção será diluído automaticamente nesse total.
+                        </Typography>
+                      </Paper>
 
                       <Typography variant="subtitle2">Custos adicionais</Typography>
                       {custosAdicionais.map((custo, index) => (
-                        <Paper
-                          key={`custo-${index}`}
-                          variant="outlined"
-                          sx={{ p: 2 }}
-                        >
+                        <Paper key={`custo-${index}`} variant="outlined" sx={{ p: 2 }}>
                           <Grid container spacing={1.5}>
                             <Grid item xs={12}>
                               <TextField
@@ -529,20 +958,13 @@ const RetornoProducaoPage = () => {
                                 label="Fornecedor"
                                 value={custo.fornecedor_id}
                                 onChange={(event) =>
-                                  handleChangeCusto(
-                                    index,
-                                    "fornecedor_id",
-                                    event.target.value,
-                                  )
+                                  handleChangeCusto(index, "fornecedor_id", event.target.value)
                                 }
                                 fullWidth
                               >
                                 <MenuItem value="">Sem fornecedor</MenuItem>
                                 {fornecedores.map((fornecedor) => (
-                                  <MenuItem
-                                    key={fornecedor.id}
-                                    value={fornecedor.id}
-                                  >
+                                  <MenuItem key={fornecedor.id} value={fornecedor.id}>
                                     {fornecedor.razao_social}
                                   </MenuItem>
                                 ))}
@@ -553,11 +975,7 @@ const RetornoProducaoPage = () => {
                                 label="Descrição"
                                 value={custo.descricao}
                                 onChange={(event) =>
-                                  handleChangeCusto(
-                                    index,
-                                    "descricao",
-                                    event.target.value,
-                                  )
+                                  handleChangeCusto(index, "descricao", event.target.value)
                                 }
                                 fullWidth
                               />
@@ -568,11 +986,7 @@ const RetornoProducaoPage = () => {
                                 type="number"
                                 value={custo.valor}
                                 onChange={(event) =>
-                                  handleChangeCusto(
-                                    index,
-                                    "valor",
-                                    event.target.value,
-                                  )
+                                  handleChangeCusto(index, "valor", event.target.value)
                                 }
                                 fullWidth
                               />
@@ -603,10 +1017,7 @@ const RetornoProducaoPage = () => {
                         variant="outlined"
                         startIcon={<AddIcon />}
                         onClick={() =>
-                          setCustosAdicionais((prev) => [
-                            ...prev,
-                            createCustoAdicional(),
-                          ])
+                          setCustosAdicionais((prev) => [...prev, createCustoAdicional()])
                         }
                       >
                         Adicionar custo adicional
@@ -620,11 +1031,17 @@ const RetornoProducaoPage = () => {
                         rows={2}
                       />
 
+                      {erroRetorno ? (
+                        <Typography variant="body2" color="error.main">
+                          {erroRetorno}
+                        </Typography>
+                      ) : null}
+
                       <Button
                         type="submit"
                         variant="contained"
                         startIcon={<CheckCircleOutlineIcon />}
-                        disabled={!producaoSelecionadaId || toNumber(sacosRetornados) <= 0}
+                        disabled={!podeConfirmarRetorno}
                       >
                         Confirmar retorno (Concluída)
                       </Button>

@@ -32,6 +32,34 @@ const normalizeContaPagarParcela = (parcela = {}, dataLancamento) => {
   };
 };
 
+const normalizeProducaoResultado = (
+  resultado = {},
+  defaultTipoResultado = "PROGRAMADO",
+) => {
+  const tipoResultadoRaw = String(
+    resultado.tipo_resultado || defaultTipoResultado || "PROGRAMADO",
+  )
+    .trim()
+    .toUpperCase();
+  const tipoResultado =
+    tipoResultadoRaw === "EXTRA" ? "EXTRA" : "PROGRAMADO";
+
+  return {
+    id: resultado.id || randomUUID(),
+    resultado_id: resultado.resultado_id || null,
+    producao_id: resultado.producao_id || null,
+    insumo_id: resultado.insumo_id || null,
+    tipo_resultado: tipoResultado,
+    quantidade_planejada_kg: getNumber(resultado.quantidade_planejada_kg),
+    quantidade_real_kg:
+      resultado.quantidade_real_kg === null ||
+      resultado.quantidade_real_kg === undefined
+        ? null
+        : getNumber(resultado.quantidade_real_kg),
+    criado_em: resultado.criado_em || null,
+  };
+};
+
 const normalizeEmail = (value) =>
   String(value || "")
     .trim()
@@ -459,6 +487,29 @@ export default async function handler(req, res) {
             throw new Error("A produção exige ao menos um insumo.");
           }
 
+          const resultadosNormalizados = (payload?.resultados || [])
+            .map((resultado) =>
+              normalizeProducaoResultado(resultado, "PROGRAMADO"),
+            )
+            .filter(
+              (resultado) =>
+                resultado.insumo_id &&
+                getNumber(resultado.quantidade_planejada_kg) > 0,
+            );
+
+          const producaoPayload = {
+            ...payload.producao,
+            insumo_final_id:
+              payload?.producao?.insumo_final_id ||
+              resultadosNormalizados[0]?.insumo_id ||
+              payload?.detalhes?.[0]?.insumo_id ||
+              null,
+          };
+
+          if (!producaoPayload.insumo_final_id) {
+            throw new Error("A produção exige ao menos um insumo.");
+          }
+
           await insertRow(
             client,
             "producao",
@@ -472,7 +523,7 @@ export default async function handler(req, res) {
               "anexo_base64",
               "custo_total_previsto",
             ],
-            payload.producao,
+            producaoPayload,
           );
 
           for (const detalhe of payload.detalhes) {
@@ -513,11 +564,36 @@ export default async function handler(req, res) {
                 custo_unitario: detalhe.custo_unitario_previsto,
                 quantidade_entrada: 0,
                 quantidade_saida: detalhe.quantidade_kg,
-                data_movimentacao: payload.producao.data_producao,
+                data_movimentacao: producaoPayload.data_producao,
                 referencia_tipo: "producao",
-                referencia_id: payload.producao.id,
-                producao_id: payload.producao.id,
-                obs: payload.producao.obs || "",
+                referencia_id: producaoPayload.id,
+                producao_id: producaoPayload.id,
+                obs: producaoPayload.obs || "",
+              },
+            );
+          }
+
+          for (const resultado of resultadosNormalizados) {
+            await insertRow(
+              client,
+              "producao_resultados",
+              [
+                "id",
+                "producao_id",
+                "insumo_id",
+                "tipo_resultado",
+                "quantidade_planejada_kg",
+                "quantidade_real_kg",
+                "criado_em",
+              ],
+              {
+                id: resultado.id || randomUUID(),
+                producao_id: producaoPayload.id,
+                insumo_id: resultado.insumo_id,
+                tipo_resultado: "PROGRAMADO",
+                quantidade_planejada_kg: resultado.quantidade_planejada_kg,
+                quantidade_real_kg: null,
+                criado_em: resultado.criado_em || producaoPayload.data_producao,
               },
             );
           }
@@ -539,6 +615,138 @@ export default async function handler(req, res) {
             [payload.producao_id],
           );
 
+          const resultadosProgramadosResult = await client.query(
+            `
+              SELECT *
+              FROM producao_resultados
+              WHERE producao_id = $1
+                AND tipo_resultado = 'PROGRAMADO'
+              ORDER BY criado_em ASC, id ASC
+              FOR UPDATE
+            `,
+            [payload.producao_id],
+          );
+          const resultadosProgramados = resultadosProgramadosResult.rows || [];
+
+          const resultadosRetorno = (payload.resultados_retorno || [])
+            .map((resultado) =>
+              normalizeProducaoResultado(resultado, "PROGRAMADO"),
+            )
+            .filter(
+              (resultado) =>
+                resultado.insumo_id &&
+                getNumber(resultado.quantidade_real_kg) > 0,
+            );
+
+          if (!resultadosRetorno.length) {
+            throw new Error(
+              "Informe ao menos um produto com quantidade de retorno maior que zero.",
+            );
+          }
+
+          const programadoById = new Map(
+            resultadosProgramados.map((item) => [String(item.id), item]),
+          );
+          const programadoByInsumo = new Map(
+            resultadosProgramados.map((item) => [String(item.insumo_id), item]),
+          );
+          const programadosPreenchidos = new Set();
+          const resultadosProcessados = [];
+
+          for (const resultado of resultadosRetorno) {
+            const resultadoId = String(resultado.resultado_id || resultado.id || "");
+            const resultadoInsumoId = String(resultado.insumo_id || "");
+            const podeTentarProgramado =
+              resultado.tipo_resultado === "PROGRAMADO" ||
+              Boolean(resultado.resultado_id);
+
+            let programado = null;
+            if (podeTentarProgramado && resultadoId && programadoById.has(resultadoId)) {
+              programado = programadoById.get(resultadoId);
+            } else if (podeTentarProgramado && programadoByInsumo.has(resultadoInsumoId)) {
+              programado = programadoByInsumo.get(resultadoInsumoId);
+            }
+
+            if (programado) {
+              const quantidadePlanejadaAtual = getNumber(programado.quantidade_planejada_kg);
+              const quantidadePlanejadaEntrada = getNumber(
+                resultado.quantidade_planejada_kg,
+              );
+              const quantidadePlanejada =
+                quantidadePlanejadaAtual > 0
+                  ? quantidadePlanejadaAtual
+                  : quantidadePlanejadaEntrada;
+
+              await client.query(
+                `
+                  UPDATE producao_resultados
+                  SET quantidade_planejada_kg = $2,
+                      quantidade_real_kg = $3
+                  WHERE id = $1
+                `,
+                [
+                  programado.id,
+                  quantidadePlanejada,
+                  getNumber(resultado.quantidade_real_kg),
+                ],
+              );
+
+              programadosPreenchidos.add(String(programado.id));
+              resultadosProcessados.push({
+                id: programado.id,
+                insumo_id: programado.insumo_id,
+                quantidade_real_kg: getNumber(resultado.quantidade_real_kg),
+                tipo_resultado: "PROGRAMADO",
+              });
+              continue;
+            }
+
+            const novoResultadoId = resultadoId || randomUUID();
+            const quantidadePlanejadaExtra = getNumber(
+              resultado.quantidade_planejada_kg,
+            );
+            await insertRow(
+              client,
+              "producao_resultados",
+              [
+                "id",
+                "producao_id",
+                "insumo_id",
+                "tipo_resultado",
+                "quantidade_planejada_kg",
+                "quantidade_real_kg",
+                "criado_em",
+              ],
+              {
+                id: novoResultadoId,
+                producao_id: payload.producao_id,
+                insumo_id: resultado.insumo_id,
+                tipo_resultado: "EXTRA",
+                quantidade_planejada_kg: quantidadePlanejadaExtra,
+                quantidade_real_kg: getNumber(resultado.quantidade_real_kg),
+                criado_em: payload.data_confirmacao,
+              },
+            );
+
+            resultadosProcessados.push({
+              id: novoResultadoId,
+              insumo_id: resultado.insumo_id,
+              quantidade_real_kg: getNumber(resultado.quantidade_real_kg),
+              tipo_resultado: "EXTRA",
+            });
+          }
+
+          if (resultadosProgramados.length) {
+            const pendentes = resultadosProgramados.filter(
+              (programado) => !programadosPreenchidos.has(String(programado.id)),
+            );
+            if (pendentes.length) {
+              throw new Error(
+                "Preencha a quantidade de chegada para todos os produtos programados.",
+              );
+            }
+          }
+
           const custoInsumos = detalhesResult.rows.reduce(
             (acc, item) =>
               acc +
@@ -552,12 +760,32 @@ export default async function handler(req, res) {
             0,
           );
           const custoTotalReal = custoInsumos + custoAdicionalTotal;
-          const pesoReal = getNumber(payload.peso_real);
+          const pesoReal = resultadosProcessados.reduce(
+            (acc, item) => acc + getNumber(item.quantidade_real_kg),
+            0,
+          );
+          if (pesoReal <= 0) {
+            throw new Error(
+              "A soma dos produtos recebidos deve ser maior que zero.",
+            );
+          }
           const custoUnitarioReal =
             pesoReal > 0 ? custoTotalReal / pesoReal : 0;
+          const insumoFinalAtualizado =
+            resultadosProcessados[0]?.insumo_id || producao.insumo_final_id;
 
           await client.query(
-            "UPDATE producao SET status = 'CONCLUIDA', peso_real = $2, anexo_base64 = $3, custo_total_real = $4, custo_unitario_real = $5, obs = COALESCE($6, obs) WHERE id = $1",
+            `
+              UPDATE producao
+              SET status = 'CONCLUIDA',
+                  peso_real = $2,
+                  anexo_base64 = $3,
+                  custo_total_real = $4,
+                  custo_unitario_real = $5,
+                  obs = COALESCE($6, obs),
+                  insumo_final_id = $7
+              WHERE id = $1
+            `,
             [
               payload.producao_id,
               pesoReal,
@@ -565,6 +793,7 @@ export default async function handler(req, res) {
               custoTotalReal,
               custoUnitarioReal,
               payload.obs,
+              insumoFinalAtualizado,
             ],
           );
 
@@ -652,36 +881,38 @@ export default async function handler(req, res) {
             }
           }
 
-          await insertRow(
-            client,
-            "movimento_producao",
-            [
-              "id",
-              "insumo_id",
-              "tipo_movimento",
-              "custo_unitario",
-              "quantidade_entrada",
-              "quantidade_saida",
-              "data_movimentacao",
-              "referencia_tipo",
-              "referencia_id",
-              "producao_id",
-              "obs",
-            ],
-            {
-              id: payload.movimento_entrada_id,
-              insumo_id: producao.insumo_final_id,
-              tipo_movimento: "ENTRADA_PRODUCAO",
-              custo_unitario: custoUnitarioReal,
-              quantidade_entrada: pesoReal,
-              quantidade_saida: 0,
-              data_movimentacao: payload.data_confirmacao,
-              referencia_tipo: "producao",
-              referencia_id: payload.producao_id,
-              producao_id: payload.producao_id,
-              obs: payload.obs || "",
-            },
-          );
+          for (const resultado of resultadosProcessados) {
+            await insertRow(
+              client,
+              "movimento_producao",
+              [
+                "id",
+                "insumo_id",
+                "tipo_movimento",
+                "custo_unitario",
+                "quantidade_entrada",
+                "quantidade_saida",
+                "data_movimentacao",
+                "referencia_tipo",
+                "referencia_id",
+                "producao_id",
+                "obs",
+              ],
+              {
+                id: randomUUID(),
+                insumo_id: resultado.insumo_id,
+                tipo_movimento: "ENTRADA_PRODUCAO",
+                custo_unitario: custoUnitarioReal,
+                quantidade_entrada: getNumber(resultado.quantidade_real_kg),
+                quantidade_saida: 0,
+                data_movimentacao: payload.data_confirmacao,
+                referencia_tipo: "producao",
+                referencia_id: payload.producao_id,
+                producao_id: payload.producao_id,
+                obs: payload.obs || "",
+              },
+            );
+          }
         });
         break;
       case "deleteProducao":

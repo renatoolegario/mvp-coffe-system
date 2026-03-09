@@ -57,6 +57,11 @@ const tableMap = [
       "SELECT id, insumo_id, tipo_movimento AS tipo, (quantidade_entrada - quantidade_saida) AS quantidade, custo_unitario AS custo_unit, (custo_unitario * (quantidade_entrada - quantidade_saida)) AS custo_total, data_movimentacao AS data, referencia_tipo, referencia_id, obs FROM movimento_producao",
   },
   { key: "producoes", queryText: "SELECT * FROM producao" },
+  {
+    key: "producaoResultados",
+    queryText:
+      "SELECT * FROM producao_resultados ORDER BY criado_em ASC, id ASC",
+  },
   { key: "detalhesProducao", queryText: "SELECT * FROM detalhes_producao" },
   {
     key: "custosAdicionaisProducao",

@@ -25,7 +25,8 @@ import { formatCurrency, formatDate } from "../../utils/format";
 import { downloadWorkbookXlsx } from "../../utils/xlsx";
 
 const drawerPaperSx = {
-  width: { xs: "100%", md: 540 },
+  width: { xs: "100%", md: "30vw" },
+  minWidth: { md: 360 },
   maxWidth: "100%",
   height: "100vh",
   p: 3,
@@ -521,7 +522,7 @@ const DetalheClientePage = () => {
         anchor="right"
         open={Boolean(drawer.type)}
         onClose={() => setDrawer({ type: null, clienteId: null })}
-        sx={{ zIndex: (theme) => theme.zIndex.tooltip + 1 }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
         PaperProps={{ sx: drawerPaperSx }}
       >
         <Stack
