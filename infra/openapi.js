@@ -178,6 +178,12 @@ export const openApiSpec = {
         responses: { 200: { description: "Integração atualizada" } },
       },
     },
+    "/configuracao-empresa/logs": {
+      get: {
+        summary: "Listar logs de auditoria de webhooks e crons",
+        responses: { 200: { description: "Logs listados" } },
+      },
+    },
     "/integracoes/asaas/clientes/sincronizar": {
       post: {
         summary: "Consultar ou criar cliente no ASAAS e salvar o ID local",
@@ -209,13 +215,15 @@ export const openApiSpec = {
     },
     "/cron/contas-receber-hoje": {
       get: {
-        summary: "Enviar lembrete diário de contas a receber com vencimento hoje",
+        summary:
+          "Enviar lembrete diário de contas a receber com vencimento hoje",
         responses: { 200: { description: "Cron executado" } },
       },
     },
     "/cron/cobrancas-asaas-hoje": {
       get: {
-        summary: "Enviar lembrete diário de cobranças ASAAS com vencimento hoje",
+        summary:
+          "Enviar lembrete diário de cobranças ASAAS com vencimento hoje",
         responses: { 200: { description: "Cron executado" } },
       },
     },

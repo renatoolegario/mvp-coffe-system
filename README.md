@@ -20,6 +20,8 @@ O projeto cobre o ciclo principal da operação:
 - transferências internas entre produtos;
 - vendas com itens, desconto/acréscimo e contas a receber;
 - contas a pagar e contas a receber;
+- integração ASAAS com customer por CPF/CNPJ, emissão de 1 cobrança por parcela e baixa via webhook;
+- integração Resend e rotinas cron para lembretes operacionais;
 - configuração de faixas de estoque e integrações;
 - registro de feedbacks e tarefas operacionais.
 
@@ -171,6 +173,7 @@ public/
 - `infra/database.js`: conexão e transações no PostgreSQL.
 - `infra/auth.js`: autenticação, validação de token e regra de admin.
 - `infra/openapi.js`: contrato OpenAPI da API interna.
+- `services/`: regras de integração, especialmente ASAAS e configuração de integrações.
 - `utils/`: crypto, formatação, datas, documentos, imagem, seed e estoque.
 
 ### O Que Não Existe Mais Ou Não Existe Ainda
@@ -245,6 +248,16 @@ Algumas referências antigas não batem com o estado atual do projeto:
 
 - `GET|POST|PUT|DELETE /api/v1/configuracao-empresa/estoque`
 - `GET|PUT /api/v1/configuracao-empresa/integracoes`
+
+### Integrações E Automação
+
+- `POST /api/v1/integracoes/asaas/clientes/sincronizar`
+- `POST /api/v1/integracoes/asaas/cobrancas`
+- `GET|DELETE /api/v1/integracoes/asaas/cobrancas/[id]`
+- `POST /api/v1/integracoes/asaas/webhook`
+- `GET /api/v1/cron/cobrancas-asaas-hoje`
+- `GET /api/v1/cron/contas-receber-hoje`
+- `GET /api/v1/cron/entregas-hoje`
 
 ### Apoio
 
@@ -344,6 +357,8 @@ curl -X POST http://localhost:3000/api/v1/command \
 - `contas_pagar_parcelas`
 - `contas_receber`
 - `contas_receber_parcelas`
+- `asaas_cobrancas`
+- `email_notificacoes`
 - `empresa_configuracao_estoque`
 - `empresa_configuracao_integracoes`
 - `feedback_tasks`
@@ -358,6 +373,10 @@ curl -X POST http://localhost:3000/api/v1/command \
 - `047_create_feedback_tasks`: cria o quadro moderno de feedbacks/tarefas.
 - `048` e `049`: datas de aniversário para fornecedores e clientes.
 - `050_add_homepage_fields_to_insumos`: habilita vitrine da landing page.
+- `051_add_asaas_resend_and_cron_support`: cria `asaas_cobrancas`, `email_notificacoes` e a base das integrações.
+- `052_remove_mvp_brand_references_from_seed_data`: limpa dados de seed legados da marca anterior.
+- `053_add_asaas_snapshot_to_contas_receber_parcelas`: adiciona snapshot de emissão/status/link ASAAS em cada parcela.
+- `054_add_received_value_to_asaas_cobrancas`: separa valor original da cobrança e valor efetivamente recebido via webhook.
 
 ### Tabelas Legadas
 
@@ -427,26 +446,46 @@ Como funciona:
 2. a store chama `addVenda`;
 3. o backend baixa estoque em `kg`;
 4. grava `vendas`, `venda_itens`, `contas_receber` e `contas_receber_parcelas`;
-5. o histórico aparece em `/app/vendas` e `/app/detalhe-cliente`.
+5. quando a venda é a prazo, o fluxo pode abrir confirmação para emitir cobranças ASAAS ou emitir automaticamente, conforme a integração;
+6. o histórico aparece em `/app/vendas` e `/app/detalhe-cliente`.
 
 Regra importante:
 
 - `Cliente Balcão` só pode vender à vista.
 
-### 5. Financeiro
+### 5. Cobrança ASAAS Por Parcela
+
+Como funciona:
+
+1. cada cobrança local nasce com um `id` próprio em `asaas_cobrancas`;
+2. esse `id` local é enviado ao ASAAS como `externalReference`;
+3. o customer é reaproveitado por `cpf_cnpj` e, se necessário, criado antes da emissão;
+4. cada parcela pode gerar uma cobrança própria com `billingType = UNDEFINED` (`Pergunte ao cliente`);
+5. o webhook do ASAAS devolve a cobrança, atualiza `asaas_cobrancas` e tenta baixar automaticamente a parcela vinculada;
+6. `contas_receber_parcelas` mantém um snapshot com emissão, status e link da cobrança.
+
+Regras importantes:
+
+- o controle de cobrança é por parcela, não por conta agregada;
+- a emissão manual em `Contas a Receber` exige vencimento mínimo `D+1`;
+- o webhook pode registrar pagamento a menor ou a maior usando `value` e `received_value`.
+
+### 6. Financeiro
 
 Como funciona:
 
 - `Contas a Pagar` opera sobre `contas_pagar_parcelas`.
 - `Contas a Receber` opera sobre `contas_receber_parcelas`.
+- `Contas a Receber` também pode emitir ou excluir cobranças ASAAS por parcela.
 - Ao quitar/receber parcelas, o backend sincroniza o status macro da conta.
 
 Exemplo prático:
 
 - uma parcela a receber pode ter baixa parcial, diferença, comprovante e observação;
+- uma parcela recebida via webhook ASAAS pode registrar valor recebido diferente do valor original;
 - uma parcela a pagar pode gerar ajuste quando o valor pago não bate com o programado.
 
-### 6. Transferências Internas
+### 7. Transferências Internas
 
 Como funciona:
 
@@ -460,7 +499,7 @@ Exemplo prático:
 - transferir `2 sacos` de `23 kg` do produto A para o produto B;
 - o backend registra `46 kg` saindo da origem e entrando no destino.
 
-### 7. Feedbacks E Tarefas
+### 8. Feedbacks E Tarefas
 
 Como funciona:
 
@@ -484,6 +523,8 @@ Como funciona:
 - se alterar banco, crie migration;
 - preserve o fluxo de criptografia;
 - preserve o padrão `snapshot + command`;
+- preserve o vínculo ASAAS usando `asaas_cobrancas.id` como `externalReference` nas cobranças novas;
+- preserve o espelhamento de `contas_receber_parcelas` com status/link/flag de emissão do ASAAS;
 - não trate módulos legados como caminho principal do sistema.
 
 ## Observação Sobre Testes

@@ -27,6 +27,7 @@ import PageHeader from "../../components/atomic/PageHeader";
 import SearchableSelect from "../../components/atomic/SearchableSelect";
 import { useDataStore } from "../../hooks/useDataStore";
 import { authenticatedFetch } from "../../hooks/useSession";
+import { buildClienteCobrancaBlockMessage } from "../../utils/cliente";
 import { formatCurrency, formatDate } from "../../utils/format";
 
 const normalizeSearchValue = (value) =>
@@ -194,6 +195,7 @@ const ContasReceberPage = () => {
   const [origemRecebimento, setOrigemRecebimento] = useState("NORMAL");
   const [fornecedorDestinoId, setFornecedorDestinoId] = useState("");
   const [observacao, setObservacao] = useState("");
+  const [confirmandoRecebimento, setConfirmandoRecebimento] = useState(false);
   const [asaasConfigurado, setAsaasConfigurado] = useState(false);
   const [emitindoAsaasParcelaId, setEmitindoAsaasParcelaId] = useState("");
   const [emitirAsaasDialogOpen, setEmitirAsaasDialogOpen] = useState(false);
@@ -353,6 +355,14 @@ const ContasReceberPage = () => {
       null,
     [parcelasEnriquecidas, parcelaSelecionadaId],
   );
+  const parcelaSelecionadaAsaasBlockMessage = useMemo(
+    () =>
+      buildClienteCobrancaBlockMessage(
+        parcelaSelecionada?.cliente,
+        "emitir cobranca no ASAAS",
+      ),
+    [parcelaSelecionada],
+  );
 
   const resumoVencidas = useMemo(() => {
     const abertas = parcelasVencidasFiltradas.filter(
@@ -484,7 +494,13 @@ const ContasReceberPage = () => {
   };
 
   const confirmarRecebimento = async () => {
-    if (!parcelaSelecionada || parcelaSelecionada.status !== "ABERTA") return;
+    if (
+      !parcelaSelecionada ||
+      parcelaSelecionada.status !== "ABERTA" ||
+      confirmandoRecebimento
+    ) {
+      return;
+    }
 
     const valorRecebidoNormalizado =
       valorRecebido === "" ? null : Math.max(0, toNumber(valorRecebido));
@@ -507,33 +523,58 @@ const ContasReceberPage = () => {
       return;
     }
 
-    await marcarParcelaRecebida({
-      id: parcelaSelecionada.id,
-      forma_recebimento: formaRecebimento,
-      forma_recebimento_real: formaRecebimentoReal,
-      valor_recebido: valorRecebidoNormalizado,
-      motivo_diferenca: motivoDiferenca,
-      acao_diferenca: acaoDiferenca,
-      origem_recebimento: origemRecebimento,
-      fornecedor_destino_id:
-        origemRecebimento === "DIRETO_FORNECEDOR" ? fornecedorDestinoId : null,
-      observacao_recebimento: observacao,
-    });
+    setConfirmandoRecebimento(true);
 
-    setDrawerOpen(false);
-    resetRecebimentoForm(
-      {
-        setFormaRecebimento,
-        setFormaRecebimentoReal,
-        setValorRecebido,
-        setMotivoDiferenca,
-        setAcaoDiferenca,
-        setOrigemRecebimento,
-        setFornecedorDestinoId,
-        setObservacao,
-      },
-      parcelaSelecionada.forma_recebimento || "PIX",
-    );
+    try {
+      const result = await marcarParcelaRecebida({
+        id: parcelaSelecionada.id,
+        forma_recebimento: formaRecebimento,
+        forma_recebimento_real: formaRecebimentoReal,
+        valor_recebido: valorRecebidoNormalizado,
+        motivo_diferenca: motivoDiferenca,
+        acao_diferenca: acaoDiferenca,
+        origem_recebimento: origemRecebimento,
+        fornecedor_destino_id:
+          origemRecebimento === "DIRETO_FORNECEDOR"
+            ? fornecedorDestinoId
+            : null,
+        observacao_recebimento: observacao,
+      });
+
+      if (!result?.ok) {
+        setFeedback({
+          open: true,
+          severity: "error",
+          message:
+            result?.error || "Erro ao confirmar o recebimento da parcela.",
+        });
+        return;
+      }
+
+      setDrawerOpen(false);
+      resetRecebimentoForm(
+        {
+          setFormaRecebimento,
+          setFormaRecebimentoReal,
+          setValorRecebido,
+          setMotivoDiferenca,
+          setAcaoDiferenca,
+          setOrigemRecebimento,
+          setFornecedorDestinoId,
+          setObservacao,
+        },
+        parcelaSelecionada.forma_recebimento || "PIX",
+      );
+      setFeedback({
+        open: true,
+        severity: "success",
+        message: result?.data?.asaas_charge_synced
+          ? "Recebimento confirmado e cobranca ASAAS baixada com sucesso."
+          : "Recebimento confirmado com sucesso.",
+      });
+    } finally {
+      setConfirmandoRecebimento(false);
+    }
   };
 
   const fecharEmitirAsaasDialog = () => {
@@ -545,6 +586,19 @@ const ContasReceberPage = () => {
   const abrirEmitirAsaasDialog = (row) => {
     if (!row?.id) return;
     if (row.status !== "ABERTA") return;
+
+    const blockMessage = buildClienteCobrancaBlockMessage(
+      row.cliente,
+      "emitir cobranca no ASAAS",
+    );
+    if (blockMessage) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: blockMessage,
+      });
+      return;
+    }
 
     if (row.asaasCobrancaEmitida) {
       setFeedback({
@@ -562,6 +616,18 @@ const ContasReceberPage = () => {
 
   const emitirCobrancaAsaas = async () => {
     if (!emitirAsaasRow?.id || emitindoAsaasParcelaId) return;
+    const blockMessage = buildClienteCobrancaBlockMessage(
+      emitirAsaasRow.cliente,
+      "emitir cobranca no ASAAS",
+    );
+    if (blockMessage) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: blockMessage,
+      });
+      return;
+    }
 
     const value = Math.max(0, toNumber(emitirAsaasForm.value));
     const minDueDate = getTomorrowDateKey();
@@ -1031,6 +1097,11 @@ const ContasReceberPage = () => {
             <Typography variant="body2" color="text.secondary">
               Status ASAAS: {parcelaSelecionada?.asaasCobrancaStatus || "-"}
             </Typography>
+            {parcelaSelecionadaAsaasBlockMessage ? (
+              <Alert severity="warning" sx={{ mt: 1.5 }}>
+                {parcelaSelecionadaAsaasBlockMessage}
+              </Alert>
+            ) : null}
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} useFlexGap flexWrap="wrap">
               {parcelaSelecionada?.asaasCobrancaLink ? (
                 <Button
@@ -1154,10 +1225,12 @@ const ContasReceberPage = () => {
               variant="contained"
               onClick={confirmarRecebimento}
               disabled={
-                !parcelaSelecionada || parcelaSelecionada.status !== "ABERTA"
+                !parcelaSelecionada ||
+                parcelaSelecionada.status !== "ABERTA" ||
+                confirmandoRecebimento
               }
             >
-              Confirmar
+              {confirmandoRecebimento ? "Confirmando..." : "Confirmar"}
             </Button>
           </Stack>
         </Stack>

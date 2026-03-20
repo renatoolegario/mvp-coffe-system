@@ -1,7 +1,11 @@
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
+  Chip,
   FormControl,
   FormControlLabel,
   Grid,
@@ -17,6 +21,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
@@ -42,6 +47,46 @@ const integracoesIniciais = {
     from_email: "",
     notification_recipients_text: "",
   },
+};
+
+const LOG_LIMIT = 80;
+const logJsonBoxSx = {
+  m: 0,
+  p: 1.5,
+  borderRadius: 1,
+  border: "1px solid",
+  borderColor: "divider",
+  bgcolor: "background.default",
+  fontSize: "0.75rem",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+};
+const logTypeOptions = [
+  { value: "todos", label: "Todos" },
+  { value: "cron", label: "Crons" },
+  { value: "webhook", label: "Webhooks" },
+];
+const logStatusOptions = [
+  { value: "todos", label: "Todos" },
+  { value: "SUCESSO", label: "Sucesso" },
+  { value: "PARCIAL", label: "Parcial" },
+  { value: "IGNORADO", label: "Ignorado" },
+  { value: "NAO_AUTORIZADO", label: "Não autorizado" },
+  { value: "ERRO", label: "Erro" },
+];
+const logStatusLabels = {
+  SUCESSO: "Sucesso",
+  PARCIAL: "Parcial",
+  IGNORADO: "Ignorado",
+  NAO_AUTORIZADO: "Não autorizado",
+  ERRO: "Erro",
+};
+const logStatusColors = {
+  SUCESSO: "success",
+  PARCIAL: "warning",
+  IGNORADO: "info",
+  NAO_AUTORIZADO: "warning",
+  ERRO: "error",
 };
 
 const parseRecipientsInput = (value) =>
@@ -87,6 +132,95 @@ const formatAuditDateTime = (value) => {
   if (!Number.isFinite(timestamp)) return "Sem data";
   return new Date(value).toLocaleString("pt-BR");
 };
+
+const safeJsonStringify = (value) => {
+  try {
+    return JSON.stringify(value || {}, null, 2);
+  } catch (error) {
+    return JSON.stringify(
+      { erro: "Nao foi possivel renderizar o JSON." },
+      null,
+      2,
+    );
+  }
+};
+
+const hasJsonContent = (value) => {
+  if (!value) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return Boolean(String(value).trim());
+};
+
+const resolveLogStatusLabel = (status) =>
+  logStatusLabels[
+    String(status || "")
+      .trim()
+      .toUpperCase()
+  ] ||
+  status ||
+  "Info";
+
+const resolveLogStatusColor = (status) =>
+  logStatusColors[
+    String(status || "")
+      .trim()
+      .toUpperCase()
+  ] || "default";
+
+const buildLogPreview = (log = {}) => {
+  const summary = [];
+  const response = log.response_payload || {};
+
+  if (log.tipo === "cron") {
+    if (log.evento) {
+      summary.push(log.evento);
+    }
+    if (Number.isFinite(Number(response.total)) && Number(response.total) > 0) {
+      summary.push(`${Number(response.total)} item(ns) processado(s)`);
+    }
+    if (Array.isArray(response.deliveries) && response.deliveries.length) {
+      summary.push(`${response.deliveries.length} envio(s) registrado(s)`);
+    }
+    if (response.reason) {
+      summary.push(response.reason);
+    }
+  } else {
+    if (log.evento) {
+      summary.push(`Evento ${log.evento}`);
+    }
+    if (log.referencia) {
+      summary.push(`Ref ${log.referencia}`);
+    }
+    if (response.charge_status) {
+      summary.push(`Cobrança ${response.charge_status}`);
+    }
+  }
+
+  if (log.erro) {
+    summary.push(log.erro);
+  }
+
+  return summary.join(" • ") || "Execução registrada para auditoria.";
+};
+
+const buildLogSearchableText = (log = {}) =>
+  [
+    log.tipo,
+    log.chave,
+    log.descricao,
+    log.endpoint,
+    log.metodo,
+    log.origem,
+    log.status,
+    log.evento,
+    log.referencia,
+    log.erro,
+    safeJsonStringify(log.response_payload),
+    safeJsonStringify(log.metadados),
+  ]
+    .map((item) => String(item || "").toLowerCase())
+    .join(" ");
 
 const buildAuditTrail = (referenceCode, sources = []) => {
   const normalizedReference = normalizeAuditValue(referenceCode);
@@ -190,6 +324,15 @@ const ConfiguracaoEmpresaPage = () => {
   const [codigoAuditoriaInput, setCodigoAuditoriaInput] = useState("");
   const [codigoAuditoriaBusca, setCodigoAuditoriaBusca] = useState("");
   const [auditoriaRealizada, setAuditoriaRealizada] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState("");
+  const [logsWarning, setLogsWarning] = useState("");
+  const [logsFilters, setLogsFilters] = useState({
+    tipo: "todos",
+    status: "todos",
+    busca: "",
+  });
   const [swaggerErro, setSwaggerErro] = useState("");
   const swaggerContainerRef = useRef(null);
 
@@ -346,6 +489,29 @@ const ConfiguracaoEmpresaPage = () => {
     return Object.entries(counters).sort((a, b) => b[1] - a[1]);
   }, [auditoriaRegistros]);
 
+  const logsFiltrados = useMemo(() => {
+    const busca = String(logsFilters.busca || "")
+      .trim()
+      .toLowerCase();
+
+    if (!busca) {
+      return logs;
+    }
+
+    return logs.filter((log) => buildLogSearchableText(log).includes(busca));
+  }, [logs, logsFilters.busca]);
+
+  const resumoLogs = useMemo(() => {
+    const counters = {};
+
+    logs.forEach((log) => {
+      const status = resolveLogStatusLabel(log.status);
+      counters[status] = (counters[status] || 0) + 1;
+    });
+
+    return Object.entries(counters).sort((a, b) => b[1] - a[1]);
+  }, [logs]);
+
   const loadFaixas = useCallback(async () => {
     try {
       const response = await authenticatedFetch(
@@ -388,8 +554,7 @@ const ConfiguracaoEmpresaPage = () => {
                   webhook_url: config.webhook_url || "",
                   webhook_registered_at: config.webhook_registered_at || "",
                   webhook_error: config.webhook_error || "",
-                  webhook_cleanup_error:
-                    config.webhook_cleanup_error || "",
+                  webhook_cleanup_error: config.webhook_cleanup_error || "",
                 }
               : {}),
             ...(provedor === "resend"
@@ -411,10 +576,55 @@ const ConfiguracaoEmpresaPage = () => {
     }
   }, []);
 
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    setLogsError("");
+    setLogsWarning("");
+
+    try {
+      const params = new URLSearchParams({
+        limit: String(LOG_LIMIT),
+      });
+
+      if (logsFilters.tipo !== "todos") {
+        params.set("tipo", logsFilters.tipo);
+      }
+
+      if (logsFilters.status !== "todos") {
+        params.set("status", logsFilters.status);
+      }
+
+      const response = await authenticatedFetch(
+        `/api/v1/configuracao-empresa/logs?${params.toString()}`,
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Não foi possível carregar os logs de auditoria.",
+        );
+      }
+
+      setLogs(Array.isArray(data.logs) ? data.logs : []);
+      setLogsWarning(data.warning || "");
+    } catch (error) {
+      setLogsError(
+        error.message || "Não foi possível carregar os logs de auditoria.",
+      );
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [logsFilters.status, logsFilters.tipo]);
+
   useEffect(() => {
     loadFaixas();
     loadIntegracoes();
   }, [loadFaixas, loadIntegracoes]);
+
+  useEffect(() => {
+    if (tab !== "logs") return;
+    loadLogs();
+  }, [loadLogs, tab]);
 
   useEffect(() => {
     if (!hydrated || faixas.length || !empresaConfiguracaoEstoque.length) {
@@ -489,16 +699,18 @@ const ConfiguracaoEmpresaPage = () => {
     );
   };
 
-  const handleIntegracaoField = (provedor, field = "chave") => (event) => {
-    const value = event.target.value;
-    setIntegracoes((prev) => ({
-      ...prev,
-      [provedor]: {
-        ...prev[provedor],
-        [field]: value,
-      },
-    }));
-  };
+  const handleIntegracaoField =
+    (provedor, field = "chave") =>
+    (event) => {
+      const value = event.target.value;
+      setIntegracoes((prev) => ({
+        ...prev,
+        [provedor]: {
+          ...prev[provedor],
+          [field]: value,
+        },
+      }));
+    };
 
   const handleEditarIntegracao = (provedor) => {
     setIntegracoes((prev) => ({
@@ -533,11 +745,9 @@ const ConfiguracaoEmpresaPage = () => {
                 data.config?.auto_charge_on_credit_sale,
               ),
               webhook_url: data.config?.webhook_url || "",
-              webhook_registered_at:
-                data.config?.webhook_registered_at || "",
+              webhook_registered_at: data.config?.webhook_registered_at || "",
               webhook_error: data.config?.webhook_error || "",
-              webhook_cleanup_error:
-                data.config?.webhook_cleanup_error || "",
+              webhook_cleanup_error: data.config?.webhook_cleanup_error || "",
             }
           : {}),
         ...(provedor === "resend"
@@ -608,10 +818,9 @@ const ConfiguracaoEmpresaPage = () => {
       setFeedback({
         open: true,
         severity: "success",
-        message:
-          nextValue
-            ? "Cobrança automática do ASAAS ativada com sucesso."
-            : "Cobrança automática do ASAAS desativada com sucesso.",
+        message: nextValue
+          ? "Cobrança automática do ASAAS ativada com sucesso."
+          : "Cobrança automática do ASAAS desativada com sucesso.",
       });
     } catch (error) {
       setIntegracoes((prev) => ({
@@ -625,8 +834,7 @@ const ConfiguracaoEmpresaPage = () => {
         open: true,
         severity: "error",
         message:
-          error.message ||
-          "Não foi possível atualizar a automação do ASAAS.",
+          error.message || "Não foi possível atualizar a automação do ASAAS.",
       });
     } finally {
       setIntegracaoSaving("asaas", false);
@@ -641,10 +849,9 @@ const ConfiguracaoEmpresaPage = () => {
       setFeedback({
         open: true,
         severity: "error",
-        message:
-          integracao?.configurado
-            ? "Informe a nova chave do ASAAS para atualizar a integração."
-            : "Informe a chave da integração antes de salvar.",
+        message: integracao?.configurado
+          ? "Informe a nova chave do ASAAS para atualizar a integração."
+          : "Informe a chave da integração antes de salvar.",
       });
       return;
     }
@@ -800,6 +1007,14 @@ const ConfiguracaoEmpresaPage = () => {
     setAuditoriaRealizada(false);
   };
 
+  const handleLogFilterChange = (field) => (event) => {
+    const value = event.target.value;
+    setLogsFilters((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
   return (
     <AppLayout>
       <PageHeader
@@ -812,6 +1027,7 @@ const ConfiguracaoEmpresaPage = () => {
           <Tab value="estoque" label="Status de Estoque" />
           <Tab value="integracoes" label="Integrações" />
           <Tab value="auditoria" label="Auditoria" />
+          <Tab value="logs" label="Logs" />
           <Tab value="apis" label="APIs Internas" />
         </Tabs>
       </Paper>
@@ -879,8 +1095,8 @@ const ConfiguracaoEmpresaPage = () => {
           <Stack spacing={3}>
             <Typography variant="body2" color="text.secondary">
               Configure as integrações externas. No ASAAS, o webhook é
-              registrado automaticamente ao salvar a chave e é recriado quando
-              a chave for alterada.
+              registrado automaticamente ao salvar a chave e é recriado quando a
+              chave for alterada.
             </Typography>
 
             {Object.entries(integracoes).map(([provedor, integracao]) => {
@@ -1063,9 +1279,7 @@ const ConfiguracaoEmpresaPage = () => {
                               <Button
                                 variant="contained"
                                 fullWidth
-                                onClick={() =>
-                                  handleSalvarIntegracao(provedor)
-                                }
+                                onClick={() => handleSalvarIntegracao(provedor)}
                                 disabled={salvandoIntegracao}
                               >
                                 {salvandoIntegracao ? "Salvando..." : "Salvar"}
@@ -1234,6 +1448,236 @@ const ConfiguracaoEmpresaPage = () => {
                   <strong>{codigoAuditoriaBusca}</strong>.
                 </Alert>
               )
+            ) : null}
+          </Stack>
+        </Paper>
+      ) : null}
+
+      {tab === "logs" ? (
+        <Paper sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Consulte as execuções mais recentes de webhooks e crons para
+              auditoria operacional. Os dados abaixo são persistidos no banco e
+              mostram payload, resposta, origem da chamada e possíveis falhas.
+            </Typography>
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="logs-tipo-label">Tipo</InputLabel>
+                <Select
+                  labelId="logs-tipo-label"
+                  label="Tipo"
+                  value={logsFilters.tipo}
+                  onChange={handleLogFilterChange("tipo")}
+                >
+                  {logTypeOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth size="small">
+                <InputLabel id="logs-status-label">Status</InputLabel>
+                <Select
+                  labelId="logs-status-label"
+                  label="Status"
+                  value={logsFilters.status}
+                  onChange={handleLogFilterChange("status")}
+                >
+                  {logStatusOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Buscar"
+                placeholder="Evento, endpoint, referência ou erro"
+                value={logsFilters.busca}
+                onChange={handleLogFilterChange("busca")}
+              />
+
+              <Button
+                variant="outlined"
+                onClick={loadLogs}
+                disabled={logsLoading}
+              >
+                {logsLoading ? "Atualizando..." : "Atualizar"}
+              </Button>
+            </Stack>
+
+            {logsError ? <Alert severity="error">{logsError}</Alert> : null}
+            {logsWarning ? (
+              <Alert severity="warning">{logsWarning}</Alert>
+            ) : null}
+
+            {!logsError ? (
+              <Alert severity="info">
+                {logsFiltrados.length} log(s) exibido(s) de {logs.length}{" "}
+                registro(s) carregado(s).
+              </Alert>
+            ) : null}
+
+            {resumoLogs.length ? (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" mb={1}>
+                  Resumo por status
+                </Typography>
+                <Stack spacing={0.5}>
+                  {resumoLogs.map(([label, total]) => (
+                    <Typography
+                      key={label}
+                      variant="body2"
+                      color="text.secondary"
+                    >
+                      {label}: {total}
+                    </Typography>
+                  ))}
+                </Stack>
+              </Paper>
+            ) : null}
+
+            {logsFiltrados.length ? (
+              <Stack spacing={1.5}>
+                {logsFiltrados.map((log) => (
+                  <Accordion key={log.id} disableGutters>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Stack spacing={1} sx={{ width: "100%" }}>
+                        <Stack
+                          direction={{ xs: "column", md: "row" }}
+                          justifyContent="space-between"
+                          alignItems={{ xs: "flex-start", md: "center" }}
+                          spacing={1}
+                        >
+                          <Typography variant="subtitle2" fontWeight={700}>
+                            {log.descricao}
+                          </Typography>
+                          <Stack direction="row" spacing={1} flexWrap="wrap">
+                            <Chip
+                              size="small"
+                              label={log.tipo === "cron" ? "Cron" : "Webhook"}
+                              variant="outlined"
+                            />
+                            <Chip
+                              size="small"
+                              label={resolveLogStatusLabel(log.status)}
+                              color={resolveLogStatusColor(log.status)}
+                            />
+                          </Stack>
+                        </Stack>
+
+                        <Typography variant="body2" color="text.secondary">
+                          {buildLogPreview(log)}
+                        </Typography>
+
+                        <Typography variant="caption" color="text.secondary">
+                          {formatAuditDateTime(log.executado_em)} • {log.metodo}{" "}
+                          {log.endpoint}
+                        </Typography>
+                      </Stack>
+                    </AccordionSummary>
+
+                    <AccordionDetails>
+                      <Stack spacing={2}>
+                        <Grid container spacing={1.5}>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Chave: {log.chave || "-"}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Origem da chamada: {log.origem || "-"}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Evento: {log.evento || "-"}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Referência: {log.referencia || "-"}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              HTTP: {log.http_status ?? "-"}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+
+                        {log.erro ? (
+                          <Alert
+                            severity={
+                              resolveLogStatusColor(log.status) === "error"
+                                ? "error"
+                                : "warning"
+                            }
+                          >
+                            {log.erro}
+                          </Alert>
+                        ) : null}
+
+                        {hasJsonContent(log.request_headers) ? (
+                          <Box>
+                            <Typography variant="subtitle2" mb={0.5}>
+                              Headers sanitizados
+                            </Typography>
+                            <Box component="pre" sx={logJsonBoxSx}>
+                              {safeJsonStringify(log.request_headers)}
+                            </Box>
+                          </Box>
+                        ) : null}
+
+                        {hasJsonContent(log.request_payload) ? (
+                          <Box>
+                            <Typography variant="subtitle2" mb={0.5}>
+                              Payload recebido
+                            </Typography>
+                            <Box component="pre" sx={logJsonBoxSx}>
+                              {safeJsonStringify(log.request_payload)}
+                            </Box>
+                          </Box>
+                        ) : null}
+
+                        {hasJsonContent(log.response_payload) ? (
+                          <Box>
+                            <Typography variant="subtitle2" mb={0.5}>
+                              Resposta registrada
+                            </Typography>
+                            <Box component="pre" sx={logJsonBoxSx}>
+                              {safeJsonStringify(log.response_payload)}
+                            </Box>
+                          </Box>
+                        ) : null}
+
+                        {hasJsonContent(log.metadados) ? (
+                          <Box>
+                            <Typography variant="subtitle2" mb={0.5}>
+                              Metadados
+                            </Typography>
+                            <Box component="pre" sx={logJsonBoxSx}>
+                              {safeJsonStringify(log.metadados)}
+                            </Box>
+                          </Box>
+                        ) : null}
+                      </Stack>
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </Stack>
+            ) : !logsLoading && !logsError ? (
+              <Alert severity="info">
+                Nenhum log encontrado para os filtros atuais.
+              </Alert>
             ) : null}
           </Stack>
         </Paper>

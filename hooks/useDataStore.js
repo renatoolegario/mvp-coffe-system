@@ -7,6 +7,7 @@ import {
 } from "../utils/stock";
 import { getAuthHeaders } from "./useSession";
 import { addDaysLocalDateTime, toLocalDateTime } from "../utils/datetime";
+import { normalizeClienteEmail } from "../utils/cliente";
 import { toPerfilCode } from "../utils/profile";
 import { normalizeImageBase64 } from "../utils/image";
 
@@ -228,11 +229,14 @@ export const useDataStore = create((set, get) => ({
   },
   updateCliente: async ({ id, ...payload }) => {
     const current = get().clientes.find((cliente) => cliente.id === id);
-    if (!current) return;
+    if (!current) {
+      return { ok: false, error: "Cliente não encontrado." };
+    }
     const updated = {
       ...current,
       ...payload,
       nome: payload.nome?.trim() || current.nome,
+      email: normalizeClienteEmail(payload.email || current.email),
       cpf_cnpj: payload.cpf_cnpj || "",
       telefone: payload.telefone || "",
       endereco: payload.endereco || "",
@@ -245,8 +249,9 @@ export const useDataStore = create((set, get) => ({
           cliente.id === id ? updated : cliente,
         ),
       }));
+      return { ok: true, data: updated };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   addFornecedor: async (payload) => {
@@ -1071,6 +1076,7 @@ export const useDataStore = create((set, get) => ({
   }) => {
     const parcelaIds = ids.length ? ids : [id];
     const dataRecebimento = nowIso();
+    let lastResponse = null;
 
     try {
       for (const parcelaId of parcelaIds) {
@@ -1146,7 +1152,7 @@ export const useDataStore = create((set, get) => ({
           producao_id: null,
         }));
 
-        await sendCommand("marcarParcelaRecebida", {
+        const response = await sendCommand("marcarParcelaRecebida", {
           ...parcelaAtual,
           id: parcelaId,
           status: "RECEBIDA",
@@ -1169,10 +1175,23 @@ export const useDataStore = create((set, get) => ({
           contasPagar: contasPagarDiretas,
           parcelasPagar: parcelasPagarDiretas,
         });
+
+        if (response?.ok === false) {
+          return {
+            ok: false,
+            error: "Nao foi possivel confirmar o recebimento.",
+          };
+        }
+
+        lastResponse = response;
       }
       await get().loadData();
+      return {
+        ok: true,
+        data: lastResponse,
+      };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
 }));

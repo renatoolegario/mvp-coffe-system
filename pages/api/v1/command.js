@@ -1,5 +1,10 @@
 import { query, withTransaction } from "../../../infra/database";
 import { decryptIfNeeded, encryptIfNeeded } from "../../../utils/crypto";
+import { confirmActiveAsaasChargeReceivedInCashByParcela } from "../../../services/asaas";
+import {
+  isValidClienteEmail,
+  normalizeClienteEmail,
+} from "../../../utils/cliente";
 import { toPerfilCode } from "../../../utils/profile";
 import { isValidCpfCnpj, normalizeCpfCnpj } from "../../../utils/document";
 import { normalizeImageBase64 } from "../../../utils/image";
@@ -64,12 +69,8 @@ const normalizeProducaoResultado = (
   };
 };
 
-const normalizeEmail = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
-
-const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const normalizeEmail = normalizeClienteEmail;
+const isValidEmail = isValidClienteEmail;
 
 const normalizeDateOnly = (value) => {
   const parsed = String(value || "").trim();
@@ -95,11 +96,13 @@ const findDuplicateInEncryptedColumn = async ({
   column,
   normalizedValue,
   normalizeValue,
+  excludeId = "",
 }) => {
   if (!normalizedValue) return false;
   const result = await query(queryText);
   return result.rows.some(
     (row) =>
+      String(row.id || "") !== String(excludeId || "") &&
       normalizeValue(decryptIfNeeded(row[column] || "")) === normalizedValue,
   );
 };
@@ -249,6 +252,8 @@ export default async function handler(req, res) {
   const { action, payload } = req.body || {};
 
   try {
+    let responsePayload = { ok: true };
+
     switch (action) {
       case "addUsuario":
         {
@@ -386,6 +391,10 @@ export default async function handler(req, res) {
         break;
       case "updateCliente":
         {
+          const nome = String(payload.nome || "").trim();
+          const emailNormalizado = normalizeEmail(payload.email);
+          const cpfCnpjRaw = String(payload.cpf_cnpj || "").trim();
+          const cpfCnpjNormalizado = normalizeCpfCnpj(cpfCnpjRaw);
           const dataAniversarioInput = String(
             payload.data_aniversario || "",
           ).trim();
@@ -401,18 +410,72 @@ export default async function handler(req, res) {
                 "Cliente Balcão é protegido e só pode ser alterado por migration.",
             });
           }
+          if (!nome) {
+            return res
+              .status(400)
+              .json({ error: "Nome do cliente é obrigatório." });
+          }
+          if (!emailNormalizado) {
+            return res
+              .status(400)
+              .json({ error: "E-mail do cliente é obrigatório." });
+          }
+          if (!isValidEmail(emailNormalizado)) {
+            return res
+              .status(400)
+              .json({ error: "E-mail do cliente é inválido." });
+          }
+          if (!cpfCnpjNormalizado) {
+            return res
+              .status(400)
+              .json({ error: "CPF/CNPJ do cliente é obrigatório." });
+          }
+          if (!isValidCpfCnpj(cpfCnpjNormalizado)) {
+            return res
+              .status(400)
+              .json({ error: "CPF/CNPJ do cliente é inválido." });
+          }
           if (dataAniversarioInput && !dataAniversario) {
             return res
               .status(400)
               .json({ error: "Data de aniversário do cliente é inválida." });
           }
+
+          const emailJaExiste = await findDuplicateInEncryptedColumn({
+            queryText:
+              "SELECT id, email FROM clientes WHERE COALESCE(email, '') <> ''",
+            column: "email",
+            normalizedValue: emailNormalizado,
+            normalizeValue: normalizeEmail,
+            excludeId: payload.id,
+          });
+          if (emailJaExiste) {
+            return res
+              .status(409)
+              .json({ error: "Já existe um cliente com este e-mail." });
+          }
+
+          const cpfCnpjJaExiste = await findDuplicateInEncryptedColumn({
+            queryText:
+              "SELECT id, cpf_cnpj FROM clientes WHERE COALESCE(cpf_cnpj, '') <> ''",
+            column: "cpf_cnpj",
+            normalizedValue: cpfCnpjNormalizado,
+            normalizeValue: normalizeCpfCnpj,
+            excludeId: payload.id,
+          });
+          if (cpfCnpjJaExiste) {
+            return res
+              .status(409)
+              .json({ error: "Já existe um cliente com este CPF/CNPJ." });
+          }
         }
 
         await query(
-          "UPDATE clientes SET nome = $2, cpf_cnpj = $3, telefone = $4, endereco = $5, data_aniversario = $6 WHERE id = $1",
+          "UPDATE clientes SET nome = $2, email = $3, cpf_cnpj = $4, telefone = $5, endereco = $6, data_aniversario = $7 WHERE id = $1",
           [
             payload.id,
             encryptIfNeeded(payload.nome),
+            encryptIfNeeded(normalizeEmail(payload.email)),
             encryptIfNeeded(payload.cpf_cnpj),
             encryptIfNeeded(payload.telefone),
             encryptIfNeeded(payload.endereco),
@@ -1531,6 +1594,17 @@ export default async function handler(req, res) {
         });
         break;
       case "marcarParcelaRecebida":
+        {
+          const valorRecebidoAsaas =
+            getNumber(payload.valor_recebido) ||
+            getNumber(payload.valor_programado) ||
+            getNumber(payload.valor);
+          const asaasCharge = await confirmActiveAsaasChargeReceivedInCashByParcela({
+            contaReceberParcelaId: payload.id,
+            paymentDate: payload.data_recebimento,
+            value: valorRecebidoAsaas,
+          });
+
         await withTransaction(async (client) => {
           const valorRecebido = getNumber(payload.valor_recebido);
           const valorProgramado =
@@ -1665,6 +1739,12 @@ export default async function handler(req, res) {
             );
           }
         });
+          responsePayload = {
+            ok: true,
+            asaas_charge_synced: Boolean(asaasCharge),
+            asaas_charge_id: asaasCharge?.id || null,
+          };
+        }
         break;
       case "createTransferencia":
         await withTransaction(async (client) => {
@@ -1766,7 +1846,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Ação não reconhecida." });
     }
 
-    return res.status(200).json({ ok: true });
+    return res.status(200).json(responsePayload);
   } catch (error) {
     if (error?.statusCode) {
       return res

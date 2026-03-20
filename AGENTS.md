@@ -20,10 +20,15 @@ Se houver conflito entre uma descrição antiga e o código atual, considere o c
 ## Verdades Importantes Do Estado Atual
 
 - O fluxo principal do sistema gira em torno de `GET /api/v1/data` para leitura e `POST /api/v1/command` para escrita.
+- O projeto possui integrações ativas com `ASAAS` e `Resend`, além de rotinas `cron` para lembretes e cobranças.
 - As rotas `/app/fabricacao-lotes` e `/app/tipos-cafe` são legadas:
   - `/app/fabricacao-lotes` redireciona para `/app/producao`.
   - `/app/tipos-cafe` exibe aviso de descontinuação.
 - O modelo atual usa `insumos` como base tanto para estoque quanto para produto final.
+- O fluxo ASAAS é controlado por parcela:
+  - `contas_receber_parcelas` guarda snapshot de emissão, status e link.
+  - `asaas_cobrancas` guarda o espelho detalhado da cobrança.
+  - novas cobranças usam `asaas_cobrancas.id` como `externalReference`.
 - Não existe suíte de testes automatizados no repositório neste momento, embora exista script `npm test`.
 - Algumas estruturas mencionadas em versões antigas do projeto não existem hoje:
   - `/components/molecules`
@@ -54,6 +59,8 @@ Se houver conflito entre uma descrição antiga e o código atual, considere o c
   - conexão com banco, autenticação, OpenAPI e migrations.
 - `infra/migrations/`
   - histórico de evolução do banco.
+- `services/`
+  - regras de integração, webhook, cobrança ASAAS e configuração de integrações.
 - `utils/`
   - funções puras de formatação, datas, crypto, documentos, estoque e seed.
 - `docs/`
@@ -217,6 +224,16 @@ Se houver conflito entre uma descrição antiga e o código atual, considere o c
 - `GET|POST|PUT|DELETE /api/v1/configuracao-empresa/estoque`
 - `GET|PUT /api/v1/configuracao-empresa/integracoes`
 
+### Integrações E Automação
+
+- `POST /api/v1/integracoes/asaas/clientes/sincronizar`
+- `POST /api/v1/integracoes/asaas/cobrancas`
+- `GET|DELETE /api/v1/integracoes/asaas/cobrancas/[id]`
+- `POST /api/v1/integracoes/asaas/webhook`
+- `GET /api/v1/cron/cobrancas-asaas-hoje`
+- `GET /api/v1/cron/contas-receber-hoje`
+- `GET /api/v1/cron/entregas-hoje`
+
 ### Apoio
 
 - `GET /api/v1/aux/unidades`
@@ -244,6 +261,14 @@ Se houver conflito entre uma descrição antiga e o código atual, considere o c
   - cria `feedback_tasks` e migra feedbacks legados.
 - `048` a `050`
   - aniversários de fornecedores/clientes e campos da homepage em `insumos`.
+- `051_add_asaas_resend_and_cron_support`
+  - cria `asaas_cobrancas`, `email_notificacoes` e a base das integrações externas.
+- `052_remove_mvp_brand_references_from_seed_data`
+  - limpa seeds e referências antigas da marca anterior.
+- `053_add_asaas_snapshot_to_contas_receber_parcelas`
+  - adiciona `asaas_cobranca_emitida`, `asaas_cobranca_status` e `asaas_cobranca_link` por parcela.
+- `054_add_received_value_to_asaas_cobrancas`
+  - adiciona `received_value` para separar valor cobrado e valor efetivamente recebido.
 
 ## Tabelas Mais Importantes No Fluxo Atual
 
@@ -265,6 +290,8 @@ Se houver conflito entre uma descrição antiga e o código atual, considere o c
 - `contas_pagar_parcelas`
 - `contas_receber`
 - `contas_receber_parcelas`
+- `asaas_cobrancas`
+- `email_notificacoes`
 - `empresa_configuracao_estoque`
 - `empresa_configuracao_integracoes`
 - `feedback_tasks`
@@ -279,6 +306,9 @@ Se houver conflito entre uma descrição antiga e o código atual, considere o c
 - Ao mexer em `clientes`, `fornecedores` e `usuarios`, preserve o fluxo de criptografia.
 - Ao mexer em autenticação, preserve compatibilidade com `hooks/useSession.js`.
 - Ao mexer em leitura/escrita do app, considere que grande parte do backoffice depende da dupla `data.js` e `command.js`.
+- Ao mexer no ASAAS, preserve `services/asaas.js` como ponto central de customer, cobrança, webhook e remoção.
+- Não troque a semântica do `externalReference` das cobranças novas: ele deve continuar apontando para `asaas_cobrancas.id`.
+- Ao alterar o webhook ASAAS, preserve a baixa automática da parcela e a sincronização do status macro em `contas_receber`.
 
 ## Documentos De Apoio
 

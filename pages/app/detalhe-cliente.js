@@ -25,6 +25,7 @@ import PageHeader from "../../components/atomic/PageHeader";
 import SearchableSelect from "../../components/atomic/SearchableSelect";
 import { useDataStore } from "../../hooks/useDataStore";
 import { authenticatedFetch } from "../../hooks/useSession";
+import { buildClienteCobrancaBlockMessage } from "../../utils/cliente";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { downloadWorkbookXlsx } from "../../utils/xlsx";
 
@@ -61,6 +62,7 @@ const boolLabel = (value) => (value ? "Sim" : "Não");
 const buildClienteForm = (cliente) => ({
   id: cliente?.id || "",
   nome: cliente?.nome || "",
+  email: cliente?.email || "",
   cpf_cnpj: cliente?.cpf_cnpj || "",
   telefone: cliente?.telefone || "",
   endereco: cliente?.endereco || "",
@@ -111,6 +113,7 @@ const DetalheClientePage = () => {
   const [clienteForm, setClienteForm] = useState({
     id: "",
     nome: "",
+    email: "",
     cpf_cnpj: "",
     telefone: "",
     endereco: "",
@@ -143,6 +146,14 @@ const DetalheClientePage = () => {
   const selectedCliente = useMemo(
     () => clientes.find((cliente) => cliente.id === drawer.clienteId) || null,
     [clientes, drawer.clienteId],
+  );
+  const selectedClienteAsaasBlockMessage = useMemo(
+    () =>
+      buildClienteCobrancaBlockMessage(
+        selectedCliente,
+        "sincronizar o cliente e emitir cobrancas no ASAAS",
+      ),
+    [selectedCliente],
   );
 
   const selectedClienteVendas = useMemo(() => {
@@ -615,6 +626,19 @@ const DetalheClientePage = () => {
 
   const handleSyncClienteAsaas = async () => {
     if (!selectedCliente) return;
+    const blockMessage = buildClienteCobrancaBlockMessage(
+      selectedCliente,
+      "sincronizar o cliente no ASAAS",
+    );
+    if (blockMessage) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: blockMessage,
+      });
+      return;
+    }
+
     setLoadingAction(true);
 
     try {
@@ -652,6 +676,18 @@ const DetalheClientePage = () => {
 
   const handleCriarCobrancaManual = async () => {
     if (!selectedCliente) return;
+    const blockMessage = buildClienteCobrancaBlockMessage(
+      selectedCliente,
+      "emitir cobranca no ASAAS",
+    );
+    if (blockMessage) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: blockMessage,
+      });
+      return;
+    }
 
     const value = Number(cobrancaForm.value) || 0;
     const minDueDate = getTomorrowDate();
@@ -746,6 +782,26 @@ const DetalheClientePage = () => {
     } finally {
       setLoadingAction(false);
     }
+  };
+
+  const handleSalvarCliente = async () => {
+    const result = await updateCliente(clienteForm);
+
+    if (!result?.ok) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: result?.error || "Nao foi possivel atualizar o cliente.",
+      });
+      return;
+    }
+
+    setFeedback({
+      open: true,
+      severity: "success",
+      message: "Dados do cliente atualizados com sucesso.",
+    });
+    setDrawer({ type: null, clienteId: null });
   };
 
   return (
@@ -912,6 +968,17 @@ const DetalheClientePage = () => {
               }
             />
             <TextField
+              label="E-mail"
+              type="email"
+              value={clienteForm.email}
+              onChange={(event) =>
+                setClienteForm((prev) => ({
+                  ...prev,
+                  email: event.target.value,
+                }))
+              }
+            />
+            <TextField
               label="CPF/CNPJ"
               value={clienteForm.cpf_cnpj}
               onChange={(event) =>
@@ -955,10 +1022,7 @@ const DetalheClientePage = () => {
             />
             <Button
               variant="contained"
-              onClick={async () => {
-                await updateCliente(clienteForm);
-                setDrawer({ type: null, clienteId: null });
-              }}
+              onClick={handleSalvarCliente}
             >
               Salvar dados
             </Button>
@@ -1027,6 +1091,12 @@ const DetalheClientePage = () => {
               </Alert>
             ) : null}
 
+            {selectedClienteAsaasBlockMessage ? (
+              <Alert severity="warning">
+                {selectedClienteAsaasBlockMessage}
+              </Alert>
+            ) : null}
+
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={1.2}>
                 <Typography fontWeight={600}>Cliente sincronizado</Typography>
@@ -1039,7 +1109,11 @@ const DetalheClientePage = () => {
                   size="small"
                   variant="outlined"
                   onClick={handleSyncClienteAsaas}
-                  disabled={!asaasConfigurado || loadingAction}
+                  disabled={
+                    !asaasConfigurado ||
+                    loadingAction ||
+                    Boolean(selectedClienteAsaasBlockMessage)
+                  }
                 >
                   {selectedCliente?.asaas_customer_id
                     ? "Revalidar cliente no ASAAS"
@@ -1127,7 +1201,11 @@ const DetalheClientePage = () => {
                 <Button
                   variant="contained"
                   onClick={handleCriarCobrancaManual}
-                  disabled={!asaasConfigurado || loadingAction}
+                  disabled={
+                    !asaasConfigurado ||
+                    loadingAction ||
+                    Boolean(selectedClienteAsaasBlockMessage)
+                  }
                 >
                   Criar cobrança manual
                 </Button>

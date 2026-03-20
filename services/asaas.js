@@ -2,6 +2,10 @@ import { createHash, createHmac, randomUUID } from "crypto";
 import { query, withTransaction } from "../infra/database";
 import { decryptIfNeeded } from "../utils/crypto";
 import { normalizeCpfCnpj } from "../utils/document";
+import {
+  buildClienteCobrancaBlockMessage,
+  normalizeClienteEmail,
+} from "../utils/cliente";
 import { getIntegration } from "./integrations";
 
 const ASAAS_API_BASE = "https://api.asaas.com/v3";
@@ -87,10 +91,7 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const normalizeEmail = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
+const normalizeEmail = normalizeClienteEmail;
 
 const normalizePhone = (value) =>
   String(value || "")
@@ -422,8 +423,22 @@ const buildCustomerPayload = (cliente) => {
   return payload;
 };
 
-export const ensureClienteAsaasCustomer = async (clienteId) => {
+export const ensureClienteAsaasCustomer = async (
+  clienteId,
+  options = {},
+) => {
   const cliente = await loadClienteById(clienteId);
+  const actionLabel =
+    String(options.actionLabel || "").trim() || "sincronizar o cliente no ASAAS";
+  const clienteBlockMessage = buildClienteCobrancaBlockMessage(
+    cliente,
+    actionLabel,
+  );
+
+  if (clienteBlockMessage) {
+    throw buildServiceError(clienteBlockMessage, 400);
+  }
+
   const { apiKey, environment } = await getAsaasRuntime();
 
   let customer = await findExistingAsaasCustomer({
@@ -827,6 +842,42 @@ const hasActiveChargeForParcela = async (contaReceberParcelaId) => {
   return Boolean(result.rows[0]);
 };
 
+const loadActiveAsaasChargeByParcela = async (contaReceberParcelaId) => {
+  const parcelaId = String(contaReceberParcelaId || "").trim();
+  if (!parcelaId) return null;
+
+  const result = await query(
+    `
+      SELECT *
+      FROM asaas_cobrancas
+      WHERE conta_receber_parcela_id = $1
+        AND deleted = false
+        AND status <> ALL ($2::text[])
+      ORDER BY atualizado_em DESC, criado_em DESC
+      LIMIT 1
+    `,
+    [parcelaId, Array.from(TERMINAL_PAYMENT_STATUSES)],
+  );
+
+  return result.rows[0] || null;
+};
+
+const buildReceiveInCashPayload = ({ paymentDate, value } = {}) => {
+  const payload = {};
+  const normalizedPaymentDate = toDateOnly(paymentDate);
+  const normalizedValue = toNumber(value);
+
+  if (normalizedPaymentDate) {
+    payload.paymentDate = normalizedPaymentDate;
+  }
+
+  if (normalizedValue > 0) {
+    payload.value = normalizedValue;
+  }
+
+  return Object.keys(payload).length ? payload : undefined;
+};
+
 const buildChargeDescription = ({ descricao, cliente, vendaId, parcelaId }) => {
   const normalized = String(descricao || "").trim();
   if (normalized) return normalized;
@@ -1063,7 +1114,9 @@ export const createAsaasCharge = async (payload = {}) => {
   }
 
   const cliente = await loadClienteById(clienteId);
-  const customerSync = await ensureClienteAsaasCustomer(cliente.id);
+  const customerSync = await ensureClienteAsaasCustomer(cliente.id, {
+    actionLabel: "emitir cobranca no ASAAS",
+  });
   const { apiKey, environment } = await getAsaasRuntime();
   const localChargeId = randomUUID();
 
@@ -1146,6 +1199,72 @@ export const deleteAsaasCharge = async (identifier) => {
   );
 
   return serializeCharge(row);
+};
+
+export const confirmAsaasChargeReceivedInCash = async (
+  identifier,
+  options = {},
+) => {
+  const existing = await loadExistingChargeByIdentifier(identifier);
+  if (!existing) {
+    throw buildServiceError("Cobrança ASAAS não encontrada.", 404);
+  }
+
+  if (
+    existing.deleted ||
+    TERMINAL_PAYMENT_STATUSES.has(
+      String(existing.status || "").trim().toUpperCase(),
+    )
+  ) {
+    return serializeCharge(existing);
+  }
+
+  const { apiKey, environment } = await getAsaasRuntime();
+  const payment = await asaasRequest({
+    apiKey,
+    environment,
+    method: "POST",
+    path: `/payments/${existing.asaas_payment_id}/receiveInCash`,
+    body: buildReceiveInCashPayload(options),
+  });
+
+  const row = await upsertAsaasChargeRecord({
+    id: existing.id,
+    payment,
+    event: "PAYMENT_RECEIVED",
+    clienteId: existing.cliente_id,
+    vendaId: existing.venda_id,
+    contaReceberId: existing.conta_receber_id,
+    contaReceberParcelaId: existing.conta_receber_parcela_id,
+    origemTipo: existing.origem_tipo,
+  });
+
+  await syncParcelaRecebimentoFromAsaas({
+    charge: row,
+    payment,
+    event: "PAYMENT_RECEIVED",
+  });
+
+  return serializeCharge(row);
+};
+
+export const confirmActiveAsaasChargeReceivedInCashByParcela = async ({
+  contaReceberParcelaId,
+  paymentDate,
+  value,
+} = {}) => {
+  const activeCharge = await loadActiveAsaasChargeByParcela(
+    contaReceberParcelaId,
+  );
+
+  if (!activeCharge) {
+    return null;
+  }
+
+  return confirmAsaasChargeReceivedInCash(activeCharge.id, {
+    paymentDate,
+    value,
+  });
 };
 
 export const getAsaasChargeByIdentifier = async (identifier) => {
