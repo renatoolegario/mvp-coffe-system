@@ -5,7 +5,10 @@ import {
   normalizeIntegrationEmailList,
   saveIntegration,
 } from "../../../../services/integrations";
-import { ensureAsaasWebhookRegistration } from "../../../../services/asaas";
+import {
+  ensureAsaasWebhookRegistration,
+  removeAsaasWebhookRegistration,
+} from "../../../../services/asaas";
 import { resolveRequestOrigin } from "../../../../utils/request";
 
 const INTEGRACOES = ["asaas", "resend"];
@@ -42,11 +45,27 @@ export default async function handler(req, res) {
     try {
       const current = await getIntegration(provedor);
       const baseConfig = payload?.config || {};
+      const requestOrigin =
+        provedor === "asaas" ? resolveRequestOrigin(req) : "";
+      const desiredWebhookUrl =
+        provedor === "asaas" && requestOrigin
+          ? `${requestOrigin}/api/v1/integracoes/asaas/webhook`
+          : "";
       const config =
         provedor === "asaas"
           ? {
-              ...baseConfig,
               environment: "production",
+              auto_charge_on_credit_sale: Boolean(
+                baseConfig.auto_charge_on_credit_sale ??
+                  current.config.auto_charge_on_credit_sale,
+              ),
+              webhook_url:
+                desiredWebhookUrl ||
+                String(baseConfig.webhook_url || current.config.webhook_url || "").trim(),
+              webhook_id: "",
+              webhook_registered_at: "",
+              webhook_error: "",
+              webhook_cleanup_error: "",
             }
           : baseConfig;
 
@@ -74,20 +93,50 @@ export default async function handler(req, res) {
         }
       }
 
+      let webhookCleanupError = "";
+
+      if (provedor === "asaas") {
+        const keyChanged = Boolean(chave) && chave !== current.key;
+        const webhookUrlChanged =
+          Boolean(config.webhook_url) &&
+          config.webhook_url !== current.config.webhook_url;
+
+        if (current.configured && current.key && (keyChanged || webhookUrlChanged)) {
+          try {
+            await removeAsaasWebhookRegistration({
+              apiKey: current.key,
+              environment: current.config.environment || "production",
+              webhookId: current.config.webhook_id,
+              webhookUrl:
+                current.config.webhook_url ||
+                config.webhook_url,
+            });
+          } catch (error) {
+            webhookCleanupError =
+              error.message ||
+              "Não foi possível remover o webhook anterior do ASAAS.";
+          }
+        }
+      }
+
       const saved = await saveIntegration({
         provider: provedor,
         key: chave,
-        config,
+        config:
+          provedor === "asaas"
+            ? {
+                ...config,
+                webhook_cleanup_error: webhookCleanupError,
+              }
+            : config,
       });
 
       let finalConfig = saved.config;
       let webhook = null;
 
       if (provedor === "asaas") {
-        const requestOrigin = resolveRequestOrigin(req);
         const webhookUrl =
-          String(saved.config.webhook_url || "").trim() ||
-          `${requestOrigin}/api/v1/integracoes/asaas/webhook`;
+          String(saved.config.webhook_url || "").trim() || desiredWebhookUrl;
 
         if (webhookUrl) {
           try {
@@ -103,6 +152,7 @@ export default async function handler(req, res) {
                 config: {
                   ...saved.config,
                   ...webhook,
+                  webhook_cleanup_error: webhookCleanupError,
                 },
               })
             ).config;
@@ -117,6 +167,7 @@ export default async function handler(req, res) {
                   webhook_error:
                     error.message ||
                     "Não foi possível registrar o webhook do ASAAS.",
+                  webhook_cleanup_error: webhookCleanupError,
                 },
               })
             ).config;

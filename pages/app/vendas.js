@@ -19,6 +19,7 @@ import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
 import { downloadWorkbookXlsx } from "../../utils/xlsx";
@@ -716,8 +717,7 @@ const VendasPage = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <TextField
-                    select
+                  <SearchableSelect
                     label="Recebimento"
                     value={receiptFilter}
                     onChange={(event) => setReceiptFilter(event.target.value)}
@@ -726,7 +726,7 @@ const VendasPage = () => {
                     <MenuItem value="TODOS">Todos</MenuItem>
                     <MenuItem value="RECEBIDO">Recebido</MenuItem>
                     <MenuItem value="NAO_RECEBIDO">Não recebido</MenuItem>
-                  </TextField>
+                  </SearchableSelect>
                 </Grid>
               </Grid>
 
@@ -982,8 +982,7 @@ const VendasPage = () => {
               <Paper key={despesa.id} variant="outlined" sx={{ p: 2 }}>
                 <Grid container spacing={1.5}>
                   <Grid item xs={12} md={6}>
-                    <TextField
-                      select
+                    <SearchableSelect
                       label="Fornecedor"
                       value={despesa.fornecedor_id}
                       onChange={(event) =>
@@ -1000,7 +999,7 @@ const VendasPage = () => {
                           {fornecedor.razao_social}
                         </MenuItem>
                       ))}
-                    </TextField>
+                    </SearchableSelect>
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <TextField
@@ -1048,8 +1047,7 @@ const VendasPage = () => {
                     />
                   </Grid>
                   <Grid item xs={12} md={4}>
-                    <TextField
-                      select
+                    <SearchableSelect
                       label="Status"
                       value={despesa.status_pagamento}
                       onChange={(event) =>
@@ -1063,7 +1061,7 @@ const VendasPage = () => {
                     >
                       <MenuItem value="A_PRAZO">A prazo</MenuItem>
                       <MenuItem value="A_VISTA">Pago na hora</MenuItem>
-                    </TextField>
+                    </SearchableSelect>
                   </Grid>
                   <Grid item xs={12} md={4}>
                     <TextField

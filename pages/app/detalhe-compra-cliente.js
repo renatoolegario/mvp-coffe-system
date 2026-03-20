@@ -379,6 +379,9 @@ const DetalheCompraClientePage = () => {
                       <TableCell>Parcela</TableCell>
                       <TableCell>Vencimento</TableCell>
                       <TableCell>Status</TableCell>
+                      <TableCell>Cobrança ASAAS</TableCell>
+                      <TableCell>Status ASAAS</TableCell>
+                      <TableCell>Link ASAAS</TableCell>
                       <TableCell>Valor programado</TableCell>
                       <TableCell>Valor recebido</TableCell>
                       <TableCell>Forma real</TableCell>
@@ -391,6 +394,28 @@ const DetalheCompraClientePage = () => {
                         <TableCell>{parcela.parcela_num}</TableCell>
                         <TableCell>{formatDate(parcela.vencimento)}</TableCell>
                         <TableCell>{parcela.status || "-"}</TableCell>
+                        <TableCell>
+                          {parcela.asaas_cobranca_emitida ? "Sim" : "Nao"}
+                        </TableCell>
+                        <TableCell>
+                          {parcela.asaas_cobranca_status || "-"}
+                        </TableCell>
+                        <TableCell>
+                          {parcela.asaas_cobranca_link ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              component="a"
+                              href={parcela.asaas_cobranca_link}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Abrir
+                            </Button>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
                         <TableCell>
                           {formatCurrency(parcela.valor_programado ?? parcela.valor)}
                         </TableCell>

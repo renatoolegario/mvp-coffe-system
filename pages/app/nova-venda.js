@@ -3,6 +3,11 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   Drawer,
   FormControlLabel,
@@ -25,6 +30,7 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import StockStatusChip from "../../components/atomic/StockStatusChip";
 import { useDataStore } from "../../hooks/useDataStore";
 import { authenticatedFetch } from "../../hooks/useSession";
@@ -293,7 +299,10 @@ const NovaVendaPage = () => {
   const [infoAnchorEl, setInfoAnchorEl] = useState(null);
   const [infoItemId, setInfoItemId] = useState(null);
   const [asaasDisponivel, setAsaasDisponivel] = useState(false);
-  const [asaasBillingType, setAsaasBillingType] = useState("BOLETO");
+  const [asaasAutoCharge, setAsaasAutoCharge] = useState(false);
+  const [asaasPromptOpen, setAsaasPromptOpen] = useState(false);
+  const [asaasPromptLoading, setAsaasPromptLoading] = useState(false);
+  const [pendingAsaasSale, setPendingAsaasSale] = useState(null);
   const [submitMode, setSubmitMode] = useState("");
   const [feedback, setFeedback] = useState({
     open: false,
@@ -685,8 +694,10 @@ const NovaVendaPage = () => {
           (item) => item.provedor === "asaas",
         );
         setAsaasDisponivel(Boolean(asaas?.configurado));
+        setAsaasAutoCharge(Boolean(asaas?.config?.auto_charge_on_credit_sale));
       } catch (error) {
         setAsaasDisponivel(false);
+        setAsaasAutoCharge(false);
       }
     };
 
@@ -728,7 +739,7 @@ const NovaVendaPage = () => {
             venda_id: vendaId,
             conta_receber_id: contaReceberId,
             conta_receber_parcela_id: parcela.id,
-            billing_type: asaasBillingType,
+            billing_type: "UNDEFINED",
             due_date: String(parcela.vencimento || "").slice(0, 10),
             value: parcela.valor,
             origem_tipo: "VENDA",
@@ -753,9 +764,50 @@ const NovaVendaPage = () => {
     return data;
   };
 
-  const handleSubmit = async (mode = "sale_only") => {
+  const closeAsaasPrompt = () => {
+    setAsaasPromptOpen(false);
+    setAsaasPromptLoading(false);
+    setPendingAsaasSale(null);
+  };
+
+  const handleDeclineAsaasPrompt = () => {
+    closeAsaasPrompt();
+    setFeedback({
+      open: true,
+      severity: "success",
+      message:
+        "Venda registrada com sucesso. A cobrança ASAAS pode ser emitida depois em Contas a Receber.",
+    });
+  };
+
+  const handleConfirmAsaasPrompt = async () => {
+    if (!pendingAsaasSale || asaasPromptLoading) return;
+    setAsaasPromptLoading(true);
+
+    try {
+      await createAsaasChargesForSale(pendingAsaasSale);
+      closeAsaasPrompt();
+      setFeedback({
+        open: true,
+        severity: "success",
+        message:
+          "Venda registrada e cobranças ASAAS emitidas com sucesso para as parcelas.",
+      });
+    } catch (error) {
+      closeAsaasPrompt();
+      setFeedback({
+        open: true,
+        severity: "warning",
+        message:
+          error.message ||
+          "Venda registrada, mas não foi possível emitir as cobranças ASAAS.",
+      });
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!canSubmit || submitMode) return;
-    setSubmitMode(mode);
+    setSubmitMode("saving_sale");
 
     const dataEntrega = vendaLocal
       ? todayDate()
@@ -822,15 +874,6 @@ const NovaVendaPage = () => {
         return;
       }
 
-      if (mode === "sale_and_charge") {
-        await createAsaasChargesForSale({
-          clienteId,
-          vendaId: resultado.vendaId,
-          contaReceberId: resultado.contaReceberId,
-          parcelasCriadas: resultado.parcelas,
-        });
-      }
-
       if (vendaLocal) {
         await confirmarEntregaVenda({
           venda_id: resultado.vendaId,
@@ -839,19 +882,46 @@ const NovaVendaPage = () => {
         });
       }
 
+      const asaasPayload = {
+        clienteId,
+        vendaId: resultado.vendaId,
+        contaReceberId: resultado.contaReceberId,
+        parcelasCriadas: resultado.parcelas,
+      };
+      const deveTratarAsaas =
+        tipoPagamento === "A_PRAZO" &&
+        asaasDisponivel &&
+        Array.isArray(resultado.parcelas) &&
+        resultado.parcelas.length > 0;
+
       resetForm();
+
+      if (deveTratarAsaas && asaasAutoCharge) {
+        await createAsaasChargesForSale(asaasPayload);
+        setFeedback({
+          open: true,
+          severity: "success",
+          message:
+            "Venda registrada e cobranças ASAAS emitidas automaticamente para as parcelas.",
+        });
+        return;
+      }
+
+      if (deveTratarAsaas) {
+        setPendingAsaasSale(asaasPayload);
+        setAsaasPromptOpen(true);
+        return;
+      }
+
       setFeedback({
         open: true,
         severity: "success",
-        message:
-          mode === "sale_and_charge"
-            ? "Venda registrada e cobrança ASAAS criada com sucesso."
-            : "Venda registrada com sucesso.",
+        message: "Venda registrada com sucesso.",
       });
     } catch (error) {
       setFeedback({
         open: true,
-        severity: mode === "sale_and_charge" ? "warning" : "error",
+        severity: "error",
         message: error.message || "Ocorreu um erro ao registrar a venda.",
       });
     } finally {
@@ -889,7 +959,7 @@ const NovaVendaPage = () => {
         component="form"
         onSubmit={(event) => {
           event.preventDefault();
-          handleSubmit("sale_only");
+          handleSubmit();
         }}
       >
         <Grid container spacing={3} alignItems="flex-start">
@@ -901,8 +971,7 @@ const NovaVendaPage = () => {
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
-                    <TextField
-                      select
+                    <SearchableSelect
                       label="Cliente"
                       value={clienteId}
                       onChange={(event) => setClienteId(event.target.value)}
@@ -914,7 +983,7 @@ const NovaVendaPage = () => {
                           {cliente.nome}
                         </MenuItem>
                       ))}
-                    </TextField>
+                    </SearchableSelect>
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -968,8 +1037,7 @@ const NovaVendaPage = () => {
                   Pagamento
                 </Typography>
                 <Stack spacing={2}>
-                  <TextField
-                    select
+                  <SearchableSelect
                     label="Tipo"
                     value={tipoPagamento}
                     onChange={(event) => setTipoPagamento(event.target.value)}
@@ -978,7 +1046,7 @@ const NovaVendaPage = () => {
                     <MenuItem value="A_PRAZO" disabled={clienteBalcao}>
                       A prazo
                     </MenuItem>
-                  </TextField>
+                  </SearchableSelect>
 
                   {clienteBalcao ? (
                     <Alert severity="warning">
@@ -987,8 +1055,7 @@ const NovaVendaPage = () => {
                   ) : null}
 
                   {tipoPagamento === "A_VISTA" ? (
-                    <TextField
-                      select
+                    <SearchableSelect
                       label="Forma"
                       value={formaPagamentoVista}
                       onChange={(event) =>
@@ -1000,7 +1067,7 @@ const NovaVendaPage = () => {
                           {forma.label}
                         </MenuItem>
                       ))}
-                    </TextField>
+                    </SearchableSelect>
                   ) : (
                     <>
                       <TextField
@@ -1060,8 +1127,7 @@ const NovaVendaPage = () => {
                               />
                             </Grid>
                             <Grid item xs={12} sm={3}>
-                              <TextField
-                                select
+                              <SearchableSelect
                                 label="Forma"
                                 value={parcela.forma_pagamento}
                                 onChange={(event) =>
@@ -1081,7 +1147,7 @@ const NovaVendaPage = () => {
                                     {forma.label}
                                   </MenuItem>
                                 ))}
-                              </TextField>
+                              </SearchableSelect>
                             </Grid>
                           </Grid>
                         ))}
@@ -1097,8 +1163,7 @@ const NovaVendaPage = () => {
                 </Typography>
                 <Grid container spacing={1.5}>
                   <Grid item xs={12} sm={4}>
-                    <TextField
-                      select
+                    <SearchableSelect
                       label="Tipo"
                       value={descontoTipo}
                       onChange={(event) => setDescontoTipo(event.target.value)}
@@ -1106,7 +1171,7 @@ const NovaVendaPage = () => {
                     >
                       <MenuItem value="VALOR">Valor</MenuItem>
                       <MenuItem value="PERCENTUAL">Percentual</MenuItem>
-                    </TextField>
+                    </SearchableSelect>
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField
@@ -1138,8 +1203,7 @@ const NovaVendaPage = () => {
                 </Typography>
                 <Grid container spacing={1.5}>
                   <Grid item xs={12} sm={4}>
-                    <TextField
-                      select
+                    <SearchableSelect
                       label="Tipo"
                       value={acrescimoTipo}
                       onChange={(event) => setAcrescimoTipo(event.target.value)}
@@ -1147,7 +1211,7 @@ const NovaVendaPage = () => {
                     >
                       <MenuItem value="VALOR">Valor</MenuItem>
                       <MenuItem value="PERCENTUAL">Percentual</MenuItem>
-                    </TextField>
+                    </SearchableSelect>
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField
@@ -1194,27 +1258,21 @@ const NovaVendaPage = () => {
                     Total final: {formatCurrency(totalFinal)}
                   </Typography>
                 </Stack>
-                {asaasDisponivel ? (
-                  <TextField
-                    sx={{ mt: 2 }}
-                    select
-                    label="Cobrança ASAAS"
-                    value={asaasBillingType}
-                    onChange={(event) =>
-                      setAsaasBillingType(event.target.value)
-                    }
-                    fullWidth
-                  >
-                    <MenuItem value="BOLETO">Boleto</MenuItem>
-                    <MenuItem value="PIX">Pix</MenuItem>
-                    <MenuItem value="UNDEFINED">A definir</MenuItem>
-                  </TextField>
-                ) : (
+                {!asaasDisponivel ? (
                   <Alert sx={{ mt: 2 }} severity="info">
                     Configure a chave do ASAAS em Configuração da Empresa para
                     habilitar a geração da cobrança junto da venda.
                   </Alert>
-                )}
+                ) : tipoPagamento === "A_PRAZO" ? (
+                  <Alert
+                    sx={{ mt: 2 }}
+                    severity={asaasAutoCharge ? "success" : "info"}
+                  >
+                    {asaasAutoCharge
+                      ? 'Ao registrar esta venda a prazo, o sistema vai emitir automaticamente uma cobrança ASAAS por parcela no tipo "Pergunte ao cliente".'
+                      : 'Ao registrar esta venda a prazo, o sistema vai perguntar ao final se deseja emitir as cobranças ASAAS das parcelas no tipo "Pergunte ao cliente".'}
+                  </Alert>
+                ) : null}
                 <Stack spacing={1.2} sx={{ mt: 2 }}>
                   <Button
                     type="submit"
@@ -1225,18 +1283,6 @@ const NovaVendaPage = () => {
                   >
                     Registrar venda ({formatCurrency(totalFinal)})
                   </Button>
-                  {asaasDisponivel ? (
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      size="large"
-                      fullWidth
-                      disabled={!canSubmit || Boolean(submitMode)}
-                      onClick={() => handleSubmit("sale_and_charge")}
-                    >
-                      Gerar cobrança via ASAAS
-                    </Button>
-                  ) : null}
                 </Stack>
               </Paper>
             </Stack>
@@ -1283,8 +1329,7 @@ const NovaVendaPage = () => {
                           >
                             <InfoOutlinedIcon fontSize="small" />
                           </IconButton>
-                          <TextField
-                            select
+                          <SearchableSelect
                             label="Produto"
                             value={item.insumo_id}
                             onChange={(event) =>
@@ -1301,13 +1346,12 @@ const NovaVendaPage = () => {
                                 {insumo.nome}
                               </MenuItem>
                             ))}
-                          </TextField>
+                          </SearchableSelect>
                         </Stack>
                       </Grid>
 
                       <Grid item xs={12} md={2}>
-                        <TextField
-                          select
+                        <SearchableSelect
                           label="Unidade"
                           value={item.unidade_codigo}
                           onChange={(event) =>
@@ -1327,7 +1371,7 @@ const NovaVendaPage = () => {
                               {unidade.label}
                             </MenuItem>
                           ))}
-                        </TextField>
+                        </SearchableSelect>
                       </Grid>
 
                       <Grid item xs={12} md={2}>
@@ -1599,6 +1643,37 @@ const NovaVendaPage = () => {
           ) : null}
         </Stack>
       </Drawer>
+
+      <Dialog
+        open={asaasPromptOpen}
+        onClose={asaasPromptLoading ? undefined : handleDeclineAsaasPrompt}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Emitir cobranças ASAAS agora?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            A venda já foi registrada. Deseja emitir agora uma cobrança ASAAS
+            para cada parcela desta venda a prazo?
+          </DialogContentText>
+          <Alert sx={{ mt: 2 }} severity="info">
+            O tipo usado será &quot;Pergunte ao cliente&quot; e o vínculo será
+            salvo diretamente em cada parcela.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeclineAsaasPrompt} disabled={asaasPromptLoading}>
+            Emitir depois
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmAsaasPrompt}
+            disabled={asaasPromptLoading}
+          >
+            Emitir agora
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={feedback.open}

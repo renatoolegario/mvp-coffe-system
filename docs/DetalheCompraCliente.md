@@ -20,6 +20,7 @@ Tela de aprofundamento de uma venda específica, acessada a partir do histórico
   - status de entrega
 - Lista os itens vendidos com quantidade informada, quantidade em `kg`, preço e total.
 - Lista as parcelas vinculadas à conta a receber da venda.
+- Mostra em cada parcela o snapshot da cobrança ASAAS: emitida ou não, status e link salvo.
 - Consolida eventos financeiros da venda:
   - descontos
   - acréscimos

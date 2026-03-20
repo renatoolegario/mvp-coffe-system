@@ -2,13 +2,10 @@ import {
   Alert,
   Box,
   Chip,
-  FormControl,
   Grid,
   IconButton,
-  InputLabel,
   MenuItem,
   Paper,
-  Select,
   Stack,
   Table,
   TableBody,
@@ -30,6 +27,7 @@ import {
 } from "@mui/icons-material";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { authenticatedFetch } from "../../hooks/useSession";
 
@@ -398,21 +396,19 @@ const AppHome = () => {
               spacing={2}
               alignItems={{ xs: "stretch", md: "center" }}
             >
-              <FormControl size="small" sx={{ minWidth: 220 }}>
-                <InputLabel id="periodo-dashboard-label">Período</InputLabel>
-                <Select
-                  labelId="periodo-dashboard-label"
-                  label="Período"
-                  value={periodPreset}
-                  onChange={(event) => setPeriodPreset(event.target.value)}
-                >
-                  {PERIOD_OPTIONS.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <SearchableSelect
+                size="small"
+                label="Período"
+                value={periodPreset}
+                onChange={(event) => setPeriodPreset(event.target.value)}
+                sx={{ minWidth: 220 }}
+              >
+                {PERIOD_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </SearchableSelect>
 
               {periodPreset === "CUSTOM" ? (
                 <>

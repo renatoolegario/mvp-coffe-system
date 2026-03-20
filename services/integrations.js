@@ -6,6 +6,12 @@ const PROVIDERS = ["asaas", "resend"];
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const normalizeText = (value) => String(value || "").trim();
+const normalizeBoolean = (value) => {
+  if (typeof value === "boolean") return value;
+
+  const normalized = normalizeText(value).toLowerCase();
+  return ["1", "true", "sim", "yes", "on"].includes(normalized);
+};
 
 const toEmailList = (value) => {
   const source = Array.isArray(value)
@@ -35,6 +41,14 @@ export const normalizeAsaasConfig = (config = {}) => ({
     config.webhook_registered_at || config.webhookRegisteredAt,
   ),
   webhook_error: normalizeText(config.webhook_error || config.webhookError),
+  webhook_cleanup_error: normalizeText(
+    config.webhook_cleanup_error || config.webhookCleanupError,
+  ),
+  auto_charge_on_credit_sale: normalizeBoolean(
+    config.auto_charge_on_credit_sale ??
+      config.autoChargeOnCreditSale ??
+      config.cobranca_automatica_venda_prazo,
+  ),
 });
 
 export const normalizeResendConfig = (config = {}) => ({

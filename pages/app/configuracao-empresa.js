@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   FormControl,
+  FormControlLabel,
   Grid,
   InputLabel,
   MenuItem,
@@ -10,6 +11,7 @@ import {
   Select,
   Snackbar,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
@@ -27,9 +29,11 @@ const integracoesIniciais = {
     configurado: false,
     editando: true,
     environment: "production",
+    auto_charge_on_credit_sale: false,
     webhook_url: "",
     webhook_registered_at: "",
     webhook_error: "",
+    webhook_cleanup_error: "",
   },
   resend: {
     chave: "",
@@ -180,7 +184,6 @@ const ConfiguracaoEmpresaPage = () => {
   const [codigoAuditoriaBusca, setCodigoAuditoriaBusca] = useState("");
   const [auditoriaRealizada, setAuditoriaRealizada] = useState(false);
   const [swaggerErro, setSwaggerErro] = useState("");
-  const [appOrigin, setAppOrigin] = useState("");
   const swaggerContainerRef = useRef(null);
 
   const hydrated = useDataStore((state) => state.hydrated);
@@ -322,14 +325,6 @@ const ConfiguracaoEmpresaPage = () => {
     ],
   );
 
-  const defaultWebhookUrl = useMemo(
-    () =>
-      appOrigin
-        ? `${appOrigin}/api/v1/integracoes/asaas/webhook`
-        : "",
-    [appOrigin],
-  );
-
   const auditoriaRegistros = useMemo(
     () => buildAuditTrail(codigoAuditoriaBusca, auditSources),
     [codigoAuditoriaBusca, auditSources],
@@ -378,9 +373,14 @@ const ConfiguracaoEmpresaPage = () => {
             ...(provedor === "asaas"
               ? {
                   environment: "production",
+                  auto_charge_on_credit_sale: Boolean(
+                    config.auto_charge_on_credit_sale,
+                  ),
                   webhook_url: config.webhook_url || "",
                   webhook_registered_at: config.webhook_registered_at || "",
                   webhook_error: config.webhook_error || "",
+                  webhook_cleanup_error:
+                    config.webhook_cleanup_error || "",
                 }
               : {}),
             ...(provedor === "resend"
@@ -401,11 +401,6 @@ const ConfiguracaoEmpresaPage = () => {
       setIntegracoes(integracoesIniciais);
     }
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setAppOrigin(window.location.origin);
-  }, []);
 
   useEffect(() => {
     loadFaixas();
@@ -504,6 +499,18 @@ const ConfiguracaoEmpresaPage = () => {
     const integracao = integracoes[provedor];
     const chave = integracao?.chave?.trim();
 
+    if (provedor === "asaas" && integracao?.editando && !chave) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message:
+          integracao?.configurado
+            ? "Informe a nova chave do ASAAS para atualizar a integração."
+            : "Informe a chave da integração antes de salvar.",
+      });
+      return;
+    }
+
     if (!chave && !integracao?.configurado) {
       setFeedback({
         open: true,
@@ -517,7 +524,9 @@ const ConfiguracaoEmpresaPage = () => {
 
     if (provedor === "asaas") {
       config.environment = "production";
-      config.webhook_url = integracao.webhook_url || defaultWebhookUrl;
+      config.auto_charge_on_credit_sale = Boolean(
+        integracao.auto_charge_on_credit_sale,
+      );
     }
 
     if (provedor === "resend") {
@@ -580,11 +589,16 @@ const ConfiguracaoEmpresaPage = () => {
           ...(provedor === "asaas"
             ? {
                 environment: "production",
+                auto_charge_on_credit_sale: Boolean(
+                  data.config?.auto_charge_on_credit_sale,
+                ),
                 webhook_url:
-                  data.config?.webhook_url || config.webhook_url || "",
+                  data.config?.webhook_url || "",
                 webhook_registered_at:
                   data.config?.webhook_registered_at || "",
                 webhook_error: data.config?.webhook_error || "",
+                webhook_cleanup_error:
+                  data.config?.webhook_cleanup_error || "",
               }
             : {}),
           ...(provedor === "resend"
@@ -601,36 +615,23 @@ const ConfiguracaoEmpresaPage = () => {
       }));
       setFeedback({
         open: true,
-        severity: "success",
+        severity:
+          provedor === "asaas" &&
+          (data.webhook?.error || data.config?.webhook_cleanup_error)
+            ? "warning"
+            : "success",
         message:
-          provedor === "asaas" && data.webhook?.error
-            ? `Integração ${provedor.toUpperCase()} salva, mas o webhook precisa ser revisado.`
-            : `Integração ${provedor.toUpperCase()} salva com sucesso.`,
+          provedor === "asaas" && data.config?.webhook_cleanup_error
+            ? "Integração ASAAS salva, mas a remoção do webhook anterior precisa ser revisada."
+            : provedor === "asaas" && data.webhook?.error
+              ? "Integração ASAAS salva, mas o novo webhook precisa ser revisado."
+              : `Integração ${provedor.toUpperCase()} salva com sucesso.`,
       });
     } catch (error) {
       setFeedback({
         open: true,
         severity: "error",
         message: "Erro ao salvar integração.",
-      });
-    }
-  };
-
-  const handleCopyWebhook = async (value) => {
-    if (!value) return;
-
-    try {
-      await navigator.clipboard.writeText(value);
-      setFeedback({
-        open: true,
-        severity: "success",
-        message: "URL do webhook copiada com sucesso.",
-      });
-    } catch (error) {
-      setFeedback({
-        open: true,
-        severity: "error",
-        message: "Não foi possível copiar a URL do webhook.",
       });
     }
   };
@@ -767,87 +768,115 @@ const ConfiguracaoEmpresaPage = () => {
         <Paper sx={{ p: 3 }}>
           <Stack spacing={3}>
             <Typography variant="body2" color="text.secondary">
-              Configure as integrações externas. Por segurança, a chave não é
-              exibida novamente depois de salva, mas você pode manter a chave
-              atual ao editar apenas os metadados.
+              Configure as integrações externas. No ASAAS, o webhook é
+              registrado automaticamente ao salvar a chave e é recriado quando
+              a chave for alterada.
             </Typography>
 
             {Object.entries(integracoes).map(([provedor, integracao]) => {
               const bloqueado = integracao.configurado && !integracao.editando;
-              const webhookUrl = integracao.webhook_url || defaultWebhookUrl;
+              const asaasTemPendencia = Boolean(
+                integracao.webhook_error || integracao.webhook_cleanup_error,
+              );
               return (
                 <Paper key={provedor} variant="outlined" sx={{ p: 2.5 }}>
                   <Stack spacing={2}>
-                    <Grid container spacing={2} alignItems="center">
-                      <Grid item xs={12} md={4}>
-                        <Typography fontWeight={700}>
-                          {provedor.toUpperCase()}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12} md={5}>
-                        <TextField
-                          fullWidth
-                          type="password"
-                          label="Chave da integração"
-                          placeholder={
-                            bloqueado
-                              ? "••••••••••••"
-                              : integracao.configurado
-                                ? "Deixe em branco para manter a chave atual"
-                                : "Digite a chave"
-                          }
-                          value={bloqueado ? "" : integracao.chave}
-                          onChange={handleIntegracaoField(provedor)}
-                          disabled={bloqueado}
-                        />
-                      </Grid>
-                      <Grid item xs={12} md={3}>
-                        {bloqueado ? (
-                          <Button
-                            variant="outlined"
-                            fullWidth
-                            onClick={() => handleEditarIntegracao(provedor)}
-                          >
-                            Editar
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="contained"
-                            fullWidth
-                            onClick={() => handleSalvarIntegracao(provedor)}
-                          >
-                            Salvar
-                          </Button>
-                        )}
-                      </Grid>
-                    </Grid>
-
                     {provedor === "asaas" ? (
                       <Stack spacing={2}>
-                        <Stack
-                          direction={{ xs: "column", md: "row" }}
-                          spacing={1.5}
-                        >
-                          <TextField
-                            fullWidth
-                            label="URL pública do webhook"
-                            value={webhookUrl}
-                            InputProps={{ readOnly: true }}
-                          />
-                          <Button
-                            variant="outlined"
-                            onClick={() => handleCopyWebhook(webhookUrl)}
-                            disabled={!webhookUrl}
-                          >
-                            Copiar URL
-                          </Button>
-                        </Stack>
+                        <Grid container spacing={2} alignItems="center">
+                          <Grid item xs={12} md={4}>
+                            <Typography fontWeight={700}>ASAAS</Typography>
+                          </Grid>
+                          {bloqueado ? (
+                            <Grid item xs={12} md={8}>
+                              <Button
+                                variant="outlined"
+                                fullWidth
+                                onClick={() => handleEditarIntegracao(provedor)}
+                              >
+                                Alterar chave
+                              </Button>
+                            </Grid>
+                          ) : (
+                            <>
+                              <Grid item xs={12} md={5}>
+                                <TextField
+                                  fullWidth
+                                  type="password"
+                                  label={
+                                    integracao.configurado
+                                      ? "Nova chave da integração"
+                                      : "Chave da integração"
+                                  }
+                                  placeholder={
+                                    integracao.configurado
+                                      ? "Digite a nova chave"
+                                      : "Digite a chave"
+                                  }
+                                  value={integracao.chave}
+                                  onChange={handleIntegracaoField(provedor)}
+                                />
+                              </Grid>
+                              <Grid item xs={12} md={3}>
+                                <Button
+                                  variant="contained"
+                                  fullWidth
+                                  onClick={() =>
+                                    handleSalvarIntegracao(provedor)
+                                  }
+                                >
+                                  {integracao.configurado
+                                    ? "Atualizar chave"
+                                    : "Salvar"}
+                                </Button>
+                              </Grid>
+                            </>
+                          )}
+                        </Grid>
 
                         <Typography variant="body2" color="text.secondary">
-                          Cole essa URL no cadastro de webhook do ASAAS. Ao
-                          salvar a integração, o sistema também tenta fazer esse
-                          vínculo automaticamente via API.
+                          Quando a chave do ASAAS for salva, o sistema registra
+                          o webhook automaticamente. Se a chave for trocada, o
+                          webhook anterior é removido antes do novo cadastro.
                         </Typography>
+
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={Boolean(
+                                integracao.auto_charge_on_credit_sale,
+                              )}
+                              onChange={(event) =>
+                                setIntegracoes((prev) => ({
+                                  ...prev,
+                                  [provedor]: {
+                                    ...prev[provedor],
+                                    auto_charge_on_credit_sale:
+                                      event.target.checked,
+                                  },
+                                }))
+                              }
+                              disabled={bloqueado}
+                            />
+                          }
+                          label="Cobrar automaticamente vendas a prazo no ASAAS"
+                        />
+
+                        <Alert severity="info">
+                          {integracao.auto_charge_on_credit_sale
+                            ? "Cada venda a prazo já emite automaticamente uma cobrança ASAAS por parcela, sem perguntar ao usuário."
+                            : "Cada venda a prazo continua perguntando ao usuário, ao final do cadastro, se deseja emitir as cobranças ASAAS das parcelas."}
+                        </Alert>
+
+                        {integracao.configurado && bloqueado ? (
+                          <Alert
+                            severity={asaasTemPendencia ? "warning" : "success"}
+                          >
+                            {asaasTemPendencia
+                              ? "ASAAS salvo, mas a sincronização do webhook precisa de revisão."
+                              : "ASAAS integrado com sucesso."}
+                          </Alert>
+                        ) : null}
 
                         {integracao.webhook_registered_at ? (
                           <Alert severity="success">
@@ -857,12 +886,7 @@ const ConfiguracaoEmpresaPage = () => {
                             )}
                             .
                           </Alert>
-                        ) : (
-                          <Alert severity="info">
-                            O webhook ainda não foi confirmado. Você pode usar a
-                            URL acima para cadastrar manualmente no ASAAS.
-                          </Alert>
-                        )}
+                        ) : null}
 
                         {integracao.webhook_error ? (
                           <Alert severity="warning">
@@ -870,11 +894,70 @@ const ConfiguracaoEmpresaPage = () => {
                             {integracao.webhook_error}
                           </Alert>
                         ) : null}
-                      </Stack>
-                    ) : null}
 
-                    {provedor === "resend" ? (
+                        {integracao.webhook_cleanup_error ? (
+                          <Alert severity="warning">
+                            Remoção do webhook anterior:{" "}
+                            {integracao.webhook_cleanup_error}
+                          </Alert>
+                        ) : null}
+
+                        {!integracao.webhook_registered_at &&
+                        !asaasTemPendencia &&
+                        !integracao.configurado ? (
+                          <Alert severity="info">
+                            Salve a chave para concluir a integração do ASAAS.
+                          </Alert>
+                        ) : null}
+                      </Stack>
+                    ) : (
                       <Stack spacing={2}>
+                        <Grid container spacing={2} alignItems="center">
+                          <Grid item xs={12} md={4}>
+                            <Typography fontWeight={700}>
+                              {provedor.toUpperCase()}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} md={5}>
+                            <TextField
+                              fullWidth
+                              type="password"
+                              label="Chave da integração"
+                              placeholder={
+                                bloqueado
+                                  ? "••••••••••••"
+                                  : integracao.configurado
+                                    ? "Deixe em branco para manter a chave atual"
+                                    : "Digite a chave"
+                              }
+                              value={bloqueado ? "" : integracao.chave}
+                              onChange={handleIntegracaoField(provedor)}
+                              disabled={bloqueado}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={3}>
+                            {bloqueado ? (
+                              <Button
+                                variant="outlined"
+                                fullWidth
+                                onClick={() => handleEditarIntegracao(provedor)}
+                              >
+                                Editar
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="contained"
+                                fullWidth
+                                onClick={() =>
+                                  handleSalvarIntegracao(provedor)
+                                }
+                              >
+                                Salvar
+                              </Button>
+                            )}
+                          </Grid>
+                        </Grid>
+
                         <TextField
                           fullWidth
                           label="E-mail remetente"
@@ -900,7 +983,7 @@ const ConfiguracaoEmpresaPage = () => {
                           disabled={bloqueado}
                         />
                       </Stack>
-                    ) : null}
+                    )}
                   </Stack>
                 </Paper>
               );

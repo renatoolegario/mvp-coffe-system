@@ -23,6 +23,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency, formatDate } from "../../utils/format";
 
@@ -476,6 +477,9 @@ const ContasPagarPage = () => {
 
     return rows.map((row) => {
       const statusChip = getStatusChip(row.parcela.status, row.isVencida);
+      const pagamentoStatusLabel = row.parcela.data_pagamento
+        ? renderPagamentoCell(row.parcela)
+        : null;
 
       return (
         <TableRow
@@ -520,8 +524,22 @@ const ContasPagarPage = () => {
               Ref: {row.conta?.origem_id || "-"}
             </Typography>
           </TableCell>
-          <TableCell>
-            <Stack spacing={1}>
+          <TableCell sx={{ verticalAlign: "middle" }}>
+            {pagamentoStatusLabel ? (
+              <Stack spacing={1}>
+                <Chip
+                  size="small"
+                  label={statusChip.label}
+                  color={statusChip.color}
+                  variant={
+                    row.parcela.status === "ABERTA" ? "filled" : "outlined"
+                  }
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {pagamentoStatusLabel}
+                </Typography>
+              </Stack>
+            ) : (
               <Chip
                 size="small"
                 label={statusChip.label}
@@ -530,10 +548,7 @@ const ContasPagarPage = () => {
                   row.parcela.status === "ABERTA" ? "filled" : "outlined"
                 }
               />
-              <Typography variant="caption" color="text.secondary">
-                {renderPagamentoCell(row.parcela)}
-              </Typography>
-            </Stack>
+            )}
           </TableCell>
           <TableCell align="right">
             <Stack
@@ -576,8 +591,7 @@ const ContasPagarPage = () => {
           <Typography variant="h6">Filtros</Typography>
 
           <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <TextField
-              select
+            <SearchableSelect
               label="Fornecedor"
               value={fornecedorFiltroId}
               onChange={(event) => setFornecedorFiltroId(event.target.value)}
@@ -589,7 +603,7 @@ const ContasPagarPage = () => {
                   {fornecedor.razao_social}
                 </MenuItem>
               ))}
-            </TextField>
+            </SearchableSelect>
 
             <TextField
               label="Busca rápida"
@@ -888,8 +902,7 @@ const ContasPagarPage = () => {
             fullWidth
           />
 
-          <TextField
-            select
+          <SearchableSelect
             label="Forma de pagamento"
             value={confirmModal.formaPagamento}
             onChange={(event) =>
@@ -905,15 +918,14 @@ const ContasPagarPage = () => {
                 {forma.label}
               </MenuItem>
             ))}
-          </TextField>
+          </SearchableSelect>
 
           {exigeAcaoDiferenca ? (
             <>
               <Alert severity="warning">
                 Diferença identificada: {formatCurrency(diferencaModal)}
               </Alert>
-              <TextField
-                select
+              <SearchableSelect
                 label="Como tratar a diferença"
                 value={confirmModal.acaoDiferenca}
                 onChange={(event) =>
@@ -933,7 +945,7 @@ const ContasPagarPage = () => {
                 >
                   Gerar nova cobrança com a diferença
                 </MenuItem>
-              </TextField>
+              </SearchableSelect>
               {bloqueiaJogarProxima ? (
                 <Typography variant="caption" color="error.main">
                   Só é possível gerar nova cobrança quando a conta possui

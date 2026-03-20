@@ -12,6 +12,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useMemo, useState } from "react";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import StockStatusChip from "../../components/atomic/StockStatusChip";
@@ -171,8 +172,7 @@ const ProducaoPage = () => {
                   >
                     <Grid container spacing={1.5} alignItems="center">
                       <Grid item xs={12} md={4}>
-                        <TextField
-                          select
+                        <SearchableSelect
                           label="Insumo"
                           value={item.insumo_id}
                           onChange={(event) =>
@@ -189,11 +189,10 @@ const ProducaoPage = () => {
                               {insumo.nome}
                             </MenuItem>
                           ))}
-                        </TextField>
+                        </SearchableSelect>
                       </Grid>
                       <Grid item xs={12} md={2}>
-                        <TextField
-                          select
+                        <SearchableSelect
                           label="Unidade"
                           value={item.unidade}
                           onChange={(event) =>
@@ -216,7 +215,7 @@ const ProducaoPage = () => {
                               {unidade.label}
                             </MenuItem>
                           ))}
-                        </TextField>
+                        </SearchableSelect>
                       </Grid>
                       <Grid item xs={12} md={2}>
                         <TextField

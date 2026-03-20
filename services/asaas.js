@@ -52,6 +52,11 @@ const normalizePhone = (value) =>
     .replace(/\D/g, "")
     .slice(-11);
 
+const normalizeOptionalText = (value) => {
+  const normalized = String(value || "").trim();
+  return normalized || null;
+};
+
 const normalizeAsaasBillingType = (value) => {
   const normalized = String(value || "")
     .trim()
@@ -235,17 +240,17 @@ const findExistingAsaasCustomer = async ({
     }
   }
 
-  const attempts = [
-    {
-      cpfCnpj: normalizeCpfCnpj(cliente.cpf_cnpj),
-    },
-    {
-      email: normalizeEmail(cliente.email),
-    },
-    {
-      name: String(cliente.nome || "").trim(),
-    },
-  ];
+  const cpfCnpj = normalizeCpfCnpj(cliente.cpf_cnpj);
+  const attempts = cpfCnpj
+    ? [{ cpfCnpj }]
+    : [
+        {
+          email: normalizeEmail(cliente.email),
+        },
+        {
+          name: String(cliente.nome || "").trim(),
+        },
+      ];
 
   for (const params of attempts) {
     const hasFilter = Object.values(params).some(Boolean);
@@ -581,7 +586,13 @@ export const upsertAsaasChargeRecord = async ({
     ],
   );
 
-  return result.rows[0];
+  const row = result.rows[0];
+
+  await refreshContaReceberParcelaAsaasSnapshot(
+    row?.conta_receber_parcela_id || values.conta_receber_parcela_id,
+  );
+
+  return row;
 };
 
 const hasActiveChargeForParcela = async (contaReceberParcelaId) => {
@@ -623,6 +634,56 @@ const serializeCharge = (row) => ({
   ...row,
   value: toNumber(row.value),
 });
+
+const resolveAsaasChargeLink = (row = {}) =>
+  normalizeOptionalText(
+    row.invoice_url ||
+      row.invoiceUrl ||
+      row.bank_slip_url ||
+      row.bankSlipUrl,
+  );
+
+const refreshContaReceberParcelaAsaasSnapshot = async (
+  contaReceberParcelaId,
+) => {
+  const parcelaId = String(contaReceberParcelaId || "").trim();
+  if (!parcelaId) return;
+
+  const result = await query(
+    `
+      SELECT
+        status,
+        deleted,
+        invoice_url,
+        bank_slip_url
+      FROM asaas_cobrancas
+      WHERE conta_receber_parcela_id = $1
+      ORDER BY deleted ASC, atualizado_em DESC, criado_em DESC
+      LIMIT 1
+    `,
+    [parcelaId],
+  );
+
+  const charge = result.rows[0] || null;
+  const status = normalizeOptionalText(charge?.status);
+  const emitida =
+    Boolean(charge) &&
+    !charge.deleted &&
+    String(charge.status || "").trim().toUpperCase() !== "DELETED";
+  const link = resolveAsaasChargeLink(charge || {});
+
+  await query(
+    `
+      UPDATE contas_receber_parcelas
+      SET
+        asaas_cobranca_emitida = $2,
+        asaas_cobranca_status = $3,
+        asaas_cobranca_link = $4
+      WHERE id = $1
+    `,
+    [parcelaId, emitida, status, emitida ? link : null],
+  );
+};
 
 export const createAsaasCharge = async (payload = {}) => {
   const clienteId = String(payload.cliente_id || "").trim();
@@ -736,7 +797,13 @@ export const deleteAsaasCharge = async (identifier) => {
     [existing.id],
   );
 
-  return serializeCharge(result.rows[0]);
+  const row = result.rows[0];
+
+  await refreshContaReceberParcelaAsaasSnapshot(
+    row?.conta_receber_parcela_id || existing.conta_receber_parcela_id,
+  );
+
+  return serializeCharge(row);
 };
 
 export const getAsaasChargeByIdentifier = async (identifier) => {
@@ -783,11 +850,75 @@ const loadFallbackWebhookEmail = async () => {
   );
 };
 
+const resolveAsaasWebhookRuntime = async ({ apiKey, environment } = {}) => {
+  const safeApiKey = String(apiKey || "").trim();
+
+  if (!safeApiKey) {
+    return getAsaasRuntime();
+  }
+
+  return {
+    apiKey: safeApiKey,
+    environment: String(environment || "production").trim() || "production",
+    config: {},
+  };
+};
+
+const findExistingAsaasWebhook = async ({
+  apiKey,
+  environment,
+  webhookId,
+  webhookUrl,
+}) => {
+  const safeWebhookId = String(webhookId || "").trim();
+
+  if (safeWebhookId) {
+    try {
+      const webhook = await asaasRequest({
+        apiKey,
+        environment,
+        path: `/webhooks/${safeWebhookId}`,
+      });
+
+      if (webhook?.id) {
+        return webhook;
+      }
+    } catch (error) {
+      if (error.statusCode !== 404) {
+        throw error;
+      }
+    }
+  }
+
+  const safeWebhookUrl = String(webhookUrl || "").trim();
+  if (!safeWebhookUrl) {
+    return null;
+  }
+
+  const list = await asaasRequest({
+    apiKey,
+    environment,
+    path: "/webhooks",
+    searchParams: { limit: 100 },
+  });
+
+  return (
+    getListData(list).find(
+      (item) => String(item?.url || "").trim() === safeWebhookUrl,
+    ) || null
+  );
+};
+
 export const ensureAsaasWebhookRegistration = async ({
   webhookUrl,
   fallbackEmail,
+  apiKey,
+  environment,
 }) => {
-  const { apiKey, environment } = await getAsaasRuntime();
+  const runtime = await resolveAsaasWebhookRuntime({
+    apiKey,
+    environment,
+  });
   const safeWebhookUrl = String(webhookUrl || "").trim();
 
   if (!safeWebhookUrl) {
@@ -797,19 +928,17 @@ export const ensureAsaasWebhookRegistration = async ({
     );
   }
 
-  const authToken = buildAsaasWebhookAuthToken(apiKey, environment);
+  const authToken = buildAsaasWebhookAuthToken(
+    runtime.apiKey,
+    runtime.environment,
+  );
   const notificationEmail = fallbackEmail || (await loadFallbackWebhookEmail());
 
-  const list = await asaasRequest({
-    apiKey,
-    environment,
-    path: "/webhooks",
-    searchParams: { limit: 100 },
+  const existing = await findExistingAsaasWebhook({
+    apiKey: runtime.apiKey,
+    environment: runtime.environment,
+    webhookUrl: safeWebhookUrl,
   });
-
-  const existing = getListData(list).find(
-    (item) => String(item?.url || "").trim() === safeWebhookUrl,
-  );
 
   const payload = {
     name: "MVP Coffee - Cobranças",
@@ -824,15 +953,15 @@ export const ensureAsaasWebhookRegistration = async ({
 
   const webhook = existing?.id
     ? await asaasRequest({
-        apiKey,
-        environment,
+        apiKey: runtime.apiKey,
+        environment: runtime.environment,
         method: "PUT",
         path: `/webhooks/${existing.id}`,
         body: payload,
       })
     : await asaasRequest({
-        apiKey,
-        environment,
+        apiKey: runtime.apiKey,
+        environment: runtime.environment,
         method: "POST",
         path: "/webhooks",
         body: payload,
@@ -843,6 +972,45 @@ export const ensureAsaasWebhookRegistration = async ({
     webhook_url: safeWebhookUrl,
     webhook_registered_at: new Date().toISOString(),
     webhook_error: "",
+  };
+};
+
+export const removeAsaasWebhookRegistration = async ({
+  apiKey,
+  environment,
+  webhookId,
+  webhookUrl,
+}) => {
+  const runtime = await resolveAsaasWebhookRuntime({
+    apiKey,
+    environment,
+  });
+
+  const existing = await findExistingAsaasWebhook({
+    apiKey: runtime.apiKey,
+    environment: runtime.environment,
+    webhookId,
+    webhookUrl,
+  });
+
+  if (!existing?.id) {
+    return {
+      removed: false,
+      not_found: true,
+    };
+  }
+
+  await asaasRequest({
+    apiKey: runtime.apiKey,
+    environment: runtime.environment,
+    method: "DELETE",
+    path: `/webhooks/${existing.id}`,
+  });
+
+  return {
+    removed: true,
+    webhook_id: String(existing.id || "").trim(),
+    webhook_url: String(existing.url || webhookUrl || "").trim(),
   };
 };
 

@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import { Close, PersonAdd } from "@mui/icons-material";
 import { useEffect, useState } from "react";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
@@ -223,8 +224,7 @@ const UsuariosPage = () => {
               helperText={errors.senha || "Mínimo 5 dígitos numéricos."}
               required
             />
-            <TextField
-              select
+            <SearchableSelect
               label="Perfil"
               disabled={!isAdmin}
               value={form.perfil}
@@ -232,7 +232,7 @@ const UsuariosPage = () => {
             >
               <MenuItem value={PERFIS.ADMIN}>Admin</MenuItem>
               <MenuItem value={PERFIS.COMUM}>Comum</MenuItem>
-            </TextField>
+            </SearchableSelect>
             <Button
               type="submit"
               variant="contained"

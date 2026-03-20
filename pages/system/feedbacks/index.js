@@ -12,13 +12,10 @@ import {
   DialogContent,
   DialogTitle,
   Drawer,
-  FormControl,
   IconButton,
-  InputLabel,
   Link,
   MenuItem,
   Paper,
-  Select,
   Stack,
   Table,
   TableBody,
@@ -35,6 +32,7 @@ import PostAddIcon from "@mui/icons-material/PostAdd";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloseIcon from "@mui/icons-material/Close";
 import CircularProgress from "@mui/material/CircularProgress";
+import SearchableSelect from "../../../components/atomic/SearchableSelect";
 import { authenticatedFetch } from "../../../hooks/useSession";
 
 const TASK_API_URL = "/api/v1/system/feedbacks/task";
@@ -726,46 +724,35 @@ const FeedbacksPage = () => {
                   spacing={2}
                   sx={{ flex: 1 }}
                 >
-                  <FormControl size="small" fullWidth>
-                    <InputLabel id="filtro-onde-label">
-                      Filtro por onde
-                    </InputLabel>
-                    <Select
-                      labelId="filtro-onde-label"
-                      label="Filtro por onde"
-                      value={filtroOnde}
-                      onChange={(event) => setFiltroOnde(event.target.value)}
-                    >
-                      <MenuItem value={FILTER_ALL}>Todos</MenuItem>
-                      {opcoesOndeFiltro.map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {option}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect
+                    size="small"
+                    fullWidth
+                    label="Filtro por onde"
+                    value={filtroOnde}
+                    onChange={(event) => setFiltroOnde(event.target.value)}
+                  >
+                    <MenuItem value={FILTER_ALL}>Todos</MenuItem>
+                    {opcoesOndeFiltro.map((option) => (
+                      <MenuItem key={option} value={option}>
+                        {option}
+                      </MenuItem>
+                    ))}
+                  </SearchableSelect>
 
-                  <FormControl size="small" fullWidth>
-                    <InputLabel id="filtro-status-label">
-                      Filtro por status
-                    </InputLabel>
-                    <Select
-                      labelId="filtro-status-label"
-                      label="Filtro por status"
-                      value={filtroStatus}
-                      onChange={(event) => setFiltroStatus(event.target.value)}
-                    >
-                      <MenuItem value={FILTER_ALL}>Todos</MenuItem>
-                      {STATUS_OPTIONS.map((option) => (
-                        <MenuItem
-                          key={option.value}
-                          value={String(option.value)}
-                        >
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect
+                    size="small"
+                    fullWidth
+                    label="Filtro por status"
+                    value={filtroStatus}
+                    onChange={(event) => setFiltroStatus(event.target.value)}
+                  >
+                    <MenuItem value={FILTER_ALL}>Todos</MenuItem>
+                    {STATUS_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={String(option.value)}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </SearchableSelect>
                 </Stack>
 
                 <Button
@@ -1031,27 +1018,25 @@ const FeedbacksPage = () => {
         <DialogTitle>Editar dados da pendência</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 0.75 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="editar-onde-label">Onde</InputLabel>
-              <Select
-                labelId="editar-onde-label"
-                label="Onde"
-                value={edicaoDados.onde}
-                onChange={(event) =>
-                  setEdicaoDados((prev) => ({
-                    ...prev,
-                    onde: event.target.value,
-                  }))
-                }
-                disabled={loadingEdicaoDados}
-              >
-                {opcoesOndeFormulario.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <SearchableSelect
+              fullWidth
+              size="small"
+              label="Onde"
+              value={edicaoDados.onde}
+              onChange={(event) =>
+                setEdicaoDados((prev) => ({
+                  ...prev,
+                  onde: event.target.value,
+                }))
+              }
+              disabled={loadingEdicaoDados}
+            >
+              {opcoesOndeFormulario.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </SearchableSelect>
 
             <TextField
               label="Quem"
@@ -1125,24 +1110,22 @@ const FeedbacksPage = () => {
             Nova pendência
           </Typography>
 
-          <FormControl fullWidth size="small">
-            <InputLabel id="onde-label">Onde</InputLabel>
-            <Select
-              labelId="onde-label"
-              label="Onde"
-              value={cadastro.onde}
-              onChange={(event) => {
-                setCadastro((prev) => ({ ...prev, onde: event.target.value }));
-              }}
-              disabled={loadingCadastro}
-            >
-              {opcoesOndeFormulario.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <SearchableSelect
+            fullWidth
+            size="small"
+            label="Onde"
+            value={cadastro.onde}
+            onChange={(event) => {
+              setCadastro((prev) => ({ ...prev, onde: event.target.value }));
+            }}
+            disabled={loadingCadastro}
+          >
+            {opcoesOndeFormulario.map((option) => (
+              <MenuItem key={option} value={option}>
+                {option}
+              </MenuItem>
+            ))}
+          </SearchableSelect>
 
           <TextField
             label="Qual seu nome? (opcional)"
@@ -1250,27 +1233,25 @@ const FeedbacksPage = () => {
         <DialogTitle>Atualizar status e parecer técnico</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 0.75 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="status-label">Status</InputLabel>
-              <Select
-                labelId="status-label"
-                label="Status"
-                value={edicao.status}
-                onChange={(event) =>
-                  setEdicao((prev) => ({
-                    ...prev,
-                    status: Number(event.target.value),
-                  }))
-                }
-                disabled={loadingEdicao}
-              >
-                {STATUS_OPTIONS.map((statusOption) => (
-                  <MenuItem key={statusOption.value} value={statusOption.value}>
-                    {statusOption.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <SearchableSelect
+              fullWidth
+              size="small"
+              label="Status"
+              value={edicao.status}
+              onChange={(event) =>
+                setEdicao((prev) => ({
+                  ...prev,
+                  status: Number(event.target.value),
+                }))
+              }
+              disabled={loadingEdicao}
+            >
+              {STATUS_OPTIONS.map((statusOption) => (
+                <MenuItem key={statusOption.value} value={statusOption.value}>
+                  {statusOption.label}
+                </MenuItem>
+              ))}
+            </SearchableSelect>
 
             <TextField
               label="Git commit (opcional)"

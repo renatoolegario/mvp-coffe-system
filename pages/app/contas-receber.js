@@ -7,6 +7,7 @@ import {
   Grid,
   MenuItem,
   Paper,
+  Snackbar,
   Stack,
   Tab,
   Table,
@@ -23,7 +24,9 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import { useDataStore } from "../../hooks/useDataStore";
+import { authenticatedFetch } from "../../hooks/useSession";
 import { formatCurrency, formatDate } from "../../utils/format";
 
 const normalizeSearchValue = (value) =>
@@ -61,6 +64,14 @@ const readQueryValue = (value) => {
   return String(value);
 };
 
+const readApiBody = async (response) => {
+  try {
+    return await response.json();
+  } catch (error) {
+    return {};
+  }
+};
+
 const isDateWithinRange = (dateKey, start, end) => {
   if (!dateKey) return false;
   if (start && dateKey < start) return false;
@@ -91,6 +102,8 @@ const matchesSearch = (row, term) => {
       row.formaRecebimentoReal,
       row.origemRecebimento,
       row.motivoDiferenca,
+      row.asaasCobrancaStatus,
+      row.asaasCobrancaEmitidaLabel,
     ].join(" "),
   );
 
@@ -127,7 +140,10 @@ const ContasReceberPage = () => {
   const clientes = useDataStore((state) => state.clientes);
   const fornecedores = useDataStore((state) => state.fornecedores);
   const auxFormasPagamento = useDataStore((state) => state.auxFormasPagamento);
-  const marcarParcelaRecebida = useDataStore((state) => state.marcarParcelaRecebida);
+  const marcarParcelaRecebida = useDataStore(
+    (state) => state.marcarParcelaRecebida,
+  );
+  const loadData = useDataStore((state) => state.loadData);
 
   const todayKey = toDateKey(new Date());
   const [tabAtiva, setTabAtiva] = useState("vencidas");
@@ -148,6 +164,13 @@ const ContasReceberPage = () => {
   const [fornecedorDestinoId, setFornecedorDestinoId] = useState("");
   const [comprovanteUrl, setComprovanteUrl] = useState("");
   const [observacao, setObservacao] = useState("");
+  const [asaasConfigurado, setAsaasConfigurado] = useState(false);
+  const [emitindoAsaasParcelaId, setEmitindoAsaasParcelaId] = useState("");
+  const [feedback, setFeedback] = useState({
+    open: false,
+    severity: "success",
+    message: "",
+  });
 
   const clienteFiltroFromUrl = readQueryValue(router.query.cliente_id);
   const parcelaFiltroId = readQueryValue(router.query.parcela_id);
@@ -190,11 +213,21 @@ const ContasReceberPage = () => {
           const conta = contaById[parcela.conta_receber_id];
           const cliente = clienteById[conta?.cliente_id];
           const vencimentoKey = toDateKey(parcela.vencimento);
-          const valorProgramado = toNumber(parcela.valor_programado || parcela.valor);
+          const valorProgramado = toNumber(
+            parcela.valor_programado || parcela.valor,
+          );
           const valorRecebidoAtual =
-            parcela.valor_recebido === null || parcela.valor_recebido === undefined
+            parcela.valor_recebido === null ||
+            parcela.valor_recebido === undefined
               ? null
               : toNumber(parcela.valor_recebido);
+          const asaasCobrancaEmitida = Boolean(parcela.asaas_cobranca_emitida);
+          const asaasCobrancaStatus = String(
+            parcela.asaas_cobranca_status || "",
+          ).trim();
+          const asaasCobrancaLink = String(
+            parcela.asaas_cobranca_link || "",
+          ).trim();
 
           return {
             ...parcela,
@@ -213,17 +246,32 @@ const ContasReceberPage = () => {
             formaRecebimentoReal: parcela.forma_recebimento_real || "-",
             origemRecebimento: parcela.origem_recebimento || "-",
             motivoDiferenca: parcela.motivo_diferenca || "",
+            asaasCobrancaEmitida,
+            asaasCobrancaEmitidaLabel: asaasCobrancaEmitida ? "Sim" : "Nao",
+            asaasCobrancaStatus: asaasCobrancaStatus || "-",
+            asaasCobrancaLink,
             isVencida: Boolean(vencimentoKey && vencimentoKey < todayKey),
             diasAtraso: Math.max(0, getDayDifference(todayKey, vencimentoKey)),
-            diasAteVencimento: Math.max(0, getDayDifference(vencimentoKey, todayKey)),
+            diasAteVencimento: Math.max(
+              0,
+              getDayDifference(vencimentoKey, todayKey),
+            ),
           };
         })
         .filter((row) => {
-          if (clienteFiltroId && row.clienteId !== clienteFiltroId) return false;
+          if (clienteFiltroId && row.clienteId !== clienteFiltroId)
+            return false;
           if (parcelaFiltroId && row.id !== parcelaFiltroId) return false;
           return true;
         }),
-    [parcelas, contaById, clienteById, todayKey, clienteFiltroId, parcelaFiltroId],
+    [
+      parcelas,
+      contaById,
+      clienteById,
+      todayKey,
+      clienteFiltroId,
+      parcelaFiltroId,
+    ],
   );
 
   const parcelasVencidasFiltradas = useMemo(
@@ -248,7 +296,11 @@ const ContasReceberPage = () => {
       parcelasEnriquecidas
         .filter((row) => !row.isVencida && row.status === "ABERTA")
         .filter((row) =>
-          isDateWithinRange(row.vencimentoKey, dataInicioAVencer, dataFimAVencer),
+          isDateWithinRange(
+            row.vencimentoKey,
+            dataInicioAVencer,
+            dataFimAVencer,
+          ),
         )
         .filter((row) => matchesSearch(row, buscaAVencer))
         .sort((a, b) => {
@@ -261,12 +313,16 @@ const ContasReceberPage = () => {
   );
 
   const parcelaSelecionada = useMemo(
-    () => parcelasEnriquecidas.find((row) => row.id === parcelaSelecionadaId) || null,
+    () =>
+      parcelasEnriquecidas.find((row) => row.id === parcelaSelecionadaId) ||
+      null,
     [parcelasEnriquecidas, parcelaSelecionadaId],
   );
 
   const resumoVencidas = useMemo(() => {
-    const abertas = parcelasVencidasFiltradas.filter((row) => row.status === "ABERTA");
+    const abertas = parcelasVencidasFiltradas.filter(
+      (row) => row.status === "ABERTA",
+    );
     const totalEmAberto = abertas.reduce(
       (acc, row) => acc + row.valorProgramado,
       0,
@@ -308,17 +364,44 @@ const ContasReceberPage = () => {
       );
     }
 
-    setParcelaSelecionadaId((prev) => (prev === parcelaAlvo.id ? prev : parcelaAlvo.id));
-    setTabAtiva(toDateKey(parcelaAlvo.vencimento) < todayKey ? "vencidas" : "a-vencer");
+    setParcelaSelecionadaId((prev) =>
+      prev === parcelaAlvo.id ? prev : parcelaAlvo.id,
+    );
+    setTabAtiva(
+      toDateKey(parcelaAlvo.vencimento) < todayKey ? "vencidas" : "a-vencer",
+    );
   }, [parcelaFiltroId, parcelas, contaById, todayKey]);
 
   useEffect(() => {
     if (!parcelaSelecionadaId) return;
-    const parcelaAindaExiste = parcelas.some((item) => item.id === parcelaSelecionadaId);
+    const parcelaAindaExiste = parcelas.some(
+      (item) => item.id === parcelaSelecionadaId,
+    );
     if (parcelaAindaExiste) return;
     setParcelaSelecionadaId("");
     setDrawerOpen(false);
   }, [parcelas, parcelaSelecionadaId]);
+
+  useEffect(() => {
+    const loadIntegracoes = async () => {
+      try {
+        const response = await authenticatedFetch(
+          "/api/v1/configuracao-empresa/integracoes",
+        );
+        const data = await readApiBody(response);
+        if (!response.ok) return;
+
+        const asaas = (data.integracoes || []).find(
+          (item) => item.provedor === "asaas",
+        );
+        setAsaasConfigurado(Boolean(asaas?.configurado));
+      } catch (error) {
+        setAsaasConfigurado(false);
+      }
+    };
+
+    loadIntegracoes();
+  }, []);
 
   const filtrosViaUrlAtivos = Boolean(clienteFiltroFromUrl || parcelaFiltroId);
 
@@ -421,8 +504,72 @@ const ContasReceberPage = () => {
     );
   };
 
+  const emitirCobrancaAsaas = async (row) => {
+    if (!row?.id || emitindoAsaasParcelaId) return;
+    if (row.status !== "ABERTA") return;
+
+    if (row.asaasCobrancaEmitida) {
+      setFeedback({
+        open: true,
+        severity: "info",
+        message: "Esta parcela ja possui uma cobranca ASAAS emitida.",
+      });
+      return;
+    }
+
+    setEmitindoAsaasParcelaId(row.id);
+
+    try {
+      const response = await authenticatedFetch(
+        "/api/v1/integracoes/asaas/cobrancas",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cliente_id: row.clienteId,
+            venda_id:
+              row.conta?.origem_tipo === "venda" ? row.conta?.origem_id : null,
+            conta_receber_id: row.conta_receber_id,
+            conta_receber_parcela_id: row.id,
+            billing_type: "UNDEFINED",
+            due_date: row.vencimentoKey || toDateKey(row.vencimento),
+            value: row.valorProgramado,
+            origem_tipo:
+              row.conta?.origem_tipo === "venda" ? "VENDA" : "MANUAL",
+          }),
+        },
+      );
+      const data = await readApiBody(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Nao foi possivel emitir a cobranca ASAAS.",
+        );
+      }
+
+      await loadData();
+      setFeedback({
+        open: true,
+        severity: "success",
+        message:
+          "Cobranca ASAAS emitida com sucesso para a parcela selecionada.",
+      });
+    } catch (error) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message:
+          error.message || "Erro ao emitir a cobranca ASAAS da parcela.",
+      });
+    } finally {
+      setEmitindoAsaasParcelaId("");
+    }
+  };
+
   const tabelaAtual =
-    tabAtiva === "vencidas" ? parcelasVencidasFiltradas : parcelasAVencerFiltradas;
+    tabAtiva === "vencidas"
+      ? parcelasVencidasFiltradas
+      : parcelasAVencerFiltradas;
 
   return (
     <AppLayout>
@@ -452,8 +599,7 @@ const ContasReceberPage = () => {
       <Paper sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
-            <TextField
-              select
+            <SearchableSelect
               label="Cliente"
               value={clienteFiltroId}
               onChange={(event) => setClienteFiltroId(event.target.value)}
@@ -465,7 +611,7 @@ const ContasReceberPage = () => {
                   {cliente.nome}
                 </MenuItem>
               ))}
-            </TextField>
+            </SearchableSelect>
           </Grid>
 
           <Grid item xs={12} md={tabAtiva === "vencidas" ? 8 : 4}>
@@ -531,14 +677,14 @@ const ContasReceberPage = () => {
           >
             {tabAtiva === "vencidas" ? (
               <Typography variant="body2" color="text.secondary">
-                {resumoVencidas.totalRegistros} registro(s) vencido(s) no histórico •{" "}
-                {resumoVencidas.totalAbertas} ainda em aberto • Total pendente:{" "}
-                {formatCurrency(resumoVencidas.totalEmAberto)}
+                {resumoVencidas.totalRegistros} registro(s) vencido(s) no
+                histórico • {resumoVencidas.totalAbertas} ainda em aberto •
+                Total pendente: {formatCurrency(resumoVencidas.totalEmAberto)}
               </Typography>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                {resumoAVencer.totalRegistros} parcela(s) a vencer • Total programado:{" "}
-                {formatCurrency(resumoAVencer.totalProgramado)}
+                {resumoAVencer.totalRegistros} parcela(s) a vencer • Total
+                programado: {formatCurrency(resumoAVencer.totalProgramado)}
               </Typography>
             )}
 
@@ -576,6 +722,9 @@ const ContasReceberPage = () => {
                     <TableCell align="right">Valor programado</TableCell>
                     <TableCell align="right">Valor recebido</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell>Cobranca ASAAS</TableCell>
+                    <TableCell>Status ASAAS</TableCell>
+                    <TableCell>Link ASAAS</TableCell>
                     <TableCell>Recebimento</TableCell>
                     <TableCell align="right">Ações</TableCell>
                   </TableRow>
@@ -589,6 +738,9 @@ const ContasReceberPage = () => {
                     <TableCell align="right">Valor programado</TableCell>
                     <TableCell>Forma programada</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell>Cobranca ASAAS</TableCell>
+                    <TableCell>Status ASAAS</TableCell>
+                    <TableCell>Link ASAAS</TableCell>
                     <TableCell align="right">Ações</TableCell>
                   </TableRow>
                 )}
@@ -598,7 +750,7 @@ const ContasReceberPage = () => {
                 {!tabelaAtual.length ? (
                   <TableRow>
                     <TableCell
-                      colSpan={tabAtiva === "vencidas" ? 10 : 9}
+                      colSpan={tabAtiva === "vencidas" ? 13 : 12}
                       align="center"
                     >
                       {buildEmptyRowMessage(tabAtiva)}
@@ -621,7 +773,9 @@ const ContasReceberPage = () => {
                       <TableCell>{row.parcelaLabel}</TableCell>
                       <TableCell>{row.vencimentoLabel}</TableCell>
                       <TableCell align="right">
-                        {tabAtiva === "vencidas" ? row.diasAtraso : row.diasAteVencimento}
+                        {tabAtiva === "vencidas"
+                          ? row.diasAtraso
+                          : row.diasAteVencimento}
                       </TableCell>
                       <TableCell align="right">
                         {formatCurrency(row.valorProgramado)}
@@ -641,6 +795,25 @@ const ContasReceberPage = () => {
                               label={row.status}
                             />
                           </TableCell>
+                          <TableCell>{row.asaasCobrancaEmitidaLabel}</TableCell>
+                          <TableCell>{row.asaasCobrancaStatus}</TableCell>
+                          <TableCell>
+                            {row.asaasCobrancaLink ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                component="a"
+                                href={row.asaasCobrancaLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                Abrir
+                              </Button>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
                           <TableCell>
                             {row.status === "RECEBIDA"
                               ? formatDateTime(row.data_recebimento)
@@ -649,13 +822,34 @@ const ContasReceberPage = () => {
                         </>
                       ) : (
                         <>
-                          <TableCell>{row.formaRecebimentoProgramada}</TableCell>
+                          <TableCell>
+                            {row.formaRecebimentoProgramada}
+                          </TableCell>
                           <TableCell>
                             <Chip
                               size="small"
                               color={getStatusChipColor(row)}
                               label={row.status}
                             />
+                          </TableCell>
+                          <TableCell>{row.asaasCobrancaEmitidaLabel}</TableCell>
+                          <TableCell>{row.asaasCobrancaStatus}</TableCell>
+                          <TableCell>
+                            {row.asaasCobrancaLink ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                component="a"
+                                href={row.asaasCobrancaLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                Abrir
+                              </Button>
+                            ) : (
+                              "-"
+                            )}
                           </TableCell>
                         </>
                       )}
@@ -688,6 +882,26 @@ const ContasReceberPage = () => {
                           >
                             Receber
                           </Button>
+                          {asaasConfigurado && row.status === "ABERTA" ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                emitirCobrancaAsaas(row);
+                              }}
+                              disabled={
+                                row.asaasCobrancaEmitida ||
+                                emitindoAsaasParcelaId === row.id
+                              }
+                            >
+                              {emitindoAsaasParcelaId === row.id
+                                ? "Emitindo..."
+                                : row.asaasCobrancaEmitida
+                                  ? "Emitida"
+                                  : "Emitir ASAAS"}
+                            </Button>
+                          ) : null}
                         </Stack>
                       </TableCell>
                     </TableRow>
@@ -736,10 +950,44 @@ const ContasReceberPage = () => {
               Valor programado:{" "}
               {formatCurrency(parcelaSelecionada?.valorProgramado || 0)}
             </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Cobranca ASAAS emitida:{" "}
+              {parcelaSelecionada?.asaasCobrancaEmitidaLabel || "Nao"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Status ASAAS: {parcelaSelecionada?.asaasCobrancaStatus || "-"}
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }} useFlexGap flexWrap="wrap">
+              {parcelaSelecionada?.asaasCobrancaLink ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  component="a"
+                  href={parcelaSelecionada.asaasCobrancaLink}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Abrir cobranca ASAAS
+                </Button>
+              ) : null}
+              {asaasConfigurado &&
+              parcelaSelecionada?.status === "ABERTA" &&
+              !parcelaSelecionada?.asaasCobrancaEmitida ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => emitirCobrancaAsaas(parcelaSelecionada)}
+                  disabled={emitindoAsaasParcelaId === parcelaSelecionada?.id}
+                >
+                  {emitindoAsaasParcelaId === parcelaSelecionada?.id
+                    ? "Emitindo..."
+                    : "Emitir cobranca ASAAS"}
+                </Button>
+              ) : null}
+            </Stack>
           </Paper>
 
-          <TextField
-            select
+          <SearchableSelect
             label="Forma programada/recebida"
             value={formaRecebimento}
             onChange={(event) => setFormaRecebimento(event.target.value)}
@@ -749,10 +997,9 @@ const ContasReceberPage = () => {
                 {forma.label}
               </MenuItem>
             ))}
-          </TextField>
+          </SearchableSelect>
 
-          <TextField
-            select
+          <SearchableSelect
             label="Forma real recebida"
             value={formaRecebimentoReal}
             onChange={(event) => setFormaRecebimentoReal(event.target.value)}
@@ -762,7 +1009,7 @@ const ContasReceberPage = () => {
                 {forma.label}
               </MenuItem>
             ))}
-          </TextField>
+          </SearchableSelect>
 
           <TextField
             label="Valor recebido (deixe vazio para valor integral)"
@@ -771,19 +1018,19 @@ const ContasReceberPage = () => {
             onChange={(event) => setValorRecebido(event.target.value)}
           />
 
-          <TextField
-            select
+          <SearchableSelect
             label="Origem do recebimento"
             value={origemRecebimento}
             onChange={(event) => setOrigemRecebimento(event.target.value)}
           >
             <MenuItem value="NORMAL">Pagamento direto do cliente</MenuItem>
-            <MenuItem value="DIRETO_FORNECEDOR">Cliente pagou direto ao fornecedor</MenuItem>
-          </TextField>
+            <MenuItem value="DIRETO_FORNECEDOR">
+              Cliente pagou direto ao fornecedor
+            </MenuItem>
+          </SearchableSelect>
 
           {origemRecebimento === "DIRETO_FORNECEDOR" ? (
-            <TextField
-              select
+            <SearchableSelect
               label="Fornecedor que recebeu"
               value={fornecedorDestinoId}
               onChange={(event) => setFornecedorDestinoId(event.target.value)}
@@ -793,7 +1040,7 @@ const ContasReceberPage = () => {
                   {fornecedor.razao_social}
                 </MenuItem>
               ))}
-            </TextField>
+            </SearchableSelect>
           ) : null}
 
           <TextField
@@ -810,15 +1057,18 @@ const ContasReceberPage = () => {
             rows={2}
           />
 
-          <TextField
-            select
+          <SearchableSelect
             label="Ação para diferença"
             value={acaoDiferenca}
             onChange={(event) => setAcaoDiferenca(event.target.value)}
           >
-            <MenuItem value="JOGAR_PROXIMA">Jogar diferença para próxima cobrança</MenuItem>
-            <MenuItem value="ACEITAR_ENCERRAR">Aceitar diferença e encerrar cobrança</MenuItem>
-          </TextField>
+            <MenuItem value="JOGAR_PROXIMA">
+              Jogar diferença para próxima cobrança
+            </MenuItem>
+            <MenuItem value="ACEITAR_ENCERRAR">
+              Aceitar diferença e encerrar cobrança
+            </MenuItem>
+          </SearchableSelect>
 
           <TextField
             label="Observações"
@@ -835,13 +1085,29 @@ const ContasReceberPage = () => {
             <Button
               variant="contained"
               onClick={confirmarRecebimento}
-              disabled={!parcelaSelecionada || parcelaSelecionada.status !== "ABERTA"}
+              disabled={
+                !parcelaSelecionada || parcelaSelecionada.status !== "ABERTA"
+              }
             >
               Confirmar
             </Button>
           </Stack>
         </Stack>
       </Drawer>
+
+      <Snackbar
+        open={feedback.open}
+        autoHideDuration={4500}
+        onClose={() => setFeedback((prev) => ({ ...prev, open: false }))}
+      >
+        <Alert
+          severity={feedback.severity}
+          variant="filled"
+          onClose={() => setFeedback((prev) => ({ ...prev, open: false }))}
+        >
+          {feedback.message}
+        </Alert>
+      </Snackbar>
     </AppLayout>
   );
 };

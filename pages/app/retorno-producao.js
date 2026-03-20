@@ -30,6 +30,7 @@ import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency, formatDate } from "../../utils/format";
 
@@ -141,15 +142,12 @@ const RetornoProducaoPage = () => {
     [auxUnidades],
   );
 
-  const insumosProduziveis = useMemo(
-    () => {
-      const filtrados = insumos.filter((insumo) =>
-        Boolean(insumo.pode_ser_produzivel),
-      );
-      return filtrados.length ? filtrados : insumos;
-    },
-    [insumos],
-  );
+  const insumosProduziveis = useMemo(() => {
+    const filtrados = insumos.filter((insumo) =>
+      Boolean(insumo.pode_ser_produzivel),
+    );
+    return filtrados.length ? filtrados : insumos;
+  }, [insumos]);
 
   const producoesPendentes = useMemo(
     () => producoes.filter((producao) => producao.status === "PENDENTE"),
@@ -185,7 +183,8 @@ const RetornoProducaoPage = () => {
   const resultadosProgramadosDaProducao = useMemo(
     () =>
       resultadosDaProducaoSelecionada.filter(
-        (item) => String(item.tipo_resultado || "").toUpperCase() === "PROGRAMADO",
+        (item) =>
+          String(item.tipo_resultado || "").toUpperCase() === "PROGRAMADO",
       ),
     [resultadosDaProducaoSelecionada],
   );
@@ -262,10 +261,14 @@ const RetornoProducaoPage = () => {
         const isExtra = item.tipo_resultado === "EXTRA";
         const hasInput = Boolean(insumoId || toNumber(item.quantidade) > 0);
         const duplicadoExtra = isExtra && extrasIdsDuplicados.has(insumoId);
-        const conflitaProgramado = isExtra && programadosInsumosIds.has(insumoId);
+        const conflitaProgramado =
+          isExtra && programadosInsumosIds.has(insumoId);
         const invalido =
           hasInput &&
-          (!insumoId || quantidadeKg <= 0 || duplicadoExtra || conflitaProgramado);
+          (!insumoId ||
+            quantidadeKg <= 0 ||
+            duplicadoExtra ||
+            conflitaProgramado);
 
         return {
           ...item,
@@ -470,7 +473,9 @@ const RetornoProducaoPage = () => {
     });
 
     if (resultado?.ok === false) {
-      setErroRetorno(resultado.error || "Não foi possível confirmar o retorno.");
+      setErroRetorno(
+        resultado.error || "Não foi possível confirmar o retorno.",
+      );
       return;
     }
 
@@ -536,7 +541,8 @@ const RetornoProducaoPage = () => {
             {toNumber(item.quantidade_planejada_kg).toFixed(2)}
           </TableCell>
           <TableCell align="right">
-            {item.quantidade_real_kg === null || item.quantidade_real_kg === undefined
+            {item.quantidade_real_kg === null ||
+            item.quantidade_real_kg === undefined
               ? "-"
               : toNumber(item.quantidade_real_kg).toFixed(2)}
           </TableCell>
@@ -582,12 +588,18 @@ const RetornoProducaoPage = () => {
                       <TableCell>{renderCellId(item.id)}</TableCell>
                       <TableCell>{formatDate(item.data_producao)}</TableCell>
                       <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          justifyContent="flex-end"
+                        >
                           <Button
                             size="small"
                             variant="contained"
                             startIcon={<CheckCircleOutlineIcon />}
-                            onClick={() => handleSelecionarProducaoParaRetorno(item.id)}
+                            onClick={() =>
+                              handleSelecionarProducaoParaRetorno(item.id)
+                            }
                           >
                             Confirmar retorno
                           </Button>
@@ -677,7 +689,11 @@ const RetornoProducaoPage = () => {
       >
         {producaoSelecionada ? (
           <Stack spacing={2}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              alignItems="center"
+            >
               <Typography variant="h6" fontWeight={700}>
                 {drawerMode === "retorno"
                   ? "Retorno de Produção"
@@ -690,7 +706,11 @@ const RetornoProducaoPage = () => {
 
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Stack spacing={1}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
                   <Typography variant="body2" fontWeight={700}>
                     OP: {producaoSelecionada.id}
                   </Typography>
@@ -715,12 +735,14 @@ const RetornoProducaoPage = () => {
                 </Typography>
                 {producaoSelecionada.peso_real ? (
                   <Typography variant="body2" color="text.secondary">
-                    Peso real retornado: {toNumber(producaoSelecionada.peso_real).toFixed(2)} kg
+                    Peso real retornado:{" "}
+                    {toNumber(producaoSelecionada.peso_real).toFixed(2)} kg
                   </Typography>
                 ) : null}
                 {producaoSelecionada.custo_total_real ? (
                   <Typography variant="body2" color="text.secondary">
-                    Custo total real: {formatCurrency(producaoSelecionada.custo_total_real)}
+                    Custo total real:{" "}
+                    {formatCurrency(producaoSelecionada.custo_total_real)}
                   </Typography>
                 ) : null}
               </Stack>
@@ -778,7 +800,9 @@ const RetornoProducaoPage = () => {
 
             {custosDaProducaoSelecionada.length ? (
               <>
-                <Typography variant="subtitle2">Custos adicionais lançados</Typography>
+                <Typography variant="subtitle2">
+                  Custos adicionais lançados
+                </Typography>
                 <Stack spacing={1}>
                   {custosDaProducaoSelecionada.map((custo) => {
                     const fornecedor = fornecedores.find(
@@ -789,8 +813,13 @@ const RetornoProducaoPage = () => {
                         <Typography variant="body2" fontWeight={600}>
                           {custo.descricao || "Custo adicional"}
                         </Typography>
-                        <Typography variant="caption" display="block" color="text.secondary">
-                          Fornecedor: {fornecedor?.razao_social || "Sem fornecedor"}
+                        <Typography
+                          variant="caption"
+                          display="block"
+                          color="text.secondary"
+                        >
+                          Fornecedor:{" "}
+                          {fornecedor?.razao_social || "Sem fornecedor"}
                         </Typography>
                         <Typography variant="body2">
                           {formatCurrency(custo.valor)}
@@ -815,10 +844,16 @@ const RetornoProducaoPage = () => {
                 ) : (
                   <Box component="form" onSubmit={handleConfirmarRetorno}>
                     <Stack spacing={2}>
-                      <Typography variant="subtitle2">Produtos recebidos no retorno</Typography>
+                      <Typography variant="subtitle2">
+                        Produtos recebidos no retorno
+                      </Typography>
 
                       {resultadosRetornoComMetadados.map((item, index) => (
-                        <Paper key={`retorno-${index}`} variant="outlined" sx={{ p: 2 }}>
+                        <Paper
+                          key={`retorno-${index}`}
+                          variant="outlined"
+                          sx={{ p: 2 }}
+                        >
                           <Grid container spacing={1.5} alignItems="center">
                             <Grid item xs={12} md={5}>
                               {item.tipo_resultado === "PROGRAMADO" ? (
@@ -826,13 +861,15 @@ const RetornoProducaoPage = () => {
                                   <Typography variant="body2" fontWeight={700}>
                                     {item.insumo?.nome || "Produto programado"}
                                   </Typography>
-                                  <Typography variant="caption" color="text.secondary">
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
                                     Programado na criação da OP
                                   </Typography>
                                 </>
                               ) : (
-                                <TextField
-                                  select
+                                <SearchableSelect
                                   label="Produto"
                                   value={item.insumo_id}
                                   onChange={(event) =>
@@ -849,13 +886,12 @@ const RetornoProducaoPage = () => {
                                       {insumo.nome}
                                     </MenuItem>
                                   ))}
-                                </TextField>
+                                </SearchableSelect>
                               )}
                             </Grid>
 
                             <Grid item xs={12} md={2}>
-                              <TextField
-                                select
+                              <SearchableSelect
                                 label="Unidade"
                                 value={item.unidade}
                                 onChange={(event) =>
@@ -868,11 +904,14 @@ const RetornoProducaoPage = () => {
                                 fullWidth
                               >
                                 {unidadesDisponiveis.map((unidade) => (
-                                  <MenuItem key={unidade.id} value={unidade.codigo}>
+                                  <MenuItem
+                                    key={unidade.id}
+                                    value={unidade.codigo}
+                                  >
                                     {unidade.label}
                                   </MenuItem>
                                 ))}
-                              </TextField>
+                              </SearchableSelect>
                             </Grid>
 
                             <Grid item xs={12} md={2}>
@@ -896,22 +935,45 @@ const RetornoProducaoPage = () => {
                                 {item.quantidadeKg.toFixed(2)} kg
                               </Typography>
                               {item.tipo_resultado === "PROGRAMADO" ? (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  Planejado: {toNumber(item.quantidade_planejada_kg).toFixed(2)} kg
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  display="block"
+                                >
+                                  Planejado:{" "}
+                                  {toNumber(
+                                    item.quantidade_planejada_kg,
+                                  ).toFixed(2)}{" "}
+                                  kg
                                 </Typography>
                               ) : null}
-                              {item.tipo_resultado === "PROGRAMADO" && !item.preenchido ? (
-                                <Typography variant="caption" color="error.main" display="block">
+                              {item.tipo_resultado === "PROGRAMADO" &&
+                              !item.preenchido ? (
+                                <Typography
+                                  variant="caption"
+                                  color="error.main"
+                                  display="block"
+                                >
                                   Informe a quantidade recebida
                                 </Typography>
                               ) : null}
-                              {item.tipo_resultado === "EXTRA" && item.duplicadoExtra ? (
-                                <Typography variant="caption" color="error.main" display="block">
+                              {item.tipo_resultado === "EXTRA" &&
+                              item.duplicadoExtra ? (
+                                <Typography
+                                  variant="caption"
+                                  color="error.main"
+                                  display="block"
+                                >
                                   Produto extra duplicado
                                 </Typography>
                               ) : null}
-                              {item.tipo_resultado === "EXTRA" && item.conflitaProgramado ? (
-                                <Typography variant="caption" color="error.main" display="block">
+                              {item.tipo_resultado === "EXTRA" &&
+                              item.conflitaProgramado ? (
+                                <Typography
+                                  variant="caption"
+                                  color="error.main"
+                                  display="block"
+                                >
                                   Já existe como programado
                                 </Typography>
                               ) : null}
@@ -920,7 +982,9 @@ const RetornoProducaoPage = () => {
                             <Grid item xs={12} md={1}>
                               {item.tipo_resultado === "EXTRA" ? (
                                 <IconButton
-                                  onClick={() => handleRemoverProdutoRetorno(index)}
+                                  onClick={() =>
+                                    handleRemoverProdutoRetorno(index)
+                                  }
                                   disabled={resultadosRetorno.length <= 1}
                                 >
                                   <DeleteOutlineIcon />
@@ -941,41 +1005,59 @@ const RetornoProducaoPage = () => {
 
                       <Paper variant="outlined" sx={{ p: 1.5 }}>
                         <Typography variant="body2" fontWeight={700}>
-                          Total retornado informado: {totalRetornoKg.toFixed(2)} kg
+                          Total retornado informado: {totalRetornoKg.toFixed(2)}{" "}
+                          kg
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          O custo total da produção será diluído automaticamente nesse total.
+                          O custo total da produção será diluído automaticamente
+                          nesse total.
                         </Typography>
                       </Paper>
 
-                      <Typography variant="subtitle2">Custos adicionais</Typography>
+                      <Typography variant="subtitle2">
+                        Custos adicionais
+                      </Typography>
                       {custosAdicionais.map((custo, index) => (
-                        <Paper key={`custo-${index}`} variant="outlined" sx={{ p: 2 }}>
+                        <Paper
+                          key={`custo-${index}`}
+                          variant="outlined"
+                          sx={{ p: 2 }}
+                        >
                           <Grid container spacing={1.5}>
                             <Grid item xs={12}>
-                              <TextField
-                                select
+                              <SearchableSelect
                                 label="Fornecedor"
                                 value={custo.fornecedor_id}
                                 onChange={(event) =>
-                                  handleChangeCusto(index, "fornecedor_id", event.target.value)
+                                  handleChangeCusto(
+                                    index,
+                                    "fornecedor_id",
+                                    event.target.value,
+                                  )
                                 }
                                 fullWidth
                               >
                                 <MenuItem value="">Sem fornecedor</MenuItem>
                                 {fornecedores.map((fornecedor) => (
-                                  <MenuItem key={fornecedor.id} value={fornecedor.id}>
+                                  <MenuItem
+                                    key={fornecedor.id}
+                                    value={fornecedor.id}
+                                  >
                                     {fornecedor.razao_social}
                                   </MenuItem>
                                 ))}
-                              </TextField>
+                              </SearchableSelect>
                             </Grid>
                             <Grid item xs={12} md={6}>
                               <TextField
                                 label="Descrição"
                                 value={custo.descricao}
                                 onChange={(event) =>
-                                  handleChangeCusto(index, "descricao", event.target.value)
+                                  handleChangeCusto(
+                                    index,
+                                    "descricao",
+                                    event.target.value,
+                                  )
                                 }
                                 fullWidth
                               />
@@ -986,14 +1068,17 @@ const RetornoProducaoPage = () => {
                                 type="number"
                                 value={custo.valor}
                                 onChange={(event) =>
-                                  handleChangeCusto(index, "valor", event.target.value)
+                                  handleChangeCusto(
+                                    index,
+                                    "valor",
+                                    event.target.value,
+                                  )
                                 }
                                 fullWidth
                               />
                             </Grid>
                             <Grid item xs={12} md={3}>
-                              <TextField
-                                select
+                              <SearchableSelect
                                 label="Pagamento"
                                 value={custo.status_pagamento}
                                 onChange={(event) =>
@@ -1007,7 +1092,7 @@ const RetornoProducaoPage = () => {
                               >
                                 <MenuItem value="PENDENTE">Pendente</MenuItem>
                                 <MenuItem value="A_VISTA">À vista</MenuItem>
-                              </TextField>
+                              </SearchableSelect>
                             </Grid>
                           </Grid>
                         </Paper>
@@ -1017,7 +1102,10 @@ const RetornoProducaoPage = () => {
                         variant="outlined"
                         startIcon={<AddIcon />}
                         onClick={() =>
-                          setCustosAdicionais((prev) => [...prev, createCustoAdicional()])
+                          setCustosAdicionais((prev) => [
+                            ...prev,
+                            createCustoAdicional(),
+                          ])
                         }
                       >
                         Adicionar custo adicional

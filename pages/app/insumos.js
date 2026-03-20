@@ -27,6 +27,7 @@ import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import InsumoLedgerModal from "../../components/atomic/InsumoLedgerModal";
 import EntradaInsumoDrawer from "../../components/atomic/EntradaInsumoDrawer";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import StockStatusChip from "../../components/atomic/StockStatusChip";
 import { useDataStore } from "../../hooks/useDataStore";
 import { downloadWorkbookXlsx } from "../../utils/xlsx";
@@ -744,8 +745,7 @@ const InsumosPage = () => {
               onChange={handleChange("nome")}
               required
             />
-            <TextField
-              select
+            <SearchableSelect
               label="Unidade"
               value={form.unidade_codigo}
               onChange={handleChange("unidade_codigo")}
@@ -756,7 +756,7 @@ const InsumosPage = () => {
                   {unidade.label}
                 </MenuItem>
               ))}
-            </TextField>
+            </SearchableSelect>
             {isSacoUnidade(form.unidade_codigo) ? (
               <TextField
                 label="Kg por saco"
@@ -913,8 +913,7 @@ const InsumosPage = () => {
               onChange={handleEditChange("nome")}
               required
             />
-            <TextField
-              select
+            <SearchableSelect
               label="Unidade"
               value={editForm.unidade_codigo}
               onChange={handleEditChange("unidade_codigo")}
@@ -925,7 +924,7 @@ const InsumosPage = () => {
                   {unidade.label}
                 </MenuItem>
               ))}
-            </TextField>
+            </SearchableSelect>
             {isSacoUnidade(editForm.unidade_codigo) ? (
               <TextField
                 label="Kg por saco"

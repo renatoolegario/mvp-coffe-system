@@ -9,6 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../../components/atomic/SearchableSelect";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import StockStatusChip from "../../components/atomic/StockStatusChip";
@@ -163,8 +164,7 @@ const TransferenciasPage = () => {
                   </Typography>
                   <Grid container spacing={2}>
                     <Grid item xs={12}>
-                      <TextField
-                        select
+                      <SearchableSelect
                         label="Produto Origem"
                         value={origemId}
                         onChange={(e) => setOrigemId(e.target.value)}
@@ -176,7 +176,7 @@ const TransferenciasPage = () => {
                             {insumo.nome}
                           </MenuItem>
                         ))}
-                      </TextField>
+                      </SearchableSelect>
                     </Grid>
                     {origemSelecionada ? (
                       <Grid item xs={12}>
@@ -244,8 +244,7 @@ const TransferenciasPage = () => {
                   </Typography>
                   <Grid container spacing={2}>
                     <Grid item xs={12}>
-                      <TextField
-                        select
+                      <SearchableSelect
                         label="Produto Destino"
                         value={destinoId}
                         onChange={(e) => setDestinoId(e.target.value)}
@@ -259,7 +258,7 @@ const TransferenciasPage = () => {
                               {insumo.nome}
                             </MenuItem>
                           ))}
-                      </TextField>
+                      </SearchableSelect>
                     </Grid>
                     {destinoSelecionado && destinoStatusAtual ? (
                       <Grid item xs={12}>
@@ -289,8 +288,7 @@ const TransferenciasPage = () => {
 
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={4}>
-                    <TextField
-                      select
+                    <SearchableSelect
                       label="Unidade informada"
                       value={unidadeOperacao}
                       onChange={(event) =>
@@ -303,7 +301,7 @@ const TransferenciasPage = () => {
                           {unidade.label}
                         </MenuItem>
                       ))}
-                    </TextField>
+                    </SearchableSelect>
                   </Grid>
                   <Grid item xs={12} md={4}>
                     <TextField
