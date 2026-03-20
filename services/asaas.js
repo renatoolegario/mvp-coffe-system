@@ -5,6 +5,7 @@ import { normalizeCpfCnpj } from "../utils/document";
 import { getIntegration } from "./integrations";
 
 const ASAAS_API_BASE = "https://api.asaas.com/v3";
+const ASAAS_EXTERNAL_REFERENCE_MAX_LENGTH = 100;
 
 const WEBHOOK_EVENTS = [
   "PAYMENT_CREATED",
@@ -457,46 +458,119 @@ export const ensureClienteAsaasCustomer = async (clienteId) => {
   };
 };
 
-const EXTERNAL_REFERENCE_PREFIX = {
-  VENDA: "VENDA",
-  MANUAL: "MANUAL",
+const EXTERNAL_REFERENCE_SHORT_PREFIX_REVERSE = {
+  V: "VENDA",
+  M: "MANUAL",
+};
+
+const decodeExternalReferenceValue = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (raw.startsWith("u")) {
+    try {
+      const hex = Buffer.from(raw.slice(1), "base64url").toString("hex");
+      if (hex.length === 32) {
+        return [
+          hex.slice(0, 8),
+          hex.slice(8, 12),
+          hex.slice(12, 16),
+          hex.slice(16, 20),
+          hex.slice(20),
+        ].join("-");
+      }
+    } catch (error) {
+      return "";
+    }
+  }
+
+  if (raw.startsWith("t")) {
+    try {
+      return Buffer.from(raw.slice(1), "base64url").toString("utf8");
+    } catch (error) {
+      return "";
+    }
+  }
+
+  return raw;
 };
 
 export const buildAsaasExternalReference = ({
-  origemTipo,
-  vendaId,
-  contaReceberParcelaId,
   localChargeId,
 }) => {
-  const parts = [`origem=${EXTERNAL_REFERENCE_PREFIX[origemTipo] || "MANUAL"}`];
+  const normalizedLocalChargeId = String(localChargeId || "").trim();
 
-  if (vendaId) {
-    parts.push(`venda=${vendaId}`);
+  if (!normalizedLocalChargeId) {
+    throw buildServiceError(
+      "Não foi possível gerar a referência externa da cobrança sem o identificador local.",
+      400,
+    );
   }
 
-  if (contaReceberParcelaId) {
-    parts.push(`parcela=${contaReceberParcelaId}`);
+  if (normalizedLocalChargeId.length > ASAAS_EXTERNAL_REFERENCE_MAX_LENGTH) {
+    throw buildServiceError(
+      "Não foi possível gerar a referência externa da cobrança dentro do limite aceito pelo ASAAS.",
+      400,
+    );
   }
 
-  if (localChargeId) {
-    parts.push(`local=${localChargeId}`);
-  }
-
-  return parts.join("|").slice(0, 255);
+  return normalizedLocalChargeId;
 };
 
-export const parseAsaasExternalReference = (value) =>
-  String(value || "")
-    .split("|")
-    .reduce((acc, part) => {
-      const [key, rawValue] = part.split("=");
-      const normalizedKey = String(key || "").trim().toLowerCase();
-      if (!normalizedKey || !rawValue) return acc;
+export const parseAsaasExternalReference = (value) => {
+  const normalizedReference = String(value || "").trim();
+
+  if (!normalizedReference) {
+    return {};
+  }
+
+  if (!normalizedReference.includes("=")) {
+    return {
+      local: normalizedReference,
+    };
+  }
+
+  return normalizedReference.split("|").reduce((acc, part) => {
+    const [key, rawValue] = part.split("=");
+    const normalizedKey = String(key || "").trim().toLowerCase();
+    if (!normalizedKey || !rawValue) return acc;
+    const normalizedValue = decodeExternalReferenceValue(rawValue);
+
+    if (normalizedKey === "o") {
       return {
         ...acc,
-        [normalizedKey]: rawValue,
+        origem:
+          EXTERNAL_REFERENCE_SHORT_PREFIX_REVERSE[rawValue] || rawValue,
       };
-    }, {});
+    }
+
+    if (normalizedKey === "v") {
+      return {
+        ...acc,
+        venda: normalizedValue,
+      };
+    }
+
+    if (normalizedKey === "p") {
+      return {
+        ...acc,
+        parcela: normalizedValue,
+      };
+    }
+
+    if (normalizedKey === "l") {
+      return {
+        ...acc,
+        local: normalizedValue,
+      };
+    }
+
+    return {
+      ...acc,
+      [normalizedKey]: normalizedValue,
+    };
+  }, {});
+};
 
 const findLinkedContaReceberId = async (contaReceberParcelaId) => {
   if (!contaReceberParcelaId) return "";

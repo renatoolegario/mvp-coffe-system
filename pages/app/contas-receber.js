@@ -3,11 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   Drawer,
   Grid,
   MenuItem,
@@ -1168,20 +1163,33 @@ const ContasReceberPage = () => {
         </Stack>
       </Drawer>
 
-      <Dialog
+      <Drawer
+        anchor="right"
         open={emitirAsaasDialogOpen}
         onClose={emitindoAsaasParcelaId ? undefined : fecharEmitirAsaasDialog}
-        fullWidth
-        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            width: { xs: "100%", md: "40vw" },
+            minWidth: { md: 420 },
+            maxWidth: "100%",
+            height: "100vh",
+            p: 3,
+            display: "flex",
+          },
+        }}
       >
-        <DialogTitle>Emitir cobrança ASAAS</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Complete os dados da cobrança desta parcela. O vencimento precisa
-            ser no mínimo D+1.
-          </DialogContentText>
+        <Stack spacing={3} sx={{ height: "100%" }}>
+          <Box>
+            <Typography variant="h6" fontWeight={700} gutterBottom>
+              Emitir cobrança ASAAS
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Complete os dados da cobrança desta parcela. O vencimento precisa
+              ser no mínimo D+1.
+            </Typography>
+          </Box>
 
-          <Stack spacing={2} sx={{ mt: 2 }}>
+          <Stack spacing={2} sx={{ flex: 1 }}>
             <TextField
               label="Cliente"
               value={emitirAsaasRow?.clienteNome || "-"}
@@ -1243,23 +1251,24 @@ const ContasReceberPage = () => {
               fullWidth
             />
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={fecharEmitirAsaasDialog}
-            disabled={Boolean(emitindoAsaasParcelaId)}
-          >
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            onClick={emitirCobrancaAsaas}
-            disabled={Boolean(emitindoAsaasParcelaId)}
-          >
-            {emitindoAsaasParcelaId ? "Emitindo..." : "Emitir cobrança"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <Button
+              onClick={fecharEmitirAsaasDialog}
+              disabled={Boolean(emitindoAsaasParcelaId)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              onClick={emitirCobrancaAsaas}
+              disabled={Boolean(emitindoAsaasParcelaId)}
+            >
+              {emitindoAsaasParcelaId ? "Emitindo..." : "Emitir cobrança"}
+            </Button>
+          </Stack>
+        </Stack>
+      </Drawer>
 
       <Snackbar
         open={feedback.open}
