@@ -3,6 +3,11 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Drawer,
   Grid,
   MenuItem,
@@ -49,6 +54,13 @@ const toDateKey = (value) => {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const getTomorrowDateKey = () => {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + 1);
+  return toDateKey(date);
 };
 
 const formatDateTime = (value) => {
@@ -129,8 +141,32 @@ const resetRecebimentoForm = (setters, formaInicial) => {
   setters.setAcaoDiferenca("ACEITAR_ENCERRAR");
   setters.setOrigemRecebimento("NORMAL");
   setters.setFornecedorDestinoId("");
-  setters.setComprovanteUrl("");
   setters.setObservacao("");
+};
+
+const buildAsaasChargeForm = (row) => {
+  const minDueDate = getTomorrowDateKey();
+  const parcelaDueDate = row?.vencimentoKey || toDateKey(row?.vencimento);
+  const dueDate =
+    parcelaDueDate && parcelaDueDate >= minDueDate
+      ? parcelaDueDate
+      : minDueDate;
+  const parcelaNumero = Number(row?.parcela_num) || 0;
+  const vendaRef =
+    row?.conta?.origem_tipo === "venda" && row?.conta?.origem_id
+      ? `venda ${String(row.conta.origem_id).slice(0, 8)}`
+      : "parcela avulsa";
+
+  return {
+    descricao: row?.clienteNome
+      ? `Cobrança ASAAS - ${row.clienteNome} - parcela ${parcelaNumero} - ${vendaRef}`
+      : "Cobrança ASAAS",
+    value:
+      row?.valorProgramado !== undefined && row?.valorProgramado !== null
+        ? String(row.valorProgramado)
+        : "",
+    due_date: dueDate,
+  };
 };
 
 const ContasReceberPage = () => {
@@ -162,10 +198,14 @@ const ContasReceberPage = () => {
   const [acaoDiferenca, setAcaoDiferenca] = useState("ACEITAR_ENCERRAR");
   const [origemRecebimento, setOrigemRecebimento] = useState("NORMAL");
   const [fornecedorDestinoId, setFornecedorDestinoId] = useState("");
-  const [comprovanteUrl, setComprovanteUrl] = useState("");
   const [observacao, setObservacao] = useState("");
   const [asaasConfigurado, setAsaasConfigurado] = useState(false);
   const [emitindoAsaasParcelaId, setEmitindoAsaasParcelaId] = useState("");
+  const [emitirAsaasDialogOpen, setEmitirAsaasDialogOpen] = useState(false);
+  const [emitirAsaasRow, setEmitirAsaasRow] = useState(null);
+  const [emitirAsaasForm, setEmitirAsaasForm] = useState(
+    buildAsaasChargeForm(null),
+  );
   const [feedback, setFeedback] = useState({
     open: false,
     severity: "success",
@@ -430,7 +470,6 @@ const ContasReceberPage = () => {
         setAcaoDiferenca,
         setOrigemRecebimento,
         setFornecedorDestinoId,
-        setComprovanteUrl,
         setObservacao,
       },
       row.forma_recebimento || "PIX",
@@ -483,7 +522,6 @@ const ContasReceberPage = () => {
       origem_recebimento: origemRecebimento,
       fornecedor_destino_id:
         origemRecebimento === "DIRETO_FORNECEDOR" ? fornecedorDestinoId : null,
-      comprovante_url: comprovanteUrl || null,
       observacao_recebimento: observacao,
     });
 
@@ -497,15 +535,20 @@ const ContasReceberPage = () => {
         setAcaoDiferenca,
         setOrigemRecebimento,
         setFornecedorDestinoId,
-        setComprovanteUrl,
         setObservacao,
       },
       parcelaSelecionada.forma_recebimento || "PIX",
     );
   };
 
-  const emitirCobrancaAsaas = async (row) => {
-    if (!row?.id || emitindoAsaasParcelaId) return;
+  const fecharEmitirAsaasDialog = () => {
+    setEmitirAsaasDialogOpen(false);
+    setEmitirAsaasRow(null);
+    setEmitirAsaasForm(buildAsaasChargeForm(null));
+  };
+
+  const abrirEmitirAsaasDialog = (row) => {
+    if (!row?.id) return;
     if (row.status !== "ABERTA") return;
 
     if (row.asaasCobrancaEmitida) {
@@ -517,7 +560,36 @@ const ContasReceberPage = () => {
       return;
     }
 
-    setEmitindoAsaasParcelaId(row.id);
+    setEmitirAsaasRow(row);
+    setEmitirAsaasForm(buildAsaasChargeForm(row));
+    setEmitirAsaasDialogOpen(true);
+  };
+
+  const emitirCobrancaAsaas = async () => {
+    if (!emitirAsaasRow?.id || emitindoAsaasParcelaId) return;
+
+    const value = Math.max(0, toNumber(emitirAsaasForm.value));
+    const minDueDate = getTomorrowDateKey();
+
+    if (value <= 0 || !emitirAsaasForm.due_date) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: "Informe valor e vencimento válidos para emitir no ASAAS.",
+      });
+      return;
+    }
+
+    if (emitirAsaasForm.due_date < minDueDate) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: `O vencimento precisa ser no mínimo ${minDueDate} (D+1).`,
+      });
+      return;
+    }
+
+    setEmitindoAsaasParcelaId(emitirAsaasRow.id);
 
     try {
       const response = await authenticatedFetch(
@@ -526,16 +598,22 @@ const ContasReceberPage = () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            cliente_id: row.clienteId,
+            cliente_id: emitirAsaasRow.clienteId,
             venda_id:
-              row.conta?.origem_tipo === "venda" ? row.conta?.origem_id : null,
-            conta_receber_id: row.conta_receber_id,
-            conta_receber_parcela_id: row.id,
+              emitirAsaasRow.conta?.origem_tipo === "venda"
+                ? emitirAsaasRow.conta?.origem_id
+                : null,
+            conta_receber_id: emitirAsaasRow.conta_receber_id,
+            conta_receber_parcela_id: emitirAsaasRow.id,
             billing_type: "UNDEFINED",
-            due_date: row.vencimentoKey || toDateKey(row.vencimento),
-            value: row.valorProgramado,
+            due_date: emitirAsaasForm.due_date,
+            value,
+            descricao: emitirAsaasForm.descricao,
             origem_tipo:
-              row.conta?.origem_tipo === "venda" ? "VENDA" : "MANUAL",
+              emitirAsaasRow.conta?.origem_tipo === "venda"
+                ? "VENDA"
+                : "MANUAL",
+            enforce_due_date_d1: true,
           }),
         },
       );
@@ -548,6 +626,7 @@ const ContasReceberPage = () => {
       }
 
       await loadData();
+      fecharEmitirAsaasDialog();
       setFeedback({
         open: true,
         severity: "success",
@@ -888,7 +967,7 @@ const ContasReceberPage = () => {
                               variant="outlined"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                emitirCobrancaAsaas(row);
+                                abrirEmitirAsaasDialog(row);
                               }}
                               disabled={
                                 row.asaasCobrancaEmitida ||
@@ -976,7 +1055,7 @@ const ContasReceberPage = () => {
                 <Button
                   size="small"
                   variant="outlined"
-                  onClick={() => emitirCobrancaAsaas(parcelaSelecionada)}
+                  onClick={() => abrirEmitirAsaasDialog(parcelaSelecionada)}
                   disabled={emitindoAsaasParcelaId === parcelaSelecionada?.id}
                 >
                   {emitindoAsaasParcelaId === parcelaSelecionada?.id
@@ -1044,12 +1123,6 @@ const ContasReceberPage = () => {
           ) : null}
 
           <TextField
-            label="Comprovante (URL no blob storage)"
-            value={comprovanteUrl}
-            onChange={(event) => setComprovanteUrl(event.target.value)}
-          />
-
-          <TextField
             label="Motivo da diferença (obrigatório se receber menor)"
             value={motivoDiferenca}
             onChange={(event) => setMotivoDiferenca(event.target.value)}
@@ -1094,6 +1167,99 @@ const ContasReceberPage = () => {
           </Stack>
         </Stack>
       </Drawer>
+
+      <Dialog
+        open={emitirAsaasDialogOpen}
+        onClose={emitindoAsaasParcelaId ? undefined : fecharEmitirAsaasDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Emitir cobrança ASAAS</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Complete os dados da cobrança desta parcela. O vencimento precisa
+            ser no mínimo D+1.
+          </DialogContentText>
+
+          <Stack spacing={2} sx={{ mt: 2 }}>
+            <TextField
+              label="Cliente"
+              value={emitirAsaasRow?.clienteNome || "-"}
+              InputProps={{ readOnly: true }}
+              fullWidth
+            />
+            <TextField
+              label="Parcela"
+              value={
+                emitirAsaasRow
+                  ? `Parcela ${emitirAsaasRow.parcela_num} • Conta ${emitirAsaasRow.contaLabel} • Vencimento original ${emitirAsaasRow.vencimentoLabel}`
+                  : ""
+              }
+              InputProps={{ readOnly: true }}
+              fullWidth
+            />
+            <TextField
+              label="Tipo de cobrança"
+              value="Pergunte ao cliente"
+              InputProps={{ readOnly: true }}
+              fullWidth
+            />
+            <TextField
+              label="Descrição"
+              value={emitirAsaasForm.descricao}
+              onChange={(event) =>
+                setEmitirAsaasForm((prev) => ({
+                  ...prev,
+                  descricao: event.target.value,
+                }))
+              }
+              fullWidth
+            />
+            <TextField
+              label="Valor"
+              type="number"
+              value={emitirAsaasForm.value}
+              onChange={(event) =>
+                setEmitirAsaasForm((prev) => ({
+                  ...prev,
+                  value: event.target.value,
+                }))
+              }
+              fullWidth
+            />
+            <TextField
+              label="Vencimento"
+              type="date"
+              value={emitirAsaasForm.due_date}
+              onChange={(event) =>
+                setEmitirAsaasForm((prev) => ({
+                  ...prev,
+                  due_date: event.target.value,
+                }))
+              }
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ min: getTomorrowDateKey() }}
+              helperText={`Mínimo: ${getTomorrowDateKey()} (D+1)`}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={fecharEmitirAsaasDialog}
+            disabled={Boolean(emitindoAsaasParcelaId)}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={emitirCobrancaAsaas}
+            disabled={Boolean(emitindoAsaasParcelaId)}
+          >
+            {emitindoAsaasParcelaId ? "Emitindo..." : "Emitir cobrança"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={feedback.open}

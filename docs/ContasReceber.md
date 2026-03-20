@@ -19,7 +19,8 @@ Aceita filtros por query string (`cliente_id` e `parcela_id`) para abrir a tela 
 - Permite navegar para `Detalhe do Cliente` pela linha da tabela.
 - Permite confirmar recebimento individual em drawer lateral, preservando o fluxo de ajuste, diferença e comprovante.
 - Exibe, por parcela, se a cobrança ASAAS foi emitida, o status atual e o link salvo.
-- Permite emitir posteriormente a cobrança ASAAS de parcelas em aberto que ainda não foram emitidas, usando cliente, valor e vencimento da própria parcela.
+- Permite emitir posteriormente a cobrança ASAAS de parcelas em aberto que ainda não foram emitidas, usando um modal para revisar descrição, valor e vencimento.
+- O vencimento informado manualmente para emissão posterior no ASAAS deve respeitar `D+1`.
 
 ## Resultado esperado
 - Visão tabular mais direta para contas vencidas e a vencer.

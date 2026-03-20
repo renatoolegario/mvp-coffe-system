@@ -80,6 +80,28 @@ const readApiBody = async (response) => {
   }
 };
 
+const fetchAsaasIntegrationConfig = async () => {
+  const response = await authenticatedFetch(
+    "/api/v1/configuracao-empresa/integracoes",
+  );
+  const data = await readApiBody(response);
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || "Não foi possível carregar a configuração do ASAAS.",
+    );
+  }
+
+  const asaas = (data.integracoes || []).find(
+    (item) => item.provedor === "asaas",
+  );
+
+  return {
+    disponivel: Boolean(asaas?.configurado),
+    autoCharge: Boolean(asaas?.config?.auto_charge_on_credit_sale),
+  };
+};
+
 const escapeHtml = (value) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -685,16 +707,9 @@ const NovaVendaPage = () => {
   useEffect(() => {
     const loadIntegracaoAsaas = async () => {
       try {
-        const response = await authenticatedFetch(
-          "/api/v1/configuracao-empresa/integracoes",
-        );
-        const data = await readApiBody(response);
-        if (!response.ok) return;
-        const asaas = (data.integracoes || []).find(
-          (item) => item.provedor === "asaas",
-        );
-        setAsaasDisponivel(Boolean(asaas?.configurado));
-        setAsaasAutoCharge(Boolean(asaas?.config?.auto_charge_on_credit_sale));
+        const config = await fetchAsaasIntegrationConfig();
+        setAsaasDisponivel(config.disponivel);
+        setAsaasAutoCharge(config.autoCharge);
       } catch (error) {
         setAsaasDisponivel(false);
         setAsaasAutoCharge(false);
@@ -888,15 +903,35 @@ const NovaVendaPage = () => {
         contaReceberId: resultado.contaReceberId,
         parcelasCriadas: resultado.parcelas,
       };
+      let runtimeAsaasDisponivel = asaasDisponivel;
+      let runtimeAsaasAutoCharge = asaasAutoCharge;
+
+      if (
+        tipoPagamento === "A_PRAZO" &&
+        Array.isArray(resultado.parcelas) &&
+        resultado.parcelas.length > 0
+      ) {
+        try {
+          const runtimeConfig = await fetchAsaasIntegrationConfig();
+          runtimeAsaasDisponivel = runtimeConfig.disponivel;
+          runtimeAsaasAutoCharge = runtimeConfig.autoCharge;
+          setAsaasDisponivel(runtimeConfig.disponivel);
+          setAsaasAutoCharge(runtimeConfig.autoCharge);
+        } catch (error) {
+          runtimeAsaasDisponivel = asaasDisponivel;
+          runtimeAsaasAutoCharge = asaasAutoCharge;
+        }
+      }
+
       const deveTratarAsaas =
         tipoPagamento === "A_PRAZO" &&
-        asaasDisponivel &&
+        runtimeAsaasDisponivel &&
         Array.isArray(resultado.parcelas) &&
         resultado.parcelas.length > 0;
 
       resetForm();
 
-      if (deveTratarAsaas && asaasAutoCharge) {
+      if (deveTratarAsaas && runtimeAsaasAutoCharge) {
         await createAsaasChargesForSale(asaasPayload);
         setFeedback({
           open: true,

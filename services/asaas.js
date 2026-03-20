@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID } from "crypto";
-import { query } from "../infra/database";
+import { query, withTransaction } from "../infra/database";
 import { decryptIfNeeded } from "../utils/crypto";
 import { normalizeCpfCnpj } from "../utils/document";
 import { getIntegration } from "./integrations";
@@ -25,6 +25,17 @@ const TERMINAL_PAYMENT_STATUSES = new Set([
   "DELETED",
 ]);
 
+const RECEIVED_PAYMENT_EVENTS = new Set([
+  "PAYMENT_CONFIRMED",
+  "PAYMENT_RECEIVED",
+]);
+
+const RECEIVED_PAYMENT_STATUSES = new Set([
+  "CONFIRMED",
+  "RECEIVED",
+  "RECEIVED_IN_CASH",
+]);
+
 const isValidDateOnly = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
 
 const toDateOnly = (value) => {
@@ -35,6 +46,39 @@ const toDateOnly = (value) => {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+};
+
+const toTimestampValue = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (isValidDateOnly(raw)) {
+    return new Date(`${raw}T12:00:00-03:00`).toISOString();
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString();
+};
+
+const formatDateInTimeZone = (date, timeZone = "America/Sao_Paulo") => {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value || "0000";
+  const month = parts.find((part) => part.type === "month")?.value || "01";
+  const day = parts.find((part) => part.type === "day")?.value || "01";
+  return `${year}-${month}-${day}`;
+};
+
+const getTomorrowDateOnlyInSaoPaulo = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return formatDateInTimeZone(date, "America/Sao_Paulo");
 };
 
 const toNumber = (value) => {
@@ -67,6 +111,90 @@ const normalizeAsaasBillingType = (value) => {
   }
 
   return "BOLETO";
+};
+
+const normalizeAsaasEvent = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
+
+const normalizeAsaasStatus = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
+
+const isAsaasPaymentSettled = ({ event, status }) =>
+  RECEIVED_PAYMENT_EVENTS.has(normalizeAsaasEvent(event)) ||
+  RECEIVED_PAYMENT_STATUSES.has(normalizeAsaasStatus(status));
+
+const resolveAsaasReceiptMethod = (value) => {
+  switch (normalizeAsaasStatus(value)) {
+    case "PIX":
+      return "PIX";
+    case "BOLETO":
+      return "BOLETO";
+    case "CREDIT_CARD":
+      return "CREDITO";
+    case "DEBIT_CARD":
+      return "DEBITO";
+    case "RECEIVED_IN_CASH":
+      return "DINHEIRO";
+    case "TRANSFER":
+    case "TRANSFERENCIA":
+    case "BANK_TRANSFER":
+      return "TRANSFERENCIA";
+    default:
+      return normalizeOptionalText(value) || "ASAAS";
+  }
+};
+
+const resolveAsaasReceiptAt = (payment = {}) =>
+  toTimestampValue(payment?.clientPaymentDate) ||
+  toTimestampValue(payment?.paymentDate) ||
+  toTimestampValue(payment?.confirmedDate) ||
+  toTimestampValue(payment?.creditDate) ||
+  new Date().toISOString();
+
+const resolveAsaasChargeOriginalAmount = (payment = {}) => {
+  const originalValue = payment?.originalValue;
+
+  if (
+    originalValue !== null &&
+    originalValue !== undefined &&
+    String(originalValue).trim() !== ""
+  ) {
+    return toNumber(originalValue);
+  }
+
+  return toNumber(payment?.value);
+};
+
+const resolveAsaasChargeReceivedAmount = ({ payment = {}, event, status }) => {
+  if (
+    !isAsaasPaymentSettled({
+      event,
+      status: status || payment?.status,
+    })
+  ) {
+    return null;
+  }
+
+  const paidValue = payment?.value;
+  if (
+    paidValue === null ||
+    paidValue === undefined ||
+    String(paidValue).trim() === ""
+  ) {
+    return null;
+  }
+
+  return toNumber(paidValue);
+};
+
+const resolveAsaasReceivedAmount = (payment = {}, fallbackValue = 0) => {
+  const directAmount = toNumber(payment?.value);
+  if (directAmount > 0) return directAmount;
+  return toNumber(fallbackValue);
 };
 
 const parseJsonResponse = async (response) => {
@@ -430,6 +558,7 @@ const toChargeRecordValues = async ({
 }) => {
   const externalReference = String(payment?.externalReference || "").trim();
   const parsedReference = parseAsaasExternalReference(externalReference);
+  const linkedLocalChargeId = String(parsedReference.local || "").trim();
   const linkedParcelaId =
     contaReceberParcelaId ||
     String(parsedReference.parcela || "").trim();
@@ -441,7 +570,7 @@ const toChargeRecordValues = async ({
     clienteId || (await findClienteIdByAsaasCustomer(payment?.customer));
 
   return {
-    id: id || randomUUID(),
+    id: id || linkedLocalChargeId || randomUUID(),
     asaas_payment_id: String(payment?.id || "").trim(),
     asaas_customer_id: String(payment?.customer || "").trim(),
     cliente_id: linkedClienteId || null,
@@ -456,7 +585,12 @@ const toChargeRecordValues = async ({
     billing_type: String(payment?.billingType || "").trim().toUpperCase() || "BOLETO",
     status: String(payment?.status || "").trim().toUpperCase() || "PENDING",
     due_date: toDateOnly(payment?.dueDate) || null,
-    value: toNumber(payment?.value),
+    value: resolveAsaasChargeOriginalAmount(payment),
+    received_value: resolveAsaasChargeReceivedAmount({
+      payment,
+      event,
+      status: payment?.status,
+    }),
     external_reference: externalReference || null,
     invoice_url: String(payment?.invoiceUrl || "").trim() || null,
     bank_slip_url:
@@ -515,6 +649,7 @@ export const upsertAsaasChargeRecord = async ({
         status,
         due_date,
         value,
+        received_value,
         external_reference,
         invoice_url,
         bank_slip_url,
@@ -529,7 +664,7 @@ export const upsertAsaasChargeRecord = async ({
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19,
-        $20, $21::jsonb, now(), now()
+        $20, $21, $22::jsonb, now(), now()
       )
       ON CONFLICT (asaas_payment_id)
       DO UPDATE SET
@@ -547,6 +682,10 @@ export const upsertAsaasChargeRecord = async ({
         status = COALESCE(EXCLUDED.status, asaas_cobrancas.status),
         due_date = COALESCE(EXCLUDED.due_date, asaas_cobrancas.due_date),
         value = COALESCE(EXCLUDED.value, asaas_cobrancas.value),
+        received_value = COALESCE(
+          EXCLUDED.received_value,
+          asaas_cobrancas.received_value
+        ),
         external_reference = COALESCE(
           EXCLUDED.external_reference,
           asaas_cobrancas.external_reference
@@ -575,6 +714,7 @@ export const upsertAsaasChargeRecord = async ({
       values.status,
       values.due_date,
       values.value,
+      values.received_value,
       values.external_reference,
       values.invoice_url,
       values.bank_slip_url,
@@ -633,6 +773,12 @@ const buildChargeDescription = ({ descricao, cliente, vendaId, parcelaId }) => {
 const serializeCharge = (row) => ({
   ...row,
   value: toNumber(row.value),
+  received_value:
+    row.received_value === null ||
+    row.received_value === undefined ||
+    String(row.received_value).trim() === ""
+      ? null
+      : toNumber(row.received_value),
 });
 
 const resolveAsaasChargeLink = (row = {}) =>
@@ -685,6 +831,115 @@ const refreshContaReceberParcelaAsaasSnapshot = async (
   );
 };
 
+const syncContaReceberStatus = async (client, contaReceberId) => {
+  const safeContaReceberId = String(contaReceberId || "").trim();
+  if (!safeContaReceberId) return;
+
+  await client.query(
+    `
+      UPDATE contas_receber cr
+      SET status = CASE
+        WHEN EXISTS (
+          SELECT 1
+          FROM contas_receber_parcelas crp
+          WHERE crp.conta_receber_id = cr.id
+            AND COALESCE(crp.status, 'ABERTA') <> 'RECEBIDA'
+        ) THEN 'ABERTO'
+        ELSE 'RECEBIDO'
+      END
+      WHERE cr.id = $1
+    `,
+    [safeContaReceberId],
+  );
+};
+
+const syncParcelaRecebimentoFromAsaas = async ({
+  charge,
+  payment,
+  event,
+}) => {
+  const parcelaId = String(charge?.conta_receber_parcela_id || "").trim();
+  if (!parcelaId) return null;
+
+  if (
+    !isAsaasPaymentSettled({
+      event,
+      status: charge?.status || payment?.status,
+    })
+  ) {
+    return null;
+  }
+
+  return withTransaction(async (client) => {
+    const parcelaResult = await client.query(
+      `
+        SELECT
+          id,
+          conta_receber_id,
+          status,
+          valor,
+          valor_programado
+        FROM contas_receber_parcelas
+        WHERE id = $1
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [parcelaId],
+    );
+
+    const parcela = parcelaResult.rows[0];
+    if (!parcela) return null;
+
+    const alreadyReceived =
+      normalizeAsaasStatus(parcela.status) === "RECEBIDA";
+    const receiptMethod = resolveAsaasReceiptMethod(
+      payment?.billingType || charge?.billing_type || charge?.status,
+    );
+    const receiptAt = resolveAsaasReceiptAt(payment);
+    const fallbackAmount =
+      toNumber(parcela.valor_programado) || toNumber(parcela.valor);
+
+    if (!alreadyReceived) {
+      await client.query(
+        `
+          UPDATE contas_receber_parcelas
+          SET
+            status = 'RECEBIDA',
+            data_recebimento = COALESCE(data_recebimento, $2::timestamptz),
+            forma_recebimento = COALESCE(NULLIF(forma_recebimento, ''), $3),
+            valor_recebido = COALESCE(valor_recebido, $4),
+            forma_recebimento_real = COALESCE(NULLIF(forma_recebimento_real, ''), $3),
+            origem_recebimento = CASE
+              WHEN COALESCE(NULLIF(origem_recebimento, ''), 'NORMAL') = 'NORMAL'
+                THEN 'ASAAS'
+              ELSE origem_recebimento
+            END,
+            observacao_recebimento = COALESCE(
+              NULLIF(observacao_recebimento, ''),
+              $5
+            )
+          WHERE id = $1
+        `,
+        [
+          parcela.id,
+          receiptAt,
+          receiptMethod,
+          resolveAsaasReceivedAmount(payment, fallbackAmount),
+          `Baixa automática via webhook ASAAS (${normalizeAsaasEvent(event) || "PAYMENT_RECEIVED"}).`,
+        ],
+      );
+    }
+
+    await syncContaReceberStatus(client, parcela.conta_receber_id);
+
+    return {
+      parcela_id: parcela.id,
+      conta_receber_id: parcela.conta_receber_id,
+      marked_as_received: !alreadyReceived,
+    };
+  });
+};
+
 export const createAsaasCharge = async (payload = {}) => {
   const clienteId = String(payload.cliente_id || "").trim();
   if (!clienteId) {
@@ -694,6 +949,19 @@ export const createAsaasCharge = async (payload = {}) => {
   const dueDate = toDateOnly(payload.due_date || payload.dueDate);
   if (!dueDate) {
     throw buildServiceError("Informe uma data de vencimento válida.", 400);
+  }
+
+  const enforceDueDateD1 = Boolean(
+    payload.enforce_due_date_d1 ?? payload.enforceDueDateD1,
+  );
+  if (enforceDueDateD1) {
+    const minDueDate = getTomorrowDateOnlyInSaoPaulo();
+    if (dueDate < minDueDate) {
+      throw buildServiceError(
+        `A data de vencimento deve ser no mínimo ${minDueDate} (D+1).`,
+        400,
+      );
+    }
   }
 
   const value = toNumber(payload.value);
@@ -1024,8 +1292,8 @@ export const processAsaasWebhookEvent = async (payload = {}) => {
 
   const existing = await loadExistingChargeByIdentifier(payment.id);
 
-  return upsertAsaasChargeRecord({
-    id: existing?.id || randomUUID(),
+  const charge = await upsertAsaasChargeRecord({
+    id: existing?.id || "",
     payment,
     event,
     clienteId: existing?.cliente_id || "",
@@ -1034,6 +1302,14 @@ export const processAsaasWebhookEvent = async (payload = {}) => {
     contaReceberParcelaId: existing?.conta_receber_parcela_id || "",
     origemTipo: existing?.origem_tipo || "",
   });
+
+  await syncParcelaRecebimentoFromAsaas({
+    charge,
+    payment,
+    event,
+  });
+
+  return charge;
 };
 
 export const isAsaasChargePending = (status) =>

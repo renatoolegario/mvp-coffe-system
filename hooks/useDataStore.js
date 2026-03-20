@@ -137,6 +137,10 @@ export const useDataStore = create((set, get) => ({
   ...baseState,
   hydrated: false,
   loading: false,
+  setEmpresaConfiguracaoEstoque: (faixas = []) =>
+    set({
+      empresaConfiguracaoEstoque: Array.isArray(faixas) ? faixas : [],
+    }),
   getInsumoEstoqueStatus: (insumoId, saldoKgOverride = undefined) => {
     const state = get();
     const insumo = state.insumos.find((item) => item.id === insumoId);

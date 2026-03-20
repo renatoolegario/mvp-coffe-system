@@ -17,7 +17,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { authenticatedFetch, getAuthToken } from "../../hooks/useSession";
@@ -172,6 +172,12 @@ const buildAuditTrail = (referenceCode, sources = []) => {
 };
 
 const ConfiguracaoEmpresaPage = () => {
+  const empresaConfiguracaoEstoque = useDataStore(
+    (state) => state.empresaConfiguracaoEstoque,
+  );
+  const setEmpresaConfiguracaoEstoque = useDataStore(
+    (state) => state.setEmpresaConfiguracaoEstoque,
+  );
   const [tab, setTab] = useState("estoque");
   const [faixas, setFaixas] = useState([]);
   const [integracoes, setIntegracoes] = useState(integracoesIniciais);
@@ -180,6 +186,7 @@ const ConfiguracaoEmpresaPage = () => {
     severity: "success",
     message: "",
   });
+  const [savingIntegracoes, setSavingIntegracoes] = useState({});
   const [codigoAuditoriaInput, setCodigoAuditoriaInput] = useState("");
   const [codigoAuditoriaBusca, setCodigoAuditoriaBusca] = useState("");
   const [auditoriaRealizada, setAuditoriaRealizada] = useState(false);
@@ -339,20 +346,22 @@ const ConfiguracaoEmpresaPage = () => {
     return Object.entries(counters).sort((a, b) => b[1] - a[1]);
   }, [auditoriaRegistros]);
 
-  const loadFaixas = async () => {
+  const loadFaixas = useCallback(async () => {
     try {
       const response = await authenticatedFetch(
         "/api/v1/configuracao-empresa/estoque",
       );
       if (!response.ok) return;
       const data = await response.json();
-      setFaixas(data.faixas || []);
+      const nextFaixas = data.faixas || [];
+      setFaixas(nextFaixas);
+      setEmpresaConfiguracaoEstoque(nextFaixas);
     } catch (error) {
-      setFaixas([]);
+      setFaixas(empresaConfiguracaoEstoque || []);
     }
-  };
+  }, [empresaConfiguracaoEstoque, setEmpresaConfiguracaoEstoque]);
 
-  const loadIntegracoes = async () => {
+  const loadIntegracoes = useCallback(async () => {
     try {
       const response = await authenticatedFetch(
         "/api/v1/configuracao-empresa/integracoes",
@@ -400,12 +409,19 @@ const ConfiguracaoEmpresaPage = () => {
     } catch (error) {
       setIntegracoes(integracoesIniciais);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadFaixas();
     loadIntegracoes();
-  }, []);
+  }, [loadFaixas, loadIntegracoes]);
+
+  useEffect(() => {
+    if (!hydrated || faixas.length || !empresaConfiguracaoEstoque.length) {
+      return;
+    }
+    setFaixas(empresaConfiguracaoEstoque);
+  }, [empresaConfiguracaoEstoque, faixas.length, hydrated]);
 
   useEffect(() => {
     if (tab !== "apis") return;
@@ -495,6 +511,128 @@ const ConfiguracaoEmpresaPage = () => {
     }));
   };
 
+  const setIntegracaoSaving = (provedor, value) => {
+    setSavingIntegracoes((prev) => ({
+      ...prev,
+      [provedor]: value,
+    }));
+  };
+
+  const applySavedIntegracao = (provedor, data, integracao, config) => {
+    setIntegracoes((prev) => ({
+      ...prev,
+      [provedor]: {
+        ...prev[provedor],
+        configurado: true,
+        editando: false,
+        chave: "",
+        ...(provedor === "asaas"
+          ? {
+              environment: "production",
+              auto_charge_on_credit_sale: Boolean(
+                data.config?.auto_charge_on_credit_sale,
+              ),
+              webhook_url: data.config?.webhook_url || "",
+              webhook_registered_at:
+                data.config?.webhook_registered_at || "",
+              webhook_error: data.config?.webhook_error || "",
+              webhook_cleanup_error:
+                data.config?.webhook_cleanup_error || "",
+            }
+          : {}),
+        ...(provedor === "resend"
+          ? {
+              from_email: data.config?.from_email || config.from_email || "",
+              notification_recipients_text: Array.isArray(
+                data.config?.notification_recipients,
+              )
+                ? data.config.notification_recipients.join(", ")
+                : integracao.notification_recipients_text,
+            }
+          : {}),
+      },
+    }));
+  };
+
+  const persistAsaasAutoChargeSetting = async (nextValue) => {
+    const response = await authenticatedFetch(
+      "/api/v1/configuracao-empresa/integracoes",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provedor: "asaas",
+          chave: "",
+          config: {
+            environment: "production",
+            auto_charge_on_credit_sale: Boolean(nextValue),
+          },
+        }),
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Não foi possível atualizar a automação do ASAAS.",
+      );
+    }
+
+    applySavedIntegracao("asaas", data, integracoes.asaas, {});
+
+    return data;
+  };
+
+  const handleAsaasAutoChargeToggle = async (event) => {
+    const nextValue = event.target.checked;
+    const previousValue = Boolean(
+      integracoes.asaas?.auto_charge_on_credit_sale,
+    );
+
+    setIntegracoes((prev) => ({
+      ...prev,
+      asaas: {
+        ...prev.asaas,
+        auto_charge_on_credit_sale: nextValue,
+      },
+    }));
+
+    if (!integracoes.asaas?.configurado || integracoes.asaas?.editando) {
+      return;
+    }
+
+    setIntegracaoSaving("asaas", true);
+
+    try {
+      await persistAsaasAutoChargeSetting(nextValue);
+      setFeedback({
+        open: true,
+        severity: "success",
+        message:
+          nextValue
+            ? "Cobrança automática do ASAAS ativada com sucesso."
+            : "Cobrança automática do ASAAS desativada com sucesso.",
+      });
+    } catch (error) {
+      setIntegracoes((prev) => ({
+        ...prev,
+        asaas: {
+          ...prev.asaas,
+          auto_charge_on_credit_sale: previousValue,
+        },
+      }));
+      setFeedback({
+        open: true,
+        severity: "error",
+        message:
+          error.message ||
+          "Não foi possível atualizar a automação do ASAAS.",
+      });
+    } finally {
+      setIntegracaoSaving("asaas", false);
+    }
+  };
+
   const handleSalvarIntegracao = async (provedor) => {
     const integracao = integracoes[provedor];
     const chave = integracao?.chave?.trim();
@@ -560,6 +698,7 @@ const ConfiguracaoEmpresaPage = () => {
     }
 
     try {
+      setIntegracaoSaving(provedor, true);
       const response = await authenticatedFetch(
         "/api/v1/configuracao-empresa/integracoes",
         {
@@ -579,40 +718,7 @@ const ConfiguracaoEmpresaPage = () => {
         return;
       }
 
-      setIntegracoes((prev) => ({
-        ...prev,
-        [provedor]: {
-          ...prev[provedor],
-          configurado: true,
-          editando: false,
-          chave: "",
-          ...(provedor === "asaas"
-            ? {
-                environment: "production",
-                auto_charge_on_credit_sale: Boolean(
-                  data.config?.auto_charge_on_credit_sale,
-                ),
-                webhook_url:
-                  data.config?.webhook_url || "",
-                webhook_registered_at:
-                  data.config?.webhook_registered_at || "",
-                webhook_error: data.config?.webhook_error || "",
-                webhook_cleanup_error:
-                  data.config?.webhook_cleanup_error || "",
-              }
-            : {}),
-          ...(provedor === "resend"
-            ? {
-                from_email: data.config?.from_email || config.from_email || "",
-                notification_recipients_text: Array.isArray(
-                  data.config?.notification_recipients,
-                )
-                  ? data.config.notification_recipients.join(", ")
-                  : integracao.notification_recipients_text,
-              }
-            : {}),
-        },
-      }));
+      applySavedIntegracao(provedor, data, integracao, config);
       setFeedback({
         open: true,
         severity:
@@ -633,6 +739,8 @@ const ConfiguracaoEmpresaPage = () => {
         severity: "error",
         message: "Erro ao salvar integração.",
       });
+    } finally {
+      setIntegracaoSaving(provedor, false);
     }
   };
 
@@ -660,7 +768,9 @@ const ConfiguracaoEmpresaPage = () => {
         severity: "success",
         message: "Configuração de estoque salva com sucesso.",
       });
-      setFaixas(data.faixas || []);
+      const nextFaixas = data.faixas || [];
+      setFaixas(nextFaixas);
+      setEmpresaConfiguracaoEstoque(nextFaixas);
     } catch (error) {
       setFeedback({
         open: true,
@@ -778,6 +888,7 @@ const ConfiguracaoEmpresaPage = () => {
               const asaasTemPendencia = Boolean(
                 integracao.webhook_error || integracao.webhook_cleanup_error,
               );
+              const salvandoIntegracao = Boolean(savingIntegracoes[provedor]);
               return (
                 <Paper key={provedor} variant="outlined" sx={{ p: 2.5 }}>
                   <Stack spacing={2}>
@@ -793,6 +904,7 @@ const ConfiguracaoEmpresaPage = () => {
                                 variant="outlined"
                                 fullWidth
                                 onClick={() => handleEditarIntegracao(provedor)}
+                                disabled={salvandoIntegracao}
                               >
                                 Alterar chave
                               </Button>
@@ -815,6 +927,7 @@ const ConfiguracaoEmpresaPage = () => {
                                   }
                                   value={integracao.chave}
                                   onChange={handleIntegracaoField(provedor)}
+                                  disabled={salvandoIntegracao}
                                 />
                               </Grid>
                               <Grid item xs={12} md={3}>
@@ -824,10 +937,13 @@ const ConfiguracaoEmpresaPage = () => {
                                   onClick={() =>
                                     handleSalvarIntegracao(provedor)
                                   }
+                                  disabled={salvandoIntegracao}
                                 >
-                                  {integracao.configurado
-                                    ? "Atualizar chave"
-                                    : "Salvar"}
+                                  {salvandoIntegracao
+                                    ? "Salvando..."
+                                    : integracao.configurado
+                                      ? "Atualizar chave"
+                                      : "Salvar"}
                                 </Button>
                               </Grid>
                             </>
@@ -846,17 +962,8 @@ const ConfiguracaoEmpresaPage = () => {
                               checked={Boolean(
                                 integracao.auto_charge_on_credit_sale,
                               )}
-                              onChange={(event) =>
-                                setIntegracoes((prev) => ({
-                                  ...prev,
-                                  [provedor]: {
-                                    ...prev[provedor],
-                                    auto_charge_on_credit_sale:
-                                      event.target.checked,
-                                  },
-                                }))
-                              }
-                              disabled={bloqueado}
+                              onChange={handleAsaasAutoChargeToggle}
+                              disabled={salvandoIntegracao}
                             />
                           }
                           label="Cobrar automaticamente vendas a prazo no ASAAS"
@@ -867,6 +974,13 @@ const ConfiguracaoEmpresaPage = () => {
                             ? "Cada venda a prazo já emite automaticamente uma cobrança ASAAS por parcela, sem perguntar ao usuário."
                             : "Cada venda a prazo continua perguntando ao usuário, ao final do cadastro, se deseja emitir as cobranças ASAAS das parcelas."}
                         </Alert>
+
+                        {salvandoIntegracao ? (
+                          <Alert severity="info">
+                            Salvando a configuração do ASAAS e sincronizando a
+                            automação.
+                          </Alert>
+                        ) : null}
 
                         {integracao.configurado && bloqueado ? (
                           <Alert
@@ -932,7 +1046,7 @@ const ConfiguracaoEmpresaPage = () => {
                               }
                               value={bloqueado ? "" : integracao.chave}
                               onChange={handleIntegracaoField(provedor)}
-                              disabled={bloqueado}
+                              disabled={bloqueado || salvandoIntegracao}
                             />
                           </Grid>
                           <Grid item xs={12} md={3}>
@@ -941,6 +1055,7 @@ const ConfiguracaoEmpresaPage = () => {
                                 variant="outlined"
                                 fullWidth
                                 onClick={() => handleEditarIntegracao(provedor)}
+                                disabled={salvandoIntegracao}
                               >
                                 Editar
                               </Button>
@@ -951,8 +1066,9 @@ const ConfiguracaoEmpresaPage = () => {
                                 onClick={() =>
                                   handleSalvarIntegracao(provedor)
                                 }
+                                disabled={salvandoIntegracao}
                               >
-                                Salvar
+                                {salvandoIntegracao ? "Salvando..." : "Salvar"}
                               </Button>
                             )}
                           </Grid>
@@ -967,7 +1083,7 @@ const ConfiguracaoEmpresaPage = () => {
                             "resend",
                             "from_email",
                           )}
-                          disabled={bloqueado}
+                          disabled={bloqueado || salvandoIntegracao}
                         />
                         <TextField
                           fullWidth
@@ -980,7 +1096,7 @@ const ConfiguracaoEmpresaPage = () => {
                             "resend",
                             "notification_recipients_text",
                           )}
-                          disabled={bloqueado}
+                          disabled={bloqueado || salvandoIntegracao}
                         />
                       </Stack>
                     )}

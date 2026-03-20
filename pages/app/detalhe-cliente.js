@@ -37,6 +37,15 @@ const drawerPaperSx = {
 };
 
 const exportDate = () => new Date().toISOString().slice(0, 10);
+const getTomorrowDate = () => {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + 1);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 const toFileSafeText = (value) => {
   const safe = String(value || "cliente")
@@ -61,7 +70,7 @@ const buildClienteForm = (cliente) => ({
 const buildCobrancaForm = (cliente) => ({
   descricao: cliente?.nome ? `Cobrança manual - ${cliente.nome}` : "",
   value: "",
-  due_date: exportDate(),
+  due_date: getTomorrowDate(),
   billing_type: "UNDEFINED",
   venda_id: "",
 });
@@ -645,11 +654,21 @@ const DetalheClientePage = () => {
     if (!selectedCliente) return;
 
     const value = Number(cobrancaForm.value) || 0;
+    const minDueDate = getTomorrowDate();
     if (value <= 0 || !cobrancaForm.due_date) {
       setFeedback({
         open: true,
         severity: "error",
         message: "Informe valor e vencimento válidos para a cobrança.",
+      });
+      return;
+    }
+
+    if (cobrancaForm.due_date < minDueDate) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: `O vencimento precisa ser no mínimo ${minDueDate} (D+1).`,
       });
       return;
     }
@@ -669,6 +688,7 @@ const DetalheClientePage = () => {
             value,
             descricao: cobrancaForm.descricao,
             origem_tipo: cobrancaForm.venda_id ? "VENDA" : "MANUAL",
+            enforce_due_date_d1: true,
           }),
         },
       );
@@ -1065,6 +1085,8 @@ const DetalheClientePage = () => {
                     }))
                   }
                   InputLabelProps={{ shrink: true }}
+                  inputProps={{ min: getTomorrowDate() }}
+                  helperText={`Mínimo: ${getTomorrowDate()} (D+1)`}
                   fullWidth
                 />
                 <SearchableSelect
@@ -1139,8 +1161,15 @@ const DetalheClientePage = () => {
                       />
                     </Stack>
                     <Typography variant="body2" color="text.secondary">
-                      {formatDate(cobranca.due_date)} •{" "}
+                      {formatDate(cobranca.due_date)} • Valor total real:{" "}
                       {formatCurrency(cobranca.value)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Valor recebido:{" "}
+                      {cobranca.received_value === null ||
+                      cobranca.received_value === undefined
+                        ? "-"
+                        : formatCurrency(cobranca.received_value)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Tipo: {cobranca.billing_type || "-"} • Venda:{" "}

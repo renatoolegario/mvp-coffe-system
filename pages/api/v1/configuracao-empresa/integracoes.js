@@ -137,8 +137,21 @@ export default async function handler(req, res) {
       if (provedor === "asaas") {
         const webhookUrl =
           String(saved.config.webhook_url || "").trim() || desiredWebhookUrl;
+        const keyChanged = Boolean(chave) && chave !== current.key;
+        const webhookUrlChanged =
+          Boolean(webhookUrl) &&
+          webhookUrl !== current.config.webhook_url;
+        const shouldSyncWebhook =
+          Boolean(webhookUrl) &&
+          (!current.configured ||
+            keyChanged ||
+            webhookUrlChanged ||
+            !current.config.webhook_id ||
+            !current.config.webhook_registered_at ||
+            Boolean(current.config.webhook_error) ||
+            Boolean(current.config.webhook_cleanup_error));
 
-        if (webhookUrl) {
+        if (shouldSyncWebhook) {
           try {
             webhook = await ensureAsaasWebhookRegistration({
               webhookUrl,

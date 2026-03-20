@@ -48,20 +48,6 @@ const menuGroups = [
     href: "/app",
   },
   {
-    id: "cronograma",
-    label: "Cronograma",
-    icon: FactCheck,
-    href: "/cronograma",
-    roles: ["admin", "comum"],
-  },
-  {
-    id: "feedbacks",
-    label: "Feedbacks",
-    icon: FeedbackOutlined,
-    href: "/system/feedbacks",
-    roles: ["admin", "comum"],
-  },
-  {
     id: "cadastros",
     label: "Cadastros",
     icon: Groups,
@@ -167,6 +153,20 @@ const menuGroups = [
     icon: Settings,
     href: "/app/configuracao-empresa",
     roles: ["admin"],
+  },
+  {
+    id: "cronograma",
+    label: "Cronograma",
+    icon: FactCheck,
+    href: "/cronograma",
+    roles: ["admin", "comum"],
+  },
+  {
+    id: "feedbacks",
+    label: "Feedbacks",
+    icon: FeedbackOutlined,
+    href: "/system/feedbacks",
+    roles: ["admin", "comum"],
   },
 ];
 
