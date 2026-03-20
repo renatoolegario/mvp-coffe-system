@@ -3,10 +3,12 @@ import { normalizeSeedData } from "../../../../utils/seed";
 import { withTransaction } from "../../../../infra/database";
 import { encryptIfNeeded } from "../../../../utils/crypto";
 import { toPerfilCode } from "../../../../utils/profile";
-import { requireAdmin } from "../../../../infra/auth";
+import { requireAdminOrAdminMode } from "../../../../infra/auth";
 
 const tableList = [
   "auth_tokens",
+  "email_notificacoes",
+  "asaas_cobrancas",
   "venda_detalhes",
   "venda_itens",
   "transferencias",
@@ -37,10 +39,10 @@ const insertRow = async (client, table, columns, data) => {
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "Método não permitido." });
   }
 
-  const auth = await requireAdmin(req, res);
+  const auth = await requireAdminOrAdminMode(req, res);
   if (!auth) return;
 
   const seedData = normalizeSeedData(seedRaw);
@@ -77,6 +79,7 @@ export default async function handler(req, res) {
             "cpf_cnpj",
             "telefone",
             "endereco",
+            "data_aniversario",
             "ativo",
             "criado_em",
             "protegido",
@@ -92,6 +95,8 @@ export default async function handler(req, res) {
             cpf_cnpj: encryptIfNeeded(cliente.cpf_cnpj),
             telefone: encryptIfNeeded(cliente.telefone),
             endereco: encryptIfNeeded(cliente.endereco),
+            data_aniversario:
+              String(cliente.data_aniversario || "").trim() || null,
             protegido: false,
           },
         );
@@ -108,6 +113,7 @@ export default async function handler(req, res) {
             "cpf_cnpj",
             "telefone",
             "endereco",
+            "data_aniversario",
             "ativo",
             "criado_em",
           ],
@@ -122,6 +128,8 @@ export default async function handler(req, res) {
             cpf_cnpj: encryptIfNeeded(fornecedor.cpf_cnpj),
             telefone: encryptIfNeeded(fornecedor.telefone),
             endereco: encryptIfNeeded(fornecedor.endereco),
+            data_aniversario:
+              String(fornecedor.data_aniversario || "").trim() || null,
           },
         );
       }
@@ -136,7 +144,9 @@ export default async function handler(req, res) {
       const sacoId = unidadeByCodigo.SACO;
 
       for (const insumo of seedData.insumos || []) {
-        const unidadeCodigo = String(insumo.unidade || "kg").trim().toUpperCase();
+        const unidadeCodigo = String(insumo.unidade || "kg")
+          .trim()
+          .toUpperCase();
         const estoqueUnidadeCodigo = String(
           insumo.estoque_minimo_unidade || insumo.unidade || "kg",
         )
@@ -157,6 +167,10 @@ export default async function handler(req, res) {
             "pode_ser_insumo",
             "pode_ser_produzivel",
             "pode_ser_vendido",
+            "aparecer_pagina_inicial",
+            "valor_venda",
+            "imagem_pagina_inicial_base64",
+            "descricao",
           ],
           {
             ...insumo,
@@ -166,6 +180,11 @@ export default async function handler(req, res) {
             pode_ser_insumo: insumo.pode_ser_insumo ?? true,
             pode_ser_produzivel: insumo.pode_ser_produzivel ?? false,
             pode_ser_vendido: insumo.pode_ser_vendido ?? false,
+            aparecer_pagina_inicial: insumo.aparecer_pagina_inicial ?? false,
+            valor_venda: Number(insumo.valor_venda) || 0,
+            imagem_pagina_inicial_base64:
+              insumo.imagem_pagina_inicial_base64 || "",
+            descricao: insumo.descricao || "",
           },
         );
       }

@@ -1,12 +1,13 @@
 import { query } from "../../../infra/database";
 import { decryptIfNeeded } from "../../../utils/crypto";
 import { toPerfilCode } from "../../../utils/profile";
-import { requireAuth } from "../../../infra/auth";
+import { requireAuthOrAdminMode } from "../../../infra/auth";
 
 const tableMap = [
   {
     key: "usuarios",
-    queryText: "SELECT id, nome, email, senha, perfil, ativo, criado_em FROM usuarios",
+    queryText:
+      "SELECT id, nome, email, senha, perfil, ativo, criado_em FROM usuarios",
   },
   { key: "clientes", queryText: "SELECT * FROM clientes" },
   { key: "fornecedores", queryText: "SELECT * FROM fornecedores" },
@@ -19,6 +20,12 @@ const tableMap = [
     key: "auxFormasPagamento",
     queryText:
       "SELECT id, codigo, label, ativo FROM aux_forma_pagamento WHERE ativo = true ORDER BY label ASC",
+  },
+  {
+    key: "empresaConfiguracaoEstoque",
+    queryText:
+      "SELECT chave, label, percentual_min, percentual_max, ordem FROM empresa_configuracao_estoque ORDER BY ordem ASC, percentual_min ASC",
+    optional: true,
   },
   {
     key: "insumos",
@@ -81,6 +88,11 @@ const tableMap = [
     key: "contasReceberParcelas",
     queryText: "SELECT * FROM contas_receber_parcelas",
   },
+  {
+    key: "asaasCobrancas",
+    queryText: "SELECT * FROM asaas_cobrancas",
+    optional: true,
+  },
 ];
 
 const decodeUsuarios = (rows = []) =>
@@ -111,20 +123,31 @@ const decodeFornecedores = (rows = []) =>
     endereco: decryptIfNeeded(row.endereco),
   }));
 
+const isRelationMissing = (error) => error?.code === "42P01";
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", ["GET"]);
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const auth = await requireAuth(req, res);
+  const auth = await requireAuthOrAdminMode(req, res);
   if (!auth) return;
 
   try {
     const data = {};
     for (const entry of tableMap) {
-      const result = await query(entry.queryText);
-      data[entry.key] = result.rows;
+      try {
+        const result = await query(entry.queryText);
+        data[entry.key] = result.rows;
+      } catch (error) {
+        if (entry.optional && isRelationMissing(error)) {
+          data[entry.key] = [];
+          continue;
+        }
+
+        throw error;
+      }
     }
     data.usuarios = decodeUsuarios(data.usuarios);
     data.clientes = decodeClientes(data.clientes);

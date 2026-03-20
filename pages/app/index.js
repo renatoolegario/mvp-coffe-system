@@ -389,7 +389,7 @@ const AppHome = () => {
             <Stack direction="row" alignItems="center" gap={1}>
               <DateRange color="primary" />
               <Typography variant="subtitle1" fontWeight={600}>
-                Data between
+                Filtro de período
               </Typography>
             </Stack>
 
@@ -453,7 +453,7 @@ const AppHome = () => {
                 alignItems="center"
               >
                 <Typography variant="subtitle1" fontWeight={600}>
-                  Contas à receber
+                  Contas a receber
                 </Typography>
                 <PriceCheck color="success" />
               </Stack>
@@ -478,7 +478,7 @@ const AppHome = () => {
                 alignItems="center"
               >
                 <Typography variant="subtitle1" fontWeight={600}>
-                  Contas à pagar
+                  Contas a pagar
                 </Typography>
                 <Payments color="warning" />
               </Stack>

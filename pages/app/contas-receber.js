@@ -2,25 +2,36 @@ import {
   Alert,
   Box,
   Button,
-  Checkbox,
+  Chip,
   Drawer,
-  FormControlLabel,
   Grid,
-  IconButton,
   MenuItem,
   Paper,
   Stack,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Tabs,
   TextField,
   Typography,
 } from "@mui/material";
-import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency, formatDate } from "../../utils/format";
+
+const normalizeSearchValue = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -37,12 +48,11 @@ const toDateKey = (value) => {
   return `${year}-${month}-${day}`;
 };
 
-const isDateBetween = (value, start, end) => {
-  const current = toDateKey(value);
-  if (!current) return false;
-  if (start && current < start) return false;
-  if (end && current > end) return false;
-  return true;
+const formatDateTime = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("pt-BR");
 };
 
 const readQueryValue = (value) => {
@@ -51,66 +61,63 @@ const readQueryValue = (value) => {
   return String(value);
 };
 
-const monthPattern = /^\d{4}-\d{2}$/;
-
-const toMonthValue = (value = new Date()) => {
-  const dateKey = toDateKey(value);
-  return dateKey ? dateKey.slice(0, 7) : "";
+const isDateWithinRange = (dateKey, start, end) => {
+  if (!dateKey) return false;
+  if (start && dateKey < start) return false;
+  if (end && dateKey > end) return false;
+  return true;
 };
 
-const getMonthRange = (monthValue) => {
-  if (!monthPattern.test(String(monthValue || ""))) {
-    return getMonthRange(toMonthValue(new Date()));
-  }
-  const [year, month] = monthValue.split("-").map((item) => Number(item) || 0);
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 0);
-  return {
-    start: toDateKey(start),
-    end: toDateKey(end),
-  };
+const getDayDifference = (leftDateKey, rightDateKey) => {
+  if (!leftDateKey || !rightDateKey) return 0;
+  const left = new Date(`${leftDateKey}T12:00:00`);
+  const right = new Date(`${rightDateKey}T12:00:00`);
+  return Math.round((left.getTime() - right.getTime()) / 86400000);
 };
 
-const shiftMonth = (monthValue, offset) => {
-  const safeMonth = monthPattern.test(String(monthValue || ""))
-    ? monthValue
-    : toMonthValue(new Date());
-  const [year, month] = safeMonth.split("-").map((item) => Number(item) || 0);
-  const date = new Date(year, month - 1, 1);
-  date.setMonth(date.getMonth() + offset);
-  return toMonthValue(date);
+const matchesSearch = (row, term) => {
+  const normalizedTerm = normalizeSearchValue(term);
+  if (!normalizedTerm) return true;
+
+  const haystack = normalizeSearchValue(
+    [
+      row.clienteNome,
+      row.contaLabel,
+      row.parcelaLabel,
+      row.vencimentoLabel,
+      row.dataRecebimentoLabel,
+      row.status,
+      row.formaRecebimentoProgramada,
+      row.formaRecebimentoReal,
+      row.origemRecebimento,
+      row.motivoDiferenca,
+    ].join(" "),
+  );
+
+  return haystack.includes(normalizedTerm);
 };
 
-const buildCalendarDays = (monthValue, summaryByDate) => {
-  if (!monthPattern.test(String(monthValue || ""))) return [];
-  const [year, month] = monthValue.split("-").map((item) => Number(item) || 0);
-  const firstDay = new Date(year, month - 1, 1);
-  const firstWeekDay = firstDay.getDay();
-  const totalDays = new Date(year, month, 0).getDate();
-  const cells = [];
+const getStatusChipColor = (row) => {
+  if (row.status === "RECEBIDA") return "success";
+  if (row.isVencida) return "error";
+  return "warning";
+};
 
-  for (let index = 0; index < firstWeekDay; index += 1) {
-    cells.push({ key: `empty-start-${index}`, isCurrentMonth: false });
-  }
+const buildEmptyRowMessage = (tab) =>
+  tab === "vencidas"
+    ? "Nenhuma conta vencida encontrada para o filtro aplicado."
+    : "Nenhuma conta à vencer encontrada para o filtro aplicado.";
 
-  for (let day = 1; day <= totalDays; day += 1) {
-    const date = toDateKey(new Date(year, month - 1, day));
-    const summary = summaryByDate.get(date) || { total: 0, count: 0 };
-    cells.push({
-      key: date,
-      date,
-      day,
-      total: summary.total,
-      count: summary.count,
-      isCurrentMonth: true,
-    });
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push({ key: `empty-end-${cells.length}`, isCurrentMonth: false });
-  }
-
-  return cells;
+const resetRecebimentoForm = (setters, formaInicial) => {
+  setters.setFormaRecebimento(formaInicial);
+  setters.setFormaRecebimentoReal(formaInicial);
+  setters.setValorRecebido("");
+  setters.setMotivoDiferenca("");
+  setters.setAcaoDiferenca("ACEITAR_ENCERRAR");
+  setters.setOrigemRecebimento("NORMAL");
+  setters.setFornecedorDestinoId("");
+  setters.setComprovanteUrl("");
+  setters.setObservacao("");
 };
 
 const ContasReceberPage = () => {
@@ -122,16 +129,14 @@ const ContasReceberPage = () => {
   const auxFormasPagamento = useDataStore((state) => state.auxFormasPagamento);
   const marcarParcelaRecebida = useDataStore((state) => state.marcarParcelaRecebida);
 
-  const initialMonth = toMonthValue(new Date());
-  const initialRange = getMonthRange(initialMonth);
-
+  const todayKey = toDateKey(new Date());
+  const [tabAtiva, setTabAtiva] = useState("vencidas");
   const [clienteFiltroId, setClienteFiltroId] = useState("");
-  const [calendarMonth, setCalendarMonth] = useState(initialMonth);
-  const [dataInicio, setDataInicio] = useState(initialRange.start);
-  const [dataFim, setDataFim] = useState(initialRange.end);
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
-  const [contaSelecionadaId, setContaSelecionadaId] = useState("");
-  const [selecionadas, setSelecionadas] = useState([]);
+  const [buscaVencidas, setBuscaVencidas] = useState("");
+  const [buscaAVencer, setBuscaAVencer] = useState("");
+  const [dataInicioAVencer, setDataInicioAVencer] = useState("");
+  const [dataFimAVencer, setDataFimAVencer] = useState("");
+  const [parcelaSelecionadaId, setParcelaSelecionadaId] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [formaRecebimento, setFormaRecebimento] = useState("PIX");
@@ -146,11 +151,6 @@ const ContasReceberPage = () => {
 
   const clienteFiltroFromUrl = readQueryValue(router.query.cliente_id);
   const parcelaFiltroId = readQueryValue(router.query.parcela_id);
-
-  const parcelasAbertas = useMemo(
-    () => parcelas.filter((parcela) => parcela.status === "ABERTA"),
-    [parcelas],
-  );
 
   const contaById = useMemo(() => {
     const map = {};
@@ -168,58 +168,126 @@ const ContasReceberPage = () => {
     return map;
   }, [clientes]);
 
-  const parcelasAbertasFiltradas = useMemo(
+  const formasPagamento = useMemo(
     () =>
-      parcelasAbertas.filter((parcela) => {
-        if (
-          !parcelaFiltroId &&
-          !isDateBetween(parcela.vencimento, dataInicio, dataFim)
-        ) {
-          return false;
-        }
-
-        if (
-          selectedCalendarDate &&
-          !parcelaFiltroId &&
-          toDateKey(parcela.vencimento) !== selectedCalendarDate
-        ) {
-          return false;
-        }
-
-        const conta = contaById[parcela.conta_receber_id];
-        if (clienteFiltroId && conta?.cliente_id !== clienteFiltroId) {
-          return false;
-        }
-
-        if (parcelaFiltroId && parcela.id !== parcelaFiltroId) {
-          return false;
-        }
-
-        return true;
-      }),
-    [
-      parcelasAbertas,
-      dataInicio,
-      dataFim,
-      selectedCalendarDate,
-      contaById,
-      clienteFiltroId,
-      parcelaFiltroId,
-    ],
+      auxFormasPagamento.length
+        ? auxFormasPagamento
+        : [
+            { codigo: "CHEQUE", label: "Cheque" },
+            { codigo: "TRANSFERENCIA", label: "Transferência" },
+            { codigo: "DINHEIRO", label: "Dinheiro" },
+            { codigo: "PIX", label: "Pix" },
+            { codigo: "CREDITO", label: "Crédito" },
+            { codigo: "DEBITO", label: "Débito" },
+          ],
+    [auxFormasPagamento],
   );
 
-  const contasFiltradas = useMemo(
+  const parcelasEnriquecidas = useMemo(
     () =>
-      contas.filter((conta) => {
-        if (clienteFiltroId && conta.cliente_id !== clienteFiltroId) {
-          return false;
-        }
-        return parcelasAbertasFiltradas.some(
-          (parcela) => parcela.conta_receber_id === conta.id,
-        );
-      }),
-    [contas, clienteFiltroId, parcelasAbertasFiltradas],
+      parcelas
+        .map((parcela) => {
+          const conta = contaById[parcela.conta_receber_id];
+          const cliente = clienteById[conta?.cliente_id];
+          const vencimentoKey = toDateKey(parcela.vencimento);
+          const valorProgramado = toNumber(parcela.valor_programado || parcela.valor);
+          const valorRecebidoAtual =
+            parcela.valor_recebido === null || parcela.valor_recebido === undefined
+              ? null
+              : toNumber(parcela.valor_recebido);
+
+          return {
+            ...parcela,
+            conta,
+            cliente,
+            clienteId: conta?.cliente_id || "",
+            clienteNome: cliente?.nome || "Cliente não identificado",
+            contaLabel: `#${String(parcela.conta_receber_id || "").slice(0, 8)}`,
+            parcelaLabel: `#${String(parcela.id || "").slice(0, 8)}`,
+            vencimentoKey,
+            vencimentoLabel: formatDate(parcela.vencimento),
+            dataRecebimentoLabel: formatDate(parcela.data_recebimento),
+            valorProgramado,
+            valorRecebidoAtual,
+            formaRecebimentoProgramada: parcela.forma_recebimento || "-",
+            formaRecebimentoReal: parcela.forma_recebimento_real || "-",
+            origemRecebimento: parcela.origem_recebimento || "-",
+            motivoDiferenca: parcela.motivo_diferenca || "",
+            isVencida: Boolean(vencimentoKey && vencimentoKey < todayKey),
+            diasAtraso: Math.max(0, getDayDifference(todayKey, vencimentoKey)),
+            diasAteVencimento: Math.max(0, getDayDifference(vencimentoKey, todayKey)),
+          };
+        })
+        .filter((row) => {
+          if (clienteFiltroId && row.clienteId !== clienteFiltroId) return false;
+          if (parcelaFiltroId && row.id !== parcelaFiltroId) return false;
+          return true;
+        }),
+    [parcelas, contaById, clienteById, todayKey, clienteFiltroId, parcelaFiltroId],
   );
+
+  const parcelasVencidasFiltradas = useMemo(
+    () =>
+      parcelasEnriquecidas
+        .filter((row) => row.isVencida)
+        .filter((row) => matchesSearch(row, buscaVencidas))
+        .sort((a, b) => {
+          if (a.status !== b.status) {
+            return a.status === "ABERTA" ? -1 : 1;
+          }
+          if (a.vencimentoKey !== b.vencimentoKey) {
+            return a.vencimentoKey.localeCompare(b.vencimentoKey);
+          }
+          return a.clienteNome.localeCompare(b.clienteNome, "pt-BR");
+        }),
+    [parcelasEnriquecidas, buscaVencidas],
+  );
+
+  const parcelasAVencerFiltradas = useMemo(
+    () =>
+      parcelasEnriquecidas
+        .filter((row) => !row.isVencida && row.status === "ABERTA")
+        .filter((row) =>
+          isDateWithinRange(row.vencimentoKey, dataInicioAVencer, dataFimAVencer),
+        )
+        .filter((row) => matchesSearch(row, buscaAVencer))
+        .sort((a, b) => {
+          if (a.vencimentoKey !== b.vencimentoKey) {
+            return a.vencimentoKey.localeCompare(b.vencimentoKey);
+          }
+          return a.clienteNome.localeCompare(b.clienteNome, "pt-BR");
+        }),
+    [parcelasEnriquecidas, buscaAVencer, dataInicioAVencer, dataFimAVencer],
+  );
+
+  const parcelaSelecionada = useMemo(
+    () => parcelasEnriquecidas.find((row) => row.id === parcelaSelecionadaId) || null,
+    [parcelasEnriquecidas, parcelaSelecionadaId],
+  );
+
+  const resumoVencidas = useMemo(() => {
+    const abertas = parcelasVencidasFiltradas.filter((row) => row.status === "ABERTA");
+    const totalEmAberto = abertas.reduce(
+      (acc, row) => acc + row.valorProgramado,
+      0,
+    );
+    return {
+      totalRegistros: parcelasVencidasFiltradas.length,
+      totalAbertas: abertas.length,
+      totalEmAberto,
+    };
+  }, [parcelasVencidasFiltradas]);
+
+  const resumoAVencer = useMemo(() => {
+    const totalProgramado = parcelasAVencerFiltradas.reduce(
+      (acc, row) => acc + row.valorProgramado,
+      0,
+    );
+    return {
+      totalRegistros: parcelasAVencerFiltradas.length,
+      totalProgramado,
+    };
+  }, [parcelasAVencerFiltradas]);
 
   useEffect(() => {
     if (!clienteFiltroFromUrl) return;
@@ -230,7 +298,7 @@ const ContasReceberPage = () => {
 
   useEffect(() => {
     if (!parcelaFiltroId) return;
-    const parcelaAlvo = parcelasAbertas.find((parcela) => parcela.id === parcelaFiltroId);
+    const parcelaAlvo = parcelas.find((item) => item.id === parcelaFiltroId);
     if (!parcelaAlvo) return;
 
     const contaAlvo = contaById[parcelaAlvo.conta_receber_id];
@@ -240,155 +308,90 @@ const ContasReceberPage = () => {
       );
     }
 
-    setContaSelecionadaId((prev) =>
-      prev === parcelaAlvo.conta_receber_id ? prev : parcelaAlvo.conta_receber_id,
-    );
-
-    setSelecionadas((prev) => {
-      if (prev.length === 1 && prev[0] === parcelaAlvo.id) return prev;
-      return [parcelaAlvo.id];
-    });
-  }, [parcelaFiltroId, parcelasAbertas, contaById]);
+    setParcelaSelecionadaId((prev) => (prev === parcelaAlvo.id ? prev : parcelaAlvo.id));
+    setTabAtiva(toDateKey(parcelaAlvo.vencimento) < todayKey ? "vencidas" : "a-vencer");
+  }, [parcelaFiltroId, parcelas, contaById, todayKey]);
 
   useEffect(() => {
-    if (
-      contaSelecionadaId &&
-      !contasFiltradas.some((conta) => conta.id === contaSelecionadaId)
-    ) {
-      setContaSelecionadaId("");
-      setSelecionadas([]);
-    }
-  }, [contaSelecionadaId, contasFiltradas]);
+    if (!parcelaSelecionadaId) return;
+    const parcelaAindaExiste = parcelas.some((item) => item.id === parcelaSelecionadaId);
+    if (parcelaAindaExiste) return;
+    setParcelaSelecionadaId("");
+    setDrawerOpen(false);
+  }, [parcelas, parcelaSelecionadaId]);
 
-  const parcelasContaSelecionada = useMemo(() => {
-    if (!contaSelecionadaId) return [];
-    let rows = parcelas
-      .filter((parcela) => parcela.conta_receber_id === contaSelecionadaId)
-      .sort((a, b) => a.parcela_num - b.parcela_num);
+  const filtrosViaUrlAtivos = Boolean(clienteFiltroFromUrl || parcelaFiltroId);
+
+  const limparFiltrosViaUrl = () => {
+    router.replace({ pathname: router.pathname, query: {} }, undefined, {
+      shallow: true,
+    });
+    if (clienteFiltroFromUrl) {
+      setClienteFiltroId("");
+    }
     if (parcelaFiltroId) {
-      rows = rows.filter((parcela) => parcela.id === parcelaFiltroId);
+      setParcelaSelecionadaId("");
+      setDrawerOpen(false);
     }
-    return rows;
-  }, [parcelas, contaSelecionadaId, parcelaFiltroId]);
-
-  const parcelasAbertasContaSelecionada = useMemo(
-    () =>
-      parcelasContaSelecionada.filter((parcela) => parcela.status === "ABERTA"),
-    [parcelasContaSelecionada],
-  );
-
-  useEffect(() => {
-    const validIds = new Set(parcelasAbertasContaSelecionada.map((parcela) => parcela.id));
-    setSelecionadas((prev) => {
-      const next = prev.filter((id) => validIds.has(id));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [parcelasAbertasContaSelecionada]);
-
-  const formasPagamento = useMemo(
-    () =>
-      auxFormasPagamento.length
-        ? auxFormasPagamento
-        : [
-          { codigo: "CHEQUE", label: "Cheque" },
-          { codigo: "TRANSFERENCIA", label: "Transferência" },
-          { codigo: "DINHEIRO", label: "Dinheiro" },
-          { codigo: "PIX", label: "Pix" },
-          { codigo: "CREDITO", label: "Crédito" },
-          { codigo: "DEBITO", label: "Débito" },
-        ],
-    [auxFormasPagamento],
-  );
-
-  const totalSelecionado = useMemo(
-    () =>
-      selecionadas.reduce((acc, id) => {
-        const parcela = parcelasAbertasContaSelecionada.find((item) => item.id === id);
-        return acc + toNumber(parcela?.valor_programado || parcela?.valor);
-      }, 0),
-    [selecionadas, parcelasAbertasContaSelecionada],
-  );
-
-  const parcelasResumoCalendario = useMemo(
-    () =>
-      parcelasAbertas.filter((parcela) => {
-        const conta = contaById[parcela.conta_receber_id];
-        if (clienteFiltroId && conta?.cliente_id !== clienteFiltroId) {
-          return false;
-        }
-        if (parcelaFiltroId && parcela.id !== parcelaFiltroId) {
-          return false;
-        }
-        return true;
-      }),
-    [parcelasAbertas, contaById, clienteFiltroId, parcelaFiltroId],
-  );
-
-  const resumoCalendarioPorDia = useMemo(() => {
-    const summary = new Map();
-    parcelasResumoCalendario.forEach((parcela) => {
-      const date = toDateKey(parcela.vencimento);
-      if (!date) return;
-      const current = summary.get(date) || { total: 0, count: 0 };
-      summary.set(date, {
-        total: current.total + toNumber(parcela.valor_programado || parcela.valor),
-        count: current.count + 1,
-      });
-    });
-    return summary;
-  }, [parcelasResumoCalendario]);
-
-  const calendarDays = useMemo(
-    () => buildCalendarDays(calendarMonth, resumoCalendarioPorDia),
-    [calendarMonth, resumoCalendarioPorDia],
-  );
-
-  const applyMonth = (nextMonth) => {
-    if (!monthPattern.test(String(nextMonth || ""))) return;
-    setCalendarMonth(nextMonth);
-    const range = getMonthRange(nextMonth);
-    setDataInicio(range.start);
-    setDataFim(range.end);
-    setSelectedCalendarDate("");
   };
 
-  const toggleSelecionada = (id) => {
-    setSelecionadas((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+  const abrirRecebimento = (row) => {
+    if (!row || row.status !== "ABERTA") return;
+    setParcelaSelecionadaId(row.id);
+    resetRecebimentoForm(
+      {
+        setFormaRecebimento,
+        setFormaRecebimentoReal,
+        setValorRecebido,
+        setMotivoDiferenca,
+        setAcaoDiferenca,
+        setOrigemRecebimento,
+        setFornecedorDestinoId,
+        setComprovanteUrl,
+        setObservacao,
+      },
+      row.forma_recebimento || "PIX",
     );
-  };
-
-  const handleToggleConta = (contaId) => {
-    setContaSelecionadaId((prev) => (prev === contaId ? "" : contaId));
-    setSelecionadas([]);
-  };
-
-  const abrirConfirmacao = () => {
-    if (!selecionadas.length) return;
     setDrawerOpen(true);
   };
 
+  const irParaCliente = (row) => {
+    if (!row?.clienteId) return;
+    router.push({
+      pathname: "/app/detalhe-cliente",
+      query: {
+        cliente_id: row.clienteId,
+        drawer: "parcelas",
+      },
+    });
+  };
+
   const confirmarRecebimento = async () => {
-    if (!selecionadas.length) return;
+    if (!parcelaSelecionada || parcelaSelecionada.status !== "ABERTA") return;
 
     const valorRecebidoNormalizado =
       valorRecebido === "" ? null : Math.max(0, toNumber(valorRecebido));
-
-    const parcelaReferencia = parcelasAbertasContaSelecionada.find(
-      (parcela) => parcela.id === selecionadas[0],
-    );
-    const valorProgramadoRef = toNumber(
-      parcelaReferencia?.valor_programado || parcelaReferencia?.valor,
-    );
     const valorComparacao =
-      valorRecebidoNormalizado === null ? valorProgramadoRef : valorRecebidoNormalizado;
+      valorRecebidoNormalizado === null
+        ? parcelaSelecionada.valorProgramado
+        : valorRecebidoNormalizado;
 
-    if (valorComparacao < valorProgramadoRef && !motivoDiferenca.trim()) {
+    if (
+      valorComparacao < parcelaSelecionada.valorProgramado &&
+      !motivoDiferenca.trim()
+    ) {
+      return;
+    }
+
+    if (
+      origemRecebimento === "DIRETO_FORNECEDOR" &&
+      !String(fornecedorDestinoId || "").trim()
+    ) {
       return;
     }
 
     await marcarParcelaRecebida({
-      ids: selecionadas,
+      id: parcelaSelecionada.id,
       forma_recebimento: formaRecebimento,
       forma_recebimento_real: formaRecebimentoReal,
       valor_recebido: valorRecebidoNormalizado,
@@ -401,39 +404,31 @@ const ContasReceberPage = () => {
       observacao_recebimento: observacao,
     });
 
-    setSelecionadas([]);
     setDrawerOpen(false);
-    setFormaRecebimento("PIX");
-    setFormaRecebimentoReal("PIX");
-    setValorRecebido("");
-    setMotivoDiferenca("");
-    setAcaoDiferenca("ACEITAR_ENCERRAR");
-    setOrigemRecebimento("NORMAL");
-    setFornecedorDestinoId("");
-    setComprovanteUrl("");
-    setObservacao("");
+    resetRecebimentoForm(
+      {
+        setFormaRecebimento,
+        setFormaRecebimentoReal,
+        setValorRecebido,
+        setMotivoDiferenca,
+        setAcaoDiferenca,
+        setOrigemRecebimento,
+        setFornecedorDestinoId,
+        setComprovanteUrl,
+        setObservacao,
+      },
+      parcelaSelecionada.forma_recebimento || "PIX",
+    );
   };
 
-  const filtrosViaUrlAtivos = Boolean(clienteFiltroFromUrl || parcelaFiltroId);
-
-  const limparFiltrosViaUrl = () => {
-    router.replace({ pathname: router.pathname, query: {} }, undefined, {
-      shallow: true,
-    });
-    if (clienteFiltroFromUrl) {
-      setClienteFiltroId("");
-    }
-    if (parcelaFiltroId) {
-      setContaSelecionadaId("");
-      setSelecionadas([]);
-    }
-  };
+  const tabelaAtual =
+    tabAtiva === "vencidas" ? parcelasVencidasFiltradas : parcelasAVencerFiltradas;
 
   return (
     <AppLayout>
       <PageHeader
         title="Contas a Receber"
-        subtitle="Filtre por cliente, selecione uma fatura e confirme as parcelas em aberto."
+        subtitle="Acompanhe contas vencidas e a vencer em tabelas com filtros rápidos e baixa individual."
       />
 
       {filtrosViaUrlAtivos ? (
@@ -455,252 +450,254 @@ const ContasReceberPage = () => {
       ) : null}
 
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Stack spacing={2}>
-          <Typography variant="h6">Filtros</Typography>
-          <TextField
-            select
-            label="Cliente"
-            value={clienteFiltroId}
-            onChange={(event) => setClienteFiltroId(event.target.value)}
-            fullWidth
-          >
-            <MenuItem value="">Todos os clientes</MenuItem>
-            {clientes.map((cliente) => (
-              <MenuItem key={cliente.id} value={cliente.id}>
-                {cliente.nome}
-              </MenuItem>
-            ))}
-          </TextField>
-
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 220 }}>
-              <IconButton
-                size="small"
-                onClick={() => applyMonth(shiftMonth(calendarMonth, -1))}
-              >
-                <ChevronLeftRoundedIcon />
-              </IconButton>
-              <TextField
-                type="month"
-                label="Mês"
-                InputLabelProps={{ shrink: true }}
-                value={calendarMonth}
-                onChange={(event) => applyMonth(event.target.value)}
-                fullWidth
-              />
-              <IconButton
-                size="small"
-                onClick={() => applyMonth(shiftMonth(calendarMonth, 1))}
-              >
-                <ChevronRightRoundedIcon />
-              </IconButton>
-            </Stack>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
             <TextField
-              type="date"
-              label="Vencimento de"
-              InputLabelProps={{ shrink: true }}
-              value={dataInicio}
-              onChange={(event) => {
-                const nextStart = event.target.value;
-                setDataInicio(nextStart);
-                if (nextStart) {
-                  setCalendarMonth(nextStart.slice(0, 7));
-                }
-                setSelectedCalendarDate("");
-              }}
+              select
+              label="Cliente"
+              value={clienteFiltroId}
+              onChange={(event) => setClienteFiltroId(event.target.value)}
               fullWidth
-            />
+            >
+              <MenuItem value="">Todos os clientes</MenuItem>
+              {clientes.map((cliente) => (
+                <MenuItem key={cliente.id} value={cliente.id}>
+                  {cliente.nome}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+
+          <Grid item xs={12} md={tabAtiva === "vencidas" ? 8 : 4}>
             <TextField
-              type="date"
-              label="Vencimento até"
-              InputLabelProps={{ shrink: true }}
-              value={dataFim}
-              onChange={(event) => {
-                setDataFim(event.target.value);
-                setSelectedCalendarDate("");
-              }}
-              fullWidth
-            />
-          </Stack>
-
-          <Typography variant="subtitle2" color="text.secondary">
-            Calendário mensal de vencimentos
-          </Typography>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 1,
-            }}
-          >
-            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((weekDay) => (
-              <Typography
-                key={weekDay}
-                variant="caption"
-                color="text.secondary"
-                textAlign="center"
-              >
-                {weekDay}
-              </Typography>
-            ))}
-
-            {calendarDays.map((day) => {
-              if (!day.isCurrentMonth) {
-                return <Box key={day.key} sx={{ minHeight: 84 }} />;
+              label="Busca rápida"
+              placeholder="Cliente, data, conta, parcela ou status"
+              value={tabAtiva === "vencidas" ? buscaVencidas : buscaAVencer}
+              onChange={(event) =>
+                tabAtiva === "vencidas"
+                  ? setBuscaVencidas(event.target.value)
+                  : setBuscaAVencer(event.target.value)
               }
+              fullWidth
+            />
+          </Grid>
 
-              const inRange = isDateBetween(day.date, dataInicio, dataFim);
-              const isSelected = day.date === selectedCalendarDate;
-
-              return (
-                <Paper
-                  key={day.key}
-                  onClick={() =>
-                    setSelectedCalendarDate((current) =>
-                      current === day.date ? "" : day.date,
-                    )
-                  }
-                  sx={{
-                    p: 1,
-                    cursor: "pointer",
-                    minHeight: 84,
-                    border: isSelected ? "2px solid" : "1px solid",
-                    borderColor: isSelected
-                      ? "primary.main"
-                      : inRange
-                        ? "success.light"
-                        : "divider",
-                  }}
-                >
-                  <Typography variant="body2" fontWeight={700}>
-                    {day.day}
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: "block" }}>
-                    {formatCurrency(day.total)}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {day.count} parcela(s)
-                  </Typography>
-                </Paper>
-              );
-            })}
-          </Box>
-          {selectedCalendarDate ? (
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="body2" color="text.secondary">
-                Dia selecionado: {formatDate(selectedCalendarDate)}
-              </Typography>
-              <Button size="small" onClick={() => setSelectedCalendarDate("")}>
-                Limpar dia
-              </Button>
-            </Stack>
+          {tabAtiva === "a-vencer" ? (
+            <>
+              <Grid item xs={12} md={2}>
+                <TextField
+                  type="date"
+                  label="Vencimento de"
+                  InputLabelProps={{ shrink: true }}
+                  value={dataInicioAVencer}
+                  onChange={(event) => setDataInicioAVencer(event.target.value)}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={2}>
+                <TextField
+                  type="date"
+                  label="Vencimento até"
+                  InputLabelProps={{ shrink: true }}
+                  value={dataFimAVencer}
+                  onChange={(event) => setDataFimAVencer(event.target.value)}
+                  fullWidth
+                />
+              </Grid>
+            </>
           ) : null}
-        </Stack>
+        </Grid>
       </Paper>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={5}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Faturas em aberto
-            </Typography>
-            <Stack spacing={2}>
-              {contasFiltradas.map((conta) => {
-                const clienteNome =
-                  clientes.find((item) => item.id === conta.cliente_id)?.nome || "-";
-                const parcelasAbertasConta = parcelasAbertasFiltradas.filter(
-                  (parcela) => parcela.conta_receber_id === conta.id,
-                ).length;
+      <Paper sx={{ overflow: "hidden" }}>
+        <Tabs value={tabAtiva} onChange={(_, value) => setTabAtiva(value)}>
+          <Tab
+            value="vencidas"
+            label={`Contas vencidas (${parcelasVencidasFiltradas.length})`}
+          />
+          <Tab
+            value="a-vencer"
+            label={`Contas a vencer (${parcelasAVencerFiltradas.length})`}
+          />
+        </Tabs>
 
-                return (
-                  <Paper key={conta.id} variant="outlined" sx={{ p: 2 }}>
-                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                      <Checkbox
-                        checked={contaSelecionadaId === conta.id}
-                        onChange={() => handleToggleConta(conta.id)}
-                      />
-                      <Box sx={{ flex: 1 }}>
-                        <Typography fontWeight={600}>Fatura #{conta.id.slice(0, 8)}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Cliente: {clienteNome}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Valor: {formatCurrency(conta.valor_total)} • Emissão:{" "}
-                          {formatDate(conta.data_emissao)}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Parcelas em aberto no filtro: {parcelasAbertasConta}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  </Paper>
-                );
-              })}
+        <Box sx={{ p: 3, borderTop: 1, borderColor: "divider" }}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", md: "center" }}
+            spacing={1.5}
+            sx={{ mb: 2 }}
+          >
+            {tabAtiva === "vencidas" ? (
+              <Typography variant="body2" color="text.secondary">
+                {resumoVencidas.totalRegistros} registro(s) vencido(s) no histórico •{" "}
+                {resumoVencidas.totalAbertas} ainda em aberto • Total pendente:{" "}
+                {formatCurrency(resumoVencidas.totalEmAberto)}
+              </Typography>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                {resumoAVencer.totalRegistros} parcela(s) a vencer • Total programado:{" "}
+                {formatCurrency(resumoAVencer.totalProgramado)}
+              </Typography>
+            )}
 
-              {!contasFiltradas.length ? (
-                <Typography variant="body2" color="text.secondary">
-                  Nenhuma fatura encontrada com parcela em aberto para o filtro aplicado.
-                </Typography>
-              ) : null}
-            </Stack>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={7}>
-          <Paper sx={{ p: 3 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6">Parcelas da fatura selecionada</Typography>
+            {tabAtiva === "a-vencer" &&
+            (dataInicioAVencer || dataFimAVencer || buscaAVencer) ? (
               <Button
-                variant="contained"
-                disabled={!selecionadas.length}
-                onClick={abrirConfirmacao}
+                size="small"
+                onClick={() => {
+                  setBuscaAVencer("");
+                  setDataInicioAVencer("");
+                  setDataFimAVencer("");
+                }}
               >
-                Confirmar recebimento ({selecionadas.length})
+                Limpar filtros da aba
               </Button>
-            </Stack>
+            ) : null}
 
-            <Stack spacing={1.5}>
-              {!contaSelecionadaId ? (
-                <Typography variant="body2" color="text.secondary">
-                  Selecione uma fatura para listar as parcelas.
-                </Typography>
-              ) : null}
+            {tabAtiva === "vencidas" && buscaVencidas ? (
+              <Button size="small" onClick={() => setBuscaVencidas("")}>
+                Limpar busca
+              </Button>
+            ) : null}
+          </Stack>
 
-              {parcelasContaSelecionada.map((parcela) => (
-                <Paper key={parcela.id} variant="outlined" sx={{ p: 2 }}>
-                  <Stack direction="row" spacing={1.5} alignItems="center">
-                    <Checkbox
-                      disabled={parcela.status !== "ABERTA"}
-                      checked={selecionadas.includes(parcela.id)}
-                      onChange={() => toggleSelecionada(parcela.id)}
-                    />
-                    <Box sx={{ flex: 1 }}>
-                      <Typography fontWeight={600}>
-                        Parcela #{parcela.parcela_num}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Vencimento: {formatDate(parcela.vencimento)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Programado: {formatCurrency(parcela.valor_programado || parcela.valor)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Status: {parcela.status}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </Paper>
-              ))}
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                {tabAtiva === "vencidas" ? (
+                  <TableRow>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell>Conta</TableCell>
+                    <TableCell>Parcela</TableCell>
+                    <TableCell>Vencimento</TableCell>
+                    <TableCell align="right">Dias em atraso</TableCell>
+                    <TableCell align="right">Valor programado</TableCell>
+                    <TableCell align="right">Valor recebido</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Recebimento</TableCell>
+                    <TableCell align="right">Ações</TableCell>
+                  </TableRow>
+                ) : (
+                  <TableRow>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell>Conta</TableCell>
+                    <TableCell>Parcela</TableCell>
+                    <TableCell>Vencimento</TableCell>
+                    <TableCell align="right">Dias até vencer</TableCell>
+                    <TableCell align="right">Valor programado</TableCell>
+                    <TableCell>Forma programada</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Ações</TableCell>
+                  </TableRow>
+                )}
+              </TableHead>
 
-              {contaSelecionadaId && !parcelasContaSelecionada.length ? (
-                <Typography variant="body2" color="text.secondary">
-                  Não há parcelas para esta fatura.
-                </Typography>
-              ) : null}
-            </Stack>
-          </Paper>
-        </Grid>
-      </Grid>
+              <TableBody>
+                {!tabelaAtual.length ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={tabAtiva === "vencidas" ? 10 : 9}
+                      align="center"
+                    >
+                      {buildEmptyRowMessage(tabAtiva)}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+
+                {tabelaAtual.map((row) => {
+                  const isSelected = row.id === parcelaSelecionadaId;
+                  return (
+                    <TableRow
+                      key={row.id}
+                      hover
+                      selected={isSelected}
+                      onClick={() => setParcelaSelecionadaId(row.id)}
+                      sx={{ cursor: "pointer" }}
+                    >
+                      <TableCell>{row.clienteNome}</TableCell>
+                      <TableCell>{row.contaLabel}</TableCell>
+                      <TableCell>{row.parcelaLabel}</TableCell>
+                      <TableCell>{row.vencimentoLabel}</TableCell>
+                      <TableCell align="right">
+                        {tabAtiva === "vencidas" ? row.diasAtraso : row.diasAteVencimento}
+                      </TableCell>
+                      <TableCell align="right">
+                        {formatCurrency(row.valorProgramado)}
+                      </TableCell>
+
+                      {tabAtiva === "vencidas" ? (
+                        <>
+                          <TableCell align="right">
+                            {row.valorRecebidoAtual === null
+                              ? "-"
+                              : formatCurrency(row.valorRecebidoAtual)}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              color={getStatusChipColor(row)}
+                              label={row.status}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {row.status === "RECEBIDA"
+                              ? formatDateTime(row.data_recebimento)
+                              : "Pendente"}
+                          </TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell>{row.formaRecebimentoProgramada}</TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              color={getStatusChipColor(row)}
+                              label={row.status}
+                            />
+                          </TableCell>
+                        </>
+                      )}
+
+                      <TableCell align="right">
+                        <Stack
+                          direction={{ xs: "column", md: "row" }}
+                          spacing={1}
+                          justifyContent="flex-end"
+                        >
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              irParaCliente(row);
+                            }}
+                            disabled={!row.clienteId}
+                          >
+                            Cliente
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              abrirRecebimento(row);
+                            }}
+                            disabled={row.status !== "ABERTA"}
+                          >
+                            Receber
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      </Paper>
 
       <Drawer
         anchor="right"
@@ -719,13 +716,27 @@ const ContasReceberPage = () => {
         <Typography variant="h6" fontWeight={700} gutterBottom>
           Confirmação de recebimento
         </Typography>
+
         <Stack spacing={2}>
-          <Typography variant="body2" color="text.secondary">
-            Parcelas selecionadas: {selecionadas.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Valor programado total: {formatCurrency(totalSelecionado)}
-          </Typography>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Cliente
+            </Typography>
+            <Typography fontWeight={600}>
+              {parcelaSelecionada?.clienteNome || "-"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Parcela {parcelaSelecionada?.parcelaLabel || "-"} • Conta{" "}
+              {parcelaSelecionada?.contaLabel || "-"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Vencimento: {parcelaSelecionada?.vencimentoLabel || "-"}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Valor programado:{" "}
+              {formatCurrency(parcelaSelecionada?.valorProgramado || 0)}
+            </Typography>
+          </Paper>
 
           <TextField
             select
@@ -809,10 +820,6 @@ const ContasReceberPage = () => {
             <MenuItem value="ACEITAR_ENCERRAR">Aceitar diferença e encerrar cobrança</MenuItem>
           </TextField>
 
-          <FormControlLabel
-            control={<Checkbox checked={Boolean(observacao)} onChange={(e) => setObservacao(e.target.checked ? "Recebimento confirmado" : "")} />}
-            label="Adicionar observação padrão"
-          />
           <TextField
             label="Observações"
             value={observacao}
@@ -825,7 +832,11 @@ const ContasReceberPage = () => {
             <Button variant="outlined" onClick={() => setDrawerOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="contained" onClick={confirmarRecebimento}>
+            <Button
+              variant="contained"
+              onClick={confirmarRecebimento}
+              disabled={!parcelaSelecionada || parcelaSelecionada.status !== "ABERTA"}
+            >
               Confirmar
             </Button>
           </Stack>

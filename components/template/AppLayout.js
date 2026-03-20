@@ -19,6 +19,7 @@ import {
   ExpandLess,
   ExpandMore,
   FactCheck,
+  FeedbackOutlined,
   Group,
   Groups,
   Handshake,
@@ -51,6 +52,13 @@ const menuGroups = [
     label: "Cronograma",
     icon: FactCheck,
     href: "/cronograma",
+    roles: ["admin", "comum"],
+  },
+  {
+    id: "feedbacks",
+    label: "Feedbacks",
+    icon: FeedbackOutlined,
+    href: "/system/feedbacks",
     roles: ["admin", "comum"],
   },
   {
@@ -246,7 +254,7 @@ const AppLayout = ({ title, children }) => {
             <Box
               component="img"
               src="/logotipo.jpg"
-              alt="Logotipo MVP Coffee"
+              alt="Logotipo Café Essências do Brasil"
               sx={{
                 height: 36,
                 width: 36,
@@ -254,9 +262,19 @@ const AppLayout = ({ title, children }) => {
                 borderRadius: 1,
               }}
             />
-            <Typography variant="h6" fontWeight={700} color="primary.main">
-              MVP Coffee System
-            </Typography>
+            <Box>
+              <Typography
+                variant="subtitle1"
+                fontWeight={800}
+                color="primary.main"
+                sx={{ lineHeight: 1.1 }}
+              >
+                Café Essências do Brasil
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Painel de gestão
+              </Typography>
+            </Box>
           </Box>
           <Box display="flex" alignItems="center" gap={2}>
             <Box textAlign="right">

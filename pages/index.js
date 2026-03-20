@@ -1,108 +1,58 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useEffect } from "react";
+import { normalizeImageBase64 } from "../utils/image";
 
 const WHATSAPP_URL =
-  "https://wa.me/5534992399036?text=Ola!%20Gostaria%20de%20fazer%20um%20pedido%20de%20cafe.";
+  "https://wa.me/5534992399036?text=Ol%C3%A1!%20Gostaria%20de%20fazer%20um%20pedido%20de%20caf%C3%A9.";
 const LOCATION_LABEL = "R. Joao Luciano Barbosa, 100, Perdizes - MG, 38170-000";
 const MAPS_PLACE_URL =
   "https://www.google.com/maps/place/R.+Jo%C3%A3o+Luciano+Barbosa,+100,+Perdizes+-+MG,+38170-000/data=!4m2!3m1!1s0x94affb33db336f71:0x1863f13762d79dae?sa=X&ved=1t:242&ictx=111";
 const MAPS_EMBED_URL =
   "https://www.google.com/maps?q=R.+Jo%C3%A3o+Luciano+Barbosa,+100,+Perdizes+-+MG,+38170-000&output=embed";
-
-const products = [
-  {
-    id: "insumo-cafe-tipo-a-agranel",
-    nome: "Cafe Tipo A Agranel",
-    categoria: "Linha A",
-    formato: "Agranel",
-    descricao: "Perfil doce e elegante para espresso e metodos filtrados.",
-    referencia: "Base: seed popular",
-    preco: "R$ 46,90/kg",
-    imagem:
-      "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    id: "insumo-cafe-tipo-b-agranel",
-    nome: "Cafe Tipo B Agranel",
-    categoria: "Linha B",
-    formato: "Agranel",
-    descricao:
-      "Torra equilibrada para cafeteria com alto giro e padrao estavel.",
-    referencia: "Base: seed popular",
-    preco: "R$ 42,90/kg",
-    imagem:
-      "https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    id: "insumo-cafe-tipo-c-agranel",
-    nome: "Cafe Tipo C Agranel",
-    categoria: "Linha C",
-    formato: "Agranel",
-    descricao: "Blends de excelente custo-beneficio para revenda e atacado.",
-    referencia: "Base: seed popular",
-    preco: "R$ 38,90/kg",
-    imagem:
-      "https://images.unsplash.com/photo-1498804103079-a6351b050096?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    id: "insumo-cafe-tipo-a-23kg",
-    nome: "Cafe Tipo A 23kg",
-    categoria: "Linha A",
-    formato: "Saco 23kg",
-    descricao: "Maior rendimento para operacoes profissionais de alto consumo.",
-    referencia: "Base: seed popular",
-    preco: "R$ 1.019,00/saco",
-    imagem:
-      "https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    id: "insumo-cafe-tipo-b-5kg",
-    nome: "Cafe Tipo B 5kg",
-    categoria: "Linha B",
-    formato: "Pacote 5kg",
-    descricao: "Formato ideal para lojas e mercados com reposicao semanal.",
-    referencia: "Base: seed popular",
-    preco: "R$ 219,00/pacote",
-    imagem:
-      "https://images.unsplash.com/photo-1512568400610-62da28bc8a13?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    id: "insumo-cafe-tipo-c-5kg",
-    nome: "Cafe Tipo C 5kg",
-    categoria: "Linha C",
-    formato: "Pacote 5kg",
-    descricao: "Versao versatil para consumo diario com entrega recorrente.",
-    referencia: "Base: seed popular",
-    preco: "R$ 199,00/pacote",
-    imagem:
-      "https://images.unsplash.com/photo-1511537190424-bbbab87ac5eb?auto=format&fit=crop&w=1200&q=80",
-  },
-];
+const DEFAULT_HOME_PRODUCT_IMAGE = "/logotipo.jpg";
+const PRICE_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
+const resolveUnitPriceLabel = (unitCode, unitLabel) => {
+  const normalized = String(unitCode || "").trim().toUpperCase();
+  if (normalized === "KG") return "kg";
+  if (normalized === "SACO") return "saco";
+  return String(unitLabel || normalized || "").trim().toLowerCase();
+};
+const formatProductPrice = (value, unitCode, unitLabel) => {
+  const formattedUnit = resolveUnitPriceLabel(unitCode, unitLabel);
+  return `${PRICE_FORMATTER.format(Number(value) || 0)}/${formattedUnit}`;
+};
+const buildProductWhatsAppUrl = (productName) =>
+  `https://wa.me/5534992399036?text=${encodeURIComponent(
+    `Olá! Gostaria de pedir o produto ${productName}.`,
+  )}`;
 
 const features = [
   {
     id: "torra",
     titulo: "Torra fresca semanal",
-    descricao: "Lotes planejados para manter aroma, corpo e consistencia.",
+    descricao: "Lotes planejados para manter aroma, corpo e consistência.",
   },
   {
     id: "rastreio",
     titulo: "Rastreabilidade por lote",
-    descricao: "Controle da origem ao empacotamento para cada linha de cafe.",
+    descricao: "Controle da origem ao empacotamento para cada linha de café.",
   },
   {
     id: "logistica",
-    titulo: "Logistica para revenda",
+    titulo: "Logística para revenda",
     descricao: "Rotas recorrentes para cafeterias, mercados e distribuidores.",
   },
 ];
 
 const roastSteps = [
   {
-    titulo: "Selecao do lote",
+    titulo: "Seleção do lote",
     descricao:
-      "Curadoria dos graos com foco em origem, umidade e perfil sensorial.",
+      "Curadoria dos grãos com foco em origem, umidade e perfil sensorial.",
   },
   {
     titulo: "Curva de torra",
@@ -110,14 +60,14 @@ const roastSteps = [
       "Controle de tempo e temperatura para destacar acidez, doçura e corpo.",
   },
   {
-    titulo: "Descanso tecnico",
+    titulo: "Descanso técnico",
     descricao:
-      "Ponto ideal de descanso para estabilidade aromatica apos a torra.",
+      "Ponto ideal de descanso para estabilidade aromática após a torra.",
   },
   {
     titulo: "Empacotamento",
     descricao:
-      "Envase por formato agranel, 23kg e 5kg pronto para distribuicao.",
+      "Envase por formato a granel, 23 kg e 5 kg pronto para distribuição.",
   },
 ];
 
@@ -197,7 +147,7 @@ const WhatsAppIcon = () => (
   </svg>
 );
 
-const IndexPage = () => {
+const IndexPage = ({ products = [], homeProductsLoadError = false }) => {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.add("motion-ready");
@@ -235,10 +185,10 @@ const IndexPage = () => {
   return (
     <>
       <Head>
-        <title>MVP Coffee | Torra e Vendas de Cafe</title>
+        <title>Café Essências do Brasil | Torra e vendas de café</title>
         <meta
           name="description"
-          content="Landing page de torra e vendas de cafe com catalogo, WhatsApp e localizacao."
+          content="Landing page de torra e vendas de café com catálogo, WhatsApp e localização."
         />
       </Head>
 
@@ -261,15 +211,15 @@ const IndexPage = () => {
             <div className="flex items-center gap-3">
               <img
                 src="/logotipo.jpg"
-                alt="MVP Coffee"
+                alt="Café Essências do Brasil"
                 className="h-12 w-12 rounded-full border-2 border-brand-accent object-cover shadow-[0_10px_28px_rgba(0,0,0,0.38)]"
               />
               <div>
                 <p className="text-base font-extrabold tracking-[0.03em]">
-                  MVP Coffee
+                  Café Essências do Brasil
                 </p>
                 <p className="text-xs text-brand-muted">
-                  Torra e distribuicao profissional
+                  Torra e distribuição profissional
                 </p>
               </div>
             </div>
@@ -296,17 +246,18 @@ const IndexPage = () => {
           <section className="grid items-center gap-8 py-6 md:grid-cols-[1.2fr_0.8fr] md:py-10">
             <div data-reveal className="reveal-lift">
               <span className="inline-flex items-center rounded-full border border-brand-accent/50 bg-brand-accent/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] text-[#F5D573]">
-                Especialista em torra e venda de cafe
+                Especialista em torra e venda de café
               </span>
 
               <h1 className="mt-4 max-w-4xl text-4xl font-black leading-[1.03] sm:text-5xl lg:text-6xl">
                 Qualidade de torra com visual premium e entrega que gira junto
-                com o seu negocio.
+                com o seu negócio.
               </h1>
 
               <p className="mt-4 max-w-3xl text-base text-brand-muted sm:text-xl">
-                Produtos mockados a partir dos itens de exemplo do banco
-                popular: linhas Tipo A, B e C em formatos agranel, 23kg e 5kg.
+                Catálogo alimentado pelo cadastro real do sistema: os produtos
+                marcados para aparecer na página inicial entram aqui com
+                descrição, valor de venda e imagem configurados no backoffice.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -323,14 +274,14 @@ const IndexPage = () => {
                   href="#produtos"
                   className="inline-flex items-center justify-center rounded-2xl border border-brand-accent/70 px-5 py-3 font-semibold text-brand-accent transition duration-300 hover:-translate-y-0.5 hover:bg-brand-accent/10"
                 >
-                  Ver mockups de produtos
+                  Ver produtos em destaque
                 </a>
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
                 {[
                   "Lotes consistentes",
-                  "Producao orientada por dados",
+                  "Produção orientada por dados",
                   "Entrega regional",
                 ].map((item) => (
                   <span
@@ -350,7 +301,7 @@ const IndexPage = () => {
             >
               <img
                 src="https://images.unsplash.com/photo-1559496417-e7f25cb247f3?auto=format&fit=crop&w=1200&q=80"
-                alt="Cafe em torra"
+                alt="Café em torra"
                 className="h-72 w-full rounded-2xl object-cover"
               />
               <div className="space-y-2 p-3">
@@ -359,7 +310,7 @@ const IndexPage = () => {
                 </h2>
                 <p className="text-sm text-brand-muted">
                   Curva de torra controlada, perfil sensorial definido e
-                  planejamento de reposicao para cada cliente.
+                  planejamento de reposição para cada cliente.
                 </p>
               </div>
             </div>
@@ -383,71 +334,104 @@ const IndexPage = () => {
           <section id="produtos" className="scroll-mt-24 pt-8 md:pt-10">
             <div data-reveal className="reveal-lift">
               <p className="text-sm font-extrabold uppercase tracking-[0.08em] text-brand-accent">
-                Mockup de Produtos
+                Produtos em destaque
               </p>
               <h3 className="mt-1 text-3xl font-black sm:text-4xl">
-                Catalogo inspirado no seed de produtos do sistema
+                Lista dinâmica vinda do cadastro de insumos
               </h3>
               <p className="mt-2 text-brand-muted">
-                Itens abaixo seguem os nomes base cadastrados nos exemplos do
-                banco popular.
+                Apenas os itens com o campo de exibição habilitado aparecem
+                nesta vitrine pública.
               </p>
             </div>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {products.map((product, index) => (
-                <article
-                  key={product.id}
-                  data-reveal
-                  data-reveal-delay={String(70 + (index % 3) * 90)}
-                  className="reveal-rise motion-card group relative overflow-hidden rounded-3xl border border-brand-muted/25 bg-brand-deep/80 shadow-[0_14px_28px_rgba(0,0,0,0.28)]"
-                >
-                  <div className="shimmer-layer pointer-events-none absolute inset-0 z-20" />
-                  <img
-                    src={product.imagem}
-                    alt={product.nome}
-                    className="h-48 w-full object-cover"
-                    loading="lazy"
-                  />
-                  <div className="space-y-3 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="rounded-full border border-brand-accent/35 bg-brand-accent/20 px-2.5 py-1 text-xs font-bold text-[#FDE8AA]">
-                        {product.formato}
-                      </span>
-                      <span className="text-xs text-brand-muted">
-                        {product.categoria}
-                      </span>
-                    </div>
-
-                    <h4 className="text-xl font-extrabold leading-tight">
-                      {product.nome}
-                    </h4>
-                    <p className="min-h-[2.6rem] text-sm text-brand-muted">
-                      {product.descricao}
-                    </p>
-
-                    <div className="flex items-end justify-between border-t border-brand-divider/80 pt-3">
-                      <div>
-                        <p className="text-base font-extrabold text-brand-accent">
-                          {product.preco}
-                        </p>
-                        <p className="text-xs text-brand-muted">
-                          {product.referencia}
-                        </p>
+            {!products.length ? (
+              <div
+                data-reveal
+                className="reveal-rise mt-5 rounded-3xl border border-dashed border-brand-muted/35 bg-brand-deep/60 p-6 text-center"
+              >
+                <p className="text-lg font-bold">
+                  Nenhum produto em destaque cadastrado no momento.
+                </p>
+                <p className="mt-2 text-sm text-brand-muted">
+                  Marque um insumo com a opção de exibição na página inicial
+                  para publicar a vitrine automaticamente.
+                </p>
+                {homeProductsLoadError ? (
+                  <p className="mt-2 text-sm text-[#FDE8AA]">
+                    A página carregou, mas não foi possível consultar os
+                    produtos destacados agora.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {products.map((product, index) => (
+                  <article
+                    key={product.id}
+                    data-reveal
+                    data-reveal-delay={String(70 + (index % 3) * 90)}
+                    className="reveal-rise motion-card group relative overflow-hidden rounded-3xl border border-brand-muted/25 bg-brand-deep/80 shadow-[0_14px_28px_rgba(0,0,0,0.28)]"
+                  >
+                    <div className="shimmer-layer pointer-events-none absolute inset-0 z-20" />
+                    <img
+                      src={
+                        normalizeImageBase64(
+                          product.imagem_pagina_inicial_base64,
+                        ) || DEFAULT_HOME_PRODUCT_IMAGE
+                      }
+                      alt={product.nome}
+                      className="h-48 w-full object-cover"
+                      loading="lazy"
+                    />
+                    <div className="space-y-3 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="rounded-full border border-brand-accent/35 bg-brand-accent/20 px-2.5 py-1 text-xs font-bold text-[#FDE8AA]">
+                          {product.unidade_label || product.unidade_codigo}
+                        </span>
+                        <span className="text-xs text-brand-muted">
+                          {product.pode_ser_produzivel
+                            ? "Produzido internamente"
+                            : "Selecionado para venda"}
+                        </span>
                       </div>
-                      <a
-                        href={WHATSAPP_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-xl px-3 py-1.5 text-sm font-semibold text-brand-accent transition duration-300 hover:bg-brand-accent/12"
-                      >
-                        Pedir
-                      </a>
+
+                      <h4 className="text-xl font-extrabold leading-tight">
+                        {product.nome}
+                      </h4>
+                      <p className="min-h-[2.6rem] text-sm text-brand-muted">
+                        {product.descricao ||
+                          "Produto disponível para pedido via WhatsApp."}
+                      </p>
+
+                      <div className="flex items-end justify-between border-t border-brand-divider/80 pt-3">
+                        <div>
+                          <p className="text-base font-extrabold text-brand-accent">
+                            {formatProductPrice(
+                              product.valor_venda,
+                              product.unidade_codigo,
+                              product.unidade_label,
+                            )}
+                          </p>
+                          <p className="text-xs text-brand-muted">
+                            Estoque configurado no sistema e exibição controlada
+                            pelo cadastro.
+                          </p>
+                        </div>
+                        <a
+                          href={buildProductWhatsAppUrl(product.nome)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-xl px-3 py-1.5 text-sm font-semibold text-brand-accent transition duration-300 hover:bg-brand-accent/12"
+                        >
+                          Pedir
+                        </a>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
-            </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="pt-10 md:pt-14">
@@ -456,7 +440,7 @@ const IndexPage = () => {
                 Diferenciais
               </p>
               <h3 className="mt-1 text-3xl font-black sm:text-4xl">
-                Operacao desenhada para consistencia e escala
+                Operação desenhada para consistência e escala
               </h3>
             </div>
 
@@ -486,7 +470,7 @@ const IndexPage = () => {
                 Processo da Torra
               </p>
               <h3 className="mt-1 text-3xl font-black sm:text-4xl">
-                Fluxo tecnico da selecao ao envio
+                Fluxo técnico da seleção ao envio
               </h3>
             </div>
 
@@ -525,8 +509,8 @@ const IndexPage = () => {
                 Fale com a equipe comercial agora
               </h3>
               <p className="mt-2 text-brand-muted">
-                Atendimento direto para pedido, tabela por volume, condicoes de
-                entrega e reposicao recorrente.
+                Atendimento direto para pedido, tabela por volume, condições de
+                entrega e reposição recorrente.
               </p>
 
               <div className="mt-5 space-y-2.5">
@@ -551,7 +535,7 @@ const IndexPage = () => {
               </div>
 
               <div className="mt-4 rounded-2xl border border-dashed border-brand-muted/40 p-3.5">
-                <p className="text-sm font-bold">Localizacao temporaria</p>
+                <p className="text-sm font-bold">Localização temporária</p>
                 <p className="mt-1 text-sm text-brand-muted">
                   {LOCATION_LABEL}
                 </p>
@@ -577,13 +561,14 @@ const IndexPage = () => {
             className="reveal-fade mt-10 flex flex-col items-start justify-between gap-2 border-t border-brand-muted/25 pt-4 text-sm md:mt-14 md:flex-row md:items-center"
           >
             <p className="text-brand-muted">
-              MVP Coffee 2026 | Torra, venda e distribuicao regional de cafe.
+              Café Essências do Brasil 2026 | Torra, venda e distribuição
+              regional de café.
             </p>
             <p className="inline-flex items-center gap-1.5 text-brand-muted">
               <span className="text-brand-accent">
                 <BadgeIcon />
               </span>
-              Interface leve, responsiva e pronta para conversao.
+              Interface leve, responsiva e pronta para conversão.
             </p>
           </footer>
         </div>
@@ -601,5 +586,52 @@ const IndexPage = () => {
     </>
   );
 };
+
+export async function getServerSideProps() {
+  try {
+    const { query } = await import("../infra/database");
+    const result = await query(`
+      SELECT
+        i.id,
+        i.nome,
+        i.descricao,
+        i.valor_venda,
+        i.imagem_pagina_inicial_base64,
+        i.pode_ser_produzivel,
+        u.codigo AS unidade_codigo,
+        u.label AS unidade_label
+      FROM insumos i
+      LEFT JOIN aux_unidade u ON u.id = i.unidade_id
+      WHERE i.ativo = true
+        AND i.pode_ser_vendido = true
+        AND i.aparecer_pagina_inicial = true
+      ORDER BY i.criado_em DESC, i.nome ASC
+    `);
+
+    return {
+      props: {
+        products: result.rows.map((row) => ({
+          id: row.id,
+          nome: row.nome,
+          descricao: String(row.descricao || "").trim(),
+          valor_venda: Number(row.valor_venda) || 0,
+          imagem_pagina_inicial_base64:
+            row.imagem_pagina_inicial_base64 || "",
+          pode_ser_produzivel: Boolean(row.pode_ser_produzivel),
+          unidade_codigo: row.unidade_codigo || "KG",
+          unidade_label: row.unidade_label || "Quilograma",
+        })),
+        homeProductsLoadError: false,
+      },
+    };
+  } catch (error) {
+    return {
+      props: {
+        products: [],
+        homeProductsLoadError: true,
+      },
+    };
+  }
+}
 
 export default IndexPage;

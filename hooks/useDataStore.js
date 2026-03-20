@@ -1,9 +1,14 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
-import { getParcelas } from "../utils/stock";
+import {
+  buildInsumoEstoqueStatus,
+  getParcelas,
+  getSaldoMovimentosKg,
+} from "../utils/stock";
 import { getAuthHeaders } from "./useSession";
 import { addDaysLocalDateTime, toLocalDateTime } from "../utils/datetime";
 import { toPerfilCode } from "../utils/profile";
+import { normalizeImageBase64 } from "../utils/image";
 
 const nowIso = () => toLocalDateTime();
 
@@ -13,6 +18,7 @@ const baseState = {
   fornecedores: [],
   auxUnidades: [],
   auxFormasPagamento: [],
+  empresaConfiguracaoEstoque: [],
   insumos: [],
   movInsumos: [],
   vendas: [],
@@ -21,6 +27,7 @@ const baseState = {
   contasPagarParcelas: [],
   contasReceber: [],
   contasReceberParcelas: [],
+  asaasCobrancas: [],
   vendaDetalhes: [],
   producoes: [],
   producaoResultados: [],
@@ -91,7 +98,9 @@ const normalizeMovimentoInsumo = (movimento) => {
 };
 
 const resolveUnidadeByCode = (unidades = [], code = "KG") => {
-  const normalized = String(code || "KG").trim().toUpperCase();
+  const normalized = String(code || "KG")
+    .trim()
+    .toUpperCase();
   return (
     unidades.find((unidade) => unidade.codigo === normalized) ||
     unidades.find((unidade) => unidade.is_default) ||
@@ -108,7 +117,9 @@ const buildParcelaPagamento = ({
   statusInput,
   dataLancamento,
 }) => {
-  const statusRaw = String(statusInput || "A_PRAZO").trim().toUpperCase();
+  const statusRaw = String(statusInput || "A_PRAZO")
+    .trim()
+    .toUpperCase();
   const isPago = statusRaw === "PAGO" || statusRaw === "PAGA";
   return {
     id: uuidv4(),
@@ -126,6 +137,25 @@ export const useDataStore = create((set, get) => ({
   ...baseState,
   hydrated: false,
   loading: false,
+  getInsumoEstoqueStatus: (insumoId, saldoKgOverride = undefined) => {
+    const state = get();
+    const insumo = state.insumos.find((item) => item.id === insumoId);
+
+    if (!insumo) {
+      return buildInsumoEstoqueStatus();
+    }
+
+    const saldoKg =
+      saldoKgOverride === undefined
+        ? getSaldoMovimentosKg(state.movInsumos, insumoId)
+        : Number(saldoKgOverride) || 0;
+
+    return buildInsumoEstoqueStatus({
+      insumo,
+      saldoKg,
+      faixas: state.empresaConfiguracaoEstoque,
+    });
+  },
   loadData: async () => {
     if (get().loading) return;
     set({ loading: true });
@@ -152,8 +182,9 @@ export const useDataStore = create((set, get) => ({
     try {
       await sendCommand("addUsuario", usuario);
       set((state) => ({ usuarios: [...state.usuarios, usuario] }));
+      return { ok: true, data: usuario };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   toggleUsuario: async (id) => {
@@ -181,6 +212,7 @@ export const useDataStore = create((set, get) => ({
       criado_em: nowIso(),
       ...payload,
       email,
+      data_aniversario: String(payload.data_aniversario || "").trim() || null,
     };
     try {
       await sendCommand("addCliente", cliente);
@@ -200,6 +232,7 @@ export const useDataStore = create((set, get) => ({
       cpf_cnpj: payload.cpf_cnpj || "",
       telefone: payload.telefone || "",
       endereco: payload.endereco || "",
+      data_aniversario: String(payload.data_aniversario || "").trim() || null,
     };
     try {
       await sendCommand("updateCliente", updated);
@@ -222,6 +255,7 @@ export const useDataStore = create((set, get) => ({
       criado_em: nowIso(),
       ...payload,
       email,
+      data_aniversario: String(payload.data_aniversario || "").trim() || null,
     };
     try {
       await sendCommand("addFornecedor", fornecedor);
@@ -239,6 +273,9 @@ export const useDataStore = create((set, get) => ({
     );
     const unidadeEstoque = unidadeDefault;
     const kgPorSaco = Number(payload.kg_por_saco) || 1;
+    const imagemPaginaInicialBase64 = normalizeImageBase64(
+      payload.imagem_pagina_inicial_base64,
+    );
 
     const insumo = {
       id: uuidv4(),
@@ -257,12 +294,17 @@ export const useDataStore = create((set, get) => ({
       pode_ser_insumo: payload.pode_ser_insumo ?? true,
       pode_ser_produzivel: payload.pode_ser_produzivel ?? false,
       pode_ser_vendido: payload.pode_ser_vendido ?? false,
+      aparecer_pagina_inicial: payload.aparecer_pagina_inicial ?? false,
+      valor_venda: Number(payload.valor_venda) || 0,
+      imagem_pagina_inicial_base64: imagemPaginaInicialBase64 || "",
+      descricao: String(payload.descricao || "").trim(),
     };
     try {
       await sendCommand("addInsumo", insumo);
       set((state) => ({ insumos: [...state.insumos, insumo] }));
+      return { ok: true };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   updateInsumo: async ({ id, ...payload }) => {
@@ -274,6 +316,10 @@ export const useDataStore = create((set, get) => ({
       payload.unidade_codigo || current.unidade_codigo || "KG",
     );
     const unidadeEstoque = unidadePadrao;
+    const imagemPaginaInicialBase64 = normalizeImageBase64(
+      payload.imagem_pagina_inicial_base64 ??
+        current.imagem_pagina_inicial_base64,
+    );
 
     const updated = {
       ...current,
@@ -287,14 +333,32 @@ export const useDataStore = create((set, get) => ({
       estoque_minimo_unidade_id:
         unidadeEstoque?.id || current.estoque_minimo_unidade_id,
       estoque_minimo_unidade_codigo:
-        unidadeEstoque?.codigo ||
-        current.estoque_minimo_unidade_codigo ||
-        "KG",
+        unidadeEstoque?.codigo || current.estoque_minimo_unidade_codigo || "KG",
       estoque_minimo_unidade_label:
         unidadeEstoque?.label || current.estoque_minimo_unidade_label,
-      pode_ser_insumo: payload.pode_ser_insumo ?? current.pode_ser_insumo ?? true,
-      pode_ser_produzivel: payload.pode_ser_produzivel ?? current.pode_ser_produzivel ?? false,
-      pode_ser_vendido: payload.pode_ser_vendido ?? current.pode_ser_vendido ?? false,
+      pode_ser_insumo:
+        payload.pode_ser_insumo ?? current.pode_ser_insumo ?? true,
+      pode_ser_produzivel:
+        payload.pode_ser_produzivel ?? current.pode_ser_produzivel ?? false,
+      pode_ser_vendido:
+        payload.pode_ser_vendido ?? current.pode_ser_vendido ?? false,
+      aparecer_pagina_inicial:
+        payload.aparecer_pagina_inicial ??
+        current.aparecer_pagina_inicial ??
+        false,
+      valor_venda:
+        payload.valor_venda === undefined
+          ? Number(current.valor_venda) || 0
+          : Number(payload.valor_venda) || 0,
+      imagem_pagina_inicial_base64:
+        imagemPaginaInicialBase64 ||
+        (payload.imagem_pagina_inicial_base64 === ""
+          ? ""
+          : current.imagem_pagina_inicial_base64 || ""),
+      descricao:
+        payload.descricao !== undefined
+          ? String(payload.descricao || "").trim()
+          : String(current.descricao || "").trim(),
     };
 
     try {
@@ -304,8 +368,9 @@ export const useDataStore = create((set, get) => ({
           insumo.id === id ? updated : insumo,
         ),
       }));
+      return { ok: true };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
     }
   },
   addEntradaInsumos: async ({
@@ -346,16 +411,17 @@ export const useDataStore = create((set, get) => ({
     const contaPagarId = uuidv4();
     const parcelasBase = Array.isArray(parcelas_valores)
       ? parcelas_valores.map((valor, index) => ({
-        parcela_num: index + 1,
-        valor,
-        vencimento: parcelas_vencimentos?.[index] || dataEntrada,
-      }))
+          parcela_num: index + 1,
+          valor,
+          vencimento: parcelas_vencimentos?.[index] || dataEntrada,
+        }))
       : getParcelas(valor_total, parcelas_qtd);
     const parcelas = parcelasBase.map((parcela) =>
       buildParcelaPagamento({
         parcelaNum: parcela.parcela_num,
         valor: parcela.valor,
-        vencimento: parcela.vencimento || parcelas_vencimentos?.[parcela.parcela_num - 1],
+        vencimento:
+          parcela.vencimento || parcelas_vencimentos?.[parcela.parcela_num - 1],
         contaPagarId,
         statusInput: parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO",
         dataLancamento: dataEntrada,
@@ -378,10 +444,10 @@ export const useDataStore = create((set, get) => ({
       const parcelasQtdExtra = Math.max(1, Number(item.parcelas_qtd) || 1);
       const parcelasBaseExtra = Array.isArray(item.parcelas_valores)
         ? item.parcelas_valores.map((valor, index) => ({
-          parcela_num: index + 1,
-          valor,
-          vencimento: item.parcelas_vencimentos?.[index] || dataEntrada,
-        }))
+            parcela_num: index + 1,
+            valor,
+            vencimento: item.parcelas_vencimentos?.[index] || dataEntrada,
+          }))
         : getParcelas(valorTotalExtra, parcelasQtdExtra);
 
       const parcelasExtra = parcelasBaseExtra.map((parcela) =>
@@ -392,7 +458,8 @@ export const useDataStore = create((set, get) => ({
             item.parcelas_vencimentos?.[parcela.parcela_num - 1] ||
             parcela.vencimento,
           contaPagarId: contaPagarExtraId,
-          statusInput: item.parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO",
+          statusInput:
+            item.parcelas_status?.[parcela.parcela_num - 1] || "A_PRAZO",
           dataLancamento: dataEntrada,
         }),
       );
@@ -490,7 +557,9 @@ export const useDataStore = create((set, get) => ({
     }
 
     const insumo_final_id =
-      produtosProgramados[0]?.insumo_id || detalhesProducao[0]?.insumo_id || null;
+      produtosProgramados[0]?.insumo_id ||
+      detalhesProducao[0]?.insumo_id ||
+      null;
 
     if (!insumo_final_id) {
       return { ok: false, error: "Não foi possível definir a produção." };
@@ -529,7 +598,10 @@ export const useDataStore = create((set, get) => ({
       });
       set((state) => ({
         producoes: [...state.producoes, producao],
-        producaoResultados: [...state.producaoResultados, ...producaoResultados],
+        producaoResultados: [
+          ...state.producaoResultados,
+          ...producaoResultados,
+        ],
         detalhesProducao: [...state.detalhesProducao, ...detalhesProducao],
       }));
       return { ok: true, producaoId };
@@ -603,10 +675,11 @@ export const useDataStore = create((set, get) => ({
   cancelarProducao: async (producaoId) => {
     if (!producaoId) return;
 
-    const movimentosReserva = get()
-      .movimentoProducao.filter(
-        (m) => String(m.producao_id) === String(producaoId) && m.tipo_movimento === "RESERVA_PRODUCAO"
-      );
+    const movimentosReserva = get().movimentoProducao.filter(
+      (m) =>
+        String(m.producao_id) === String(producaoId) &&
+        m.tipo_movimento === "RESERVA_PRODUCAO",
+    );
 
     const dataCancelamento = nowIso();
 
@@ -625,7 +698,10 @@ export const useDataStore = create((set, get) => ({
     }));
 
     try {
-      await sendCommand("cancelarProducao", { producao_id: producaoId, estornos });
+      await sendCommand("cancelarProducao", {
+        producao_id: producaoId,
+        estornos,
+      });
       await get().loadData();
     } catch (error) {
       return;
@@ -708,9 +784,7 @@ export const useDataStore = create((set, get) => ({
       Math.max(0, subtotal - descontoValor + acrescimoValor).toFixed(2),
     );
     const parcelasQuantidade =
-      tipo_pagamento === "A_PRAZO"
-        ? Math.max(1, Number(parcelas_qtd) || 1)
-        : 1;
+      tipo_pagamento === "A_PRAZO" ? Math.max(1, Number(parcelas_qtd) || 1) : 1;
     const unidades = get().auxUnidades || [];
     const venda = {
       id: vendaId,
@@ -744,15 +818,17 @@ export const useDataStore = create((set, get) => ({
       status: "ABERTO",
     };
     const parcelasOrigem =
-      tipo_pagamento === "A_PRAZO" && Array.isArray(parcelas_custom) && parcelas_custom.length
+      tipo_pagamento === "A_PRAZO" &&
+      Array.isArray(parcelas_custom) &&
+      parcelas_custom.length
         ? parcelas_custom
         : getParcelas(valor_total, parcelasQuantidade).map((parcela) => ({
-          parcela_num: parcela.parcela_num,
-          valor: parcela.valor,
-          vencimento: dataVenda,
-          forma_pagamento,
-          status: "ABERTA",
-        }));
+            parcela_num: parcela.parcela_num,
+            valor: parcela.valor,
+            vencimento: dataVenda,
+            forma_pagamento,
+            status: "ABERTA",
+          }));
 
     const parcelas = parcelasOrigem.map((parcela, index) => {
       const valorParcela = Number(parcela.valor) || 0;
@@ -786,7 +862,8 @@ export const useDataStore = create((set, get) => ({
         item.unidade_codigo || "KG",
       );
       const quantidadeInformada = Number(item.quantidade) || 0;
-      const kgPorSaco = Number(item.kg_por_saco) || Number(item.kg_por_saco_item) || 1;
+      const kgPorSaco =
+        Number(item.kg_por_saco) || Number(item.kg_por_saco_item) || 1;
       const quantidadeKg =
         unidade?.codigo === "SACO"
           ? quantidadeInformada * kgPorSaco
@@ -825,9 +902,17 @@ export const useDataStore = create((set, get) => ({
         vendaDetalhes,
       });
       await get().loadData();
-      return { vendaId };
+      return {
+        ok: true,
+        vendaId,
+        contaReceberId,
+        parcelas,
+      };
     } catch (error) {
-      return null;
+      return {
+        ok: false,
+        error: error.message || "Não foi possível registrar a venda.",
+      };
     }
   },
   confirmarEntregaVenda: async ({ venda_id, data_entrega, custos_extras }) => {
@@ -879,10 +964,10 @@ export const useDataStore = create((set, get) => ({
         vendas: state.vendas.map((item) =>
           item.id === venda_id
             ? {
-              ...item,
-              status_entrega: "ENTREGUE",
-              data_entrega: dataEntrega,
-            }
+                ...item,
+                status_entrega: "ENTREGUE",
+                data_entrega: dataEntrega,
+              }
             : item,
         ),
         contasPagar: [
@@ -909,7 +994,8 @@ export const useDataStore = create((set, get) => ({
       (conta) => conta.id === parcelaAtual.conta_pagar_id,
     );
     const dataPagamento = nowIso();
-    const valorOriginal = Number(payload.valor_original ?? parcelaAtual.valor) || 0;
+    const valorOriginal =
+      Number(payload.valor_original ?? parcelaAtual.valor) || 0;
     const valorPago =
       payload.valor_pago === null || payload.valor_pago === undefined
         ? valorOriginal
@@ -922,29 +1008,29 @@ export const useDataStore = create((set, get) => ({
 
     const contaPagarDiferenca = gerarNovaCobranca
       ? {
-        id: uuidv4(),
-        fornecedor_id: contaAtual?.fornecedor_id || null,
-        origem_tipo: "diferenca_pagamento_conta_pagar",
-        origem_id: parcelaAtual.id,
-        valor_total: diferenca,
-        data_emissao: dataPagamento,
-        status: "ABERTO",
-        venda_id: contaAtual?.venda_id || null,
-      }
+          id: uuidv4(),
+          fornecedor_id: contaAtual?.fornecedor_id || null,
+          origem_tipo: "diferenca_pagamento_conta_pagar",
+          origem_id: parcelaAtual.id,
+          valor_total: diferenca,
+          data_emissao: dataPagamento,
+          status: "ABERTO",
+          venda_id: contaAtual?.venda_id || null,
+        }
       : null;
 
     const parcelaPagarDiferenca = contaPagarDiferenca
       ? {
-        id: uuidv4(),
-        conta_pagar_id: contaPagarDiferenca.id,
-        parcela_num: 1,
-        vencimento: addDaysLocalDateTime(7),
-        valor: diferenca,
-        status: "ABERTA",
-        data_pagamento: null,
-        forma_pagamento: null,
-        producao_id: null,
-      }
+          id: uuidv4(),
+          conta_pagar_id: contaPagarDiferenca.id,
+          parcela_num: 1,
+          vencimento: addDaysLocalDateTime(7),
+          valor: diferenca,
+          status: "ABERTA",
+          data_pagamento: null,
+          forma_pagamento: null,
+          producao_id: null,
+        }
       : null;
 
     const updated = {
@@ -997,12 +1083,16 @@ export const useDataStore = create((set, get) => ({
             : venda_id || null;
 
         const valorProgramado =
-          Number(parcelaAtual.valor_programado) || Number(parcelaAtual.valor) || 0;
+          Number(parcelaAtual.valor_programado) ||
+          Number(parcelaAtual.valor) ||
+          0;
         const valorRecebidoFinal =
           valor_recebido === null || valor_recebido === undefined
             ? valorProgramado
             : Number(valor_recebido) || 0;
-        const diferenca = Number((valorProgramado - valorRecebidoFinal).toFixed(2));
+        const diferenca = Number(
+          (valorProgramado - valorRecebidoFinal).toFixed(2),
+        );
 
         if (diferenca > 0 && !String(motivo_diferenca || "").trim()) {
           return;
@@ -1012,31 +1102,32 @@ export const useDataStore = create((set, get) => ({
           diferenca === 0
             ? null
             : {
-              id: uuidv4(),
-              venda_id: vendaIdParcela,
-              tipo_evento: diferenca > 0 ? "DESCONTO" : "JUROS",
-              descricao:
-                diferenca > 0
-                  ? "Diferença aceita no recebimento"
-                  : "Recebimento acima do programado",
-              valor: diferenca > 0 ? -Math.abs(diferenca) : Math.abs(diferenca),
-              data_evento: dataRecebimento,
-            };
+                id: uuidv4(),
+                venda_id: vendaIdParcela,
+                tipo_evento: diferenca > 0 ? "DESCONTO" : "JUROS",
+                descricao:
+                  diferenca > 0
+                    ? "Diferença aceita no recebimento"
+                    : "Recebimento acima do programado",
+                valor:
+                  diferenca > 0 ? -Math.abs(diferenca) : Math.abs(diferenca),
+                data_evento: dataRecebimento,
+              };
 
         const contasPagarDiretas =
           origem_recebimento === "DIRETO_FORNECEDOR" && fornecedor_destino_id
             ? [
-              {
-                id: uuidv4(),
-                fornecedor_id: fornecedor_destino_id,
-                origem_tipo: "cliente_pagou_direto_fornecedor",
-                origem_id: parcelaId,
-                valor_total: valorRecebidoFinal,
-                data_emissao: dataRecebimento,
-                status: "ABERTO",
-                venda_id: null,
-              },
-            ]
+                {
+                  id: uuidv4(),
+                  fornecedor_id: fornecedor_destino_id,
+                  origem_tipo: "cliente_pagou_direto_fornecedor",
+                  origem_id: parcelaId,
+                  valor_total: valorRecebidoFinal,
+                  data_emissao: dataRecebimento,
+                  status: "ABERTO",
+                  venda_id: null,
+                },
+              ]
             : [];
 
         const parcelasPagarDiretas = contasPagarDiretas.map((conta, index) => ({
@@ -1062,7 +1153,8 @@ export const useDataStore = create((set, get) => ({
           valor_programado: valorProgramado,
           valor_recebido: valorRecebidoFinal,
           motivo_diferenca: motivo_diferenca || null,
-          acao_diferenca: diferenca > 0 ? acao_diferenca || "ACEITAR_ENCERRAR" : null,
+          acao_diferenca:
+            diferenca > 0 ? acao_diferenca || "ACEITAR_ENCERRAR" : null,
           origem_recebimento,
           fornecedor_destino_id: fornecedor_destino_id || null,
           comprovante_url: comprovante_url || null,

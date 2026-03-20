@@ -1,8 +1,16 @@
-import { query } from "../../../../infra/database";
-import { conversaoCripto } from "../../../../utils/crypto";
 import { requireAdmin } from "../../../../infra/auth";
+import {
+  getIntegration,
+  listIntegrations,
+  normalizeIntegrationEmailList,
+  saveIntegration,
+} from "../../../../services/integrations";
+import { ensureAsaasWebhookRegistration } from "../../../../services/asaas";
+import { resolveRequestOrigin } from "../../../../utils/request";
 
 const INTEGRACOES = ["asaas", "resend"];
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 export default async function handler(req, res) {
   const auth = await requireAdmin(req, res);
@@ -10,15 +18,7 @@ export default async function handler(req, res) {
 
   if (req.method === "GET") {
     try {
-      const result = await query(
-        "SELECT provedor FROM empresa_configuracao_integracoes",
-      );
-
-      const integracoes = INTEGRACOES.map((provedor) => ({
-        provedor,
-        configurado: result.rows.some((item) => item.provedor === provedor),
-      }));
-
+      const integracoes = await listIntegrations();
       return res.status(200).json({ integracoes });
     } catch (error) {
       return res.status(500).json({ error: "Erro ao carregar integrações." });
@@ -26,34 +26,119 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "PUT") {
-    const provedor = String(req.body?.provedor || "")
+    const payload =
+      typeof req.body === "string"
+        ? JSON.parse(req.body || "{}")
+        : req.body || {};
+    const provedor = String(payload?.provedor || "")
       .trim()
       .toLowerCase();
-    const chave = String(req.body?.chave || "").trim();
+    const chave = String(payload?.chave || "").trim();
 
     if (!INTEGRACOES.includes(provedor)) {
       return res.status(400).json({ error: "Provedor inválido." });
     }
 
-    if (!chave) {
-      return res.status(400).json({ error: "Informe a chave da integração." });
-    }
-
     try {
-      const chaveCriptografada = await conversaoCripto(chave);
-      await query(
-        `
-        INSERT INTO empresa_configuracao_integracoes (provedor, chave_criptografada, atualizado_em)
-        VALUES ($1, $2, now())
-        ON CONFLICT (provedor)
-        DO UPDATE SET chave_criptografada = EXCLUDED.chave_criptografada, atualizado_em = now()
-        `,
-        [provedor, chaveCriptografada],
-      );
+      const current = await getIntegration(provedor);
+      const baseConfig = payload?.config || {};
+      const config =
+        provedor === "asaas"
+          ? {
+              ...baseConfig,
+              environment: "production",
+            }
+          : baseConfig;
 
-      return res.status(200).json({ provedor, configurado: true });
+      if (!chave && !current.key) {
+        return res.status(400).json({ error: "Informe a chave da integração." });
+      }
+
+      if (provedor === "resend") {
+        const fromEmail = String(config.from_email || "").trim().toLowerCase();
+        const recipients = normalizeIntegrationEmailList(
+          config.notification_recipients,
+        );
+
+        if (!fromEmail || !isValidEmail(fromEmail)) {
+          return res.status(400).json({
+            error: "Informe um remetente válido para a integração Resend.",
+          });
+        }
+
+        if (!recipients.length) {
+          return res.status(400).json({
+            error:
+              "Informe ao menos um destinatário para os lembretes do Resend.",
+          });
+        }
+      }
+
+      const saved = await saveIntegration({
+        provider: provedor,
+        key: chave,
+        config,
+      });
+
+      let finalConfig = saved.config;
+      let webhook = null;
+
+      if (provedor === "asaas") {
+        const requestOrigin = resolveRequestOrigin(req);
+        const webhookUrl =
+          String(saved.config.webhook_url || "").trim() ||
+          `${requestOrigin}/api/v1/integracoes/asaas/webhook`;
+
+        if (webhookUrl) {
+          try {
+            webhook = await ensureAsaasWebhookRegistration({
+              webhookUrl,
+              fallbackEmail: auth.usuario?.email || "",
+            });
+
+            finalConfig = (
+              await saveIntegration({
+                provider: "asaas",
+                key: "",
+                config: {
+                  ...saved.config,
+                  ...webhook,
+                },
+              })
+            ).config;
+          } catch (error) {
+            finalConfig = (
+              await saveIntegration({
+                provider: "asaas",
+                key: "",
+                config: {
+                  ...saved.config,
+                  webhook_url: webhookUrl,
+                  webhook_error:
+                    error.message ||
+                    "Não foi possível registrar o webhook do ASAAS.",
+                },
+              })
+            ).config;
+            webhook = {
+              error:
+                error.message ||
+                "Não foi possível registrar o webhook do ASAAS.",
+            };
+          }
+        }
+      }
+
+      return res.status(200).json({
+        provedor,
+        configurado: true,
+        config: finalConfig,
+        webhook,
+      });
     } catch (error) {
-      return res.status(500).json({ error: "Erro ao salvar integração." });
+      return res.status(error?.statusCode || 500).json({
+        error: error.message || "Erro ao salvar integração.",
+      });
     }
   }
 

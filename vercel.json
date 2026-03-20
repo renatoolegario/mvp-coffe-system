@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/v1/cron/contas-receber-hoje",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/v1/cron/cobrancas-asaas-hoje",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/v1/cron/entregas-hoje",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}

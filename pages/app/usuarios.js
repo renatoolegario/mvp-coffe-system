@@ -31,9 +31,15 @@ const UsuariosPage = () => {
     perfil: PERFIS.COMUM,
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [errors, setErrors] = useState({ email: "", senha: "" });
   const [isAdmin, setIsAdmin] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
 
   useEffect(() => {
     const session = getSession();
@@ -41,33 +47,67 @@ const UsuariosPage = () => {
   }, []);
 
   const handleChange = (field) => (event) => {
-    setForm((prev) => ({ ...prev, [field]: event.target.value }));
+    const value =
+      field === "perfil" ? Number(event.target.value) : event.target.value;
+
+    setForm((prev) => ({ ...prev, [field]: value }));
+    if (field === "email" || field === "senha") {
+      setErrors((prev) => ({ ...prev, [field]: "" }));
+    }
+    setSubmitError("");
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!isAdmin) return;
+    if (!isAdmin || isSubmitting) return;
 
     const email = form.email.trim().toLowerCase();
     const senha = form.senha.trim();
     const emailExists = usuarios.some(
-      (usuario) => usuario.email?.trim().toLowerCase() === email
+      (usuario) => usuario.email?.trim().toLowerCase() === email,
     );
     const senhaValida = /^\d{5,}$/.test(senha);
+
+    setSubmitError("");
 
     if (emailExists || !senhaValida) {
       setErrors({
         email: emailExists ? "Já existe um usuário com este e-mail." : "",
-        senha: !senhaValida ? "A senha precisa ter no mínimo 5 dígitos numéricos." : "",
+        senha: !senhaValida
+          ? "A senha precisa ter no mínimo 5 dígitos numéricos."
+          : "",
       });
       return;
     }
 
-    addUsuario({ ...form, email, senha, perfil: Number(form.perfil) });
+    setIsSubmitting(true);
+    const result = await addUsuario({
+      ...form,
+      email,
+      senha,
+      perfil: Number(form.perfil),
+    });
+    setIsSubmitting(false);
+
+    if (!result?.ok) {
+      const message = result?.error || "Não foi possível cadastrar o usuário.";
+      setSubmitError(message);
+      setSnackbar({
+        open: true,
+        message,
+        severity: "error",
+      });
+      return;
+    }
+
     setForm({ nome: "", email: "", senha: "", perfil: PERFIS.COMUM });
     setErrors({ email: "", senha: "" });
     setDrawerOpen(false);
-    setSnackbarOpen(true);
+    setSnackbar({
+      open: true,
+      message: "Usuário cadastrado com sucesso.",
+      severity: "success",
+    });
   };
 
   return (
@@ -85,7 +125,11 @@ const UsuariosPage = () => {
             variant="contained"
             startIcon={<PersonAdd />}
             disabled={!isAdmin}
-            onClick={() => setDrawerOpen(true)}
+            onClick={() => {
+              setDrawerOpen(true);
+              setSubmitError("");
+              setErrors({ email: "", senha: "" });
+            }}
           >
             Cadastrar usuário
           </Button>
@@ -100,7 +144,12 @@ const UsuariosPage = () => {
             <Stack spacing={2}>
               {usuarios.map((usuario) => (
                 <Paper key={usuario.id} variant="outlined" sx={{ p: 2 }}>
-                  <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={2}>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    spacing={2}
+                  >
                     <Box>
                       <Typography fontWeight={600}>{usuario.nome}</Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -131,14 +180,25 @@ const UsuariosPage = () => {
           sx: { width: { xs: "100%", sm: 360 }, p: 3 },
         }}
       >
-        <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          mb={2}
+        >
           <Typography variant="h6">Cadastrar usuário</Typography>
-          <IconButton onClick={() => setDrawerOpen(false)}>
+          <IconButton
+            onClick={() => {
+              setDrawerOpen(false);
+              setSubmitError("");
+            }}
+          >
             <Close />
           </IconButton>
         </Stack>
         <Box component="form" onSubmit={handleSubmit}>
           <Stack spacing={2}>
+            {submitError ? <Alert severity="error">{submitError}</Alert> : null}
             <TextField
               label="Nome"
               value={form.nome}
@@ -146,7 +206,7 @@ const UsuariosPage = () => {
               required
             />
             <TextField
-              label="Email"
+              label="E-mail"
               type="email"
               value={form.email}
               onChange={handleChange("email")}
@@ -168,30 +228,43 @@ const UsuariosPage = () => {
               label="Perfil"
               disabled={!isAdmin}
               value={form.perfil}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  perfil: Number(event.target.value),
-                }))
-              }
+              onChange={handleChange("perfil")}
             >
               <MenuItem value={PERFIS.ADMIN}>Admin</MenuItem>
               <MenuItem value={PERFIS.COMUM}>Comum</MenuItem>
             </TextField>
-            <Button type="submit" variant="contained" disabled={!isAdmin}>
-              Salvar
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={!isAdmin || isSubmitting}
+            >
+              {isSubmitting ? "Salvando..." : "Salvar"}
             </Button>
           </Stack>
         </Box>
       </Drawer>
       <Snackbar
-        open={snackbarOpen}
+        open={snackbar.open}
         autoHideDuration={4000}
-        onClose={() => setSnackbarOpen(false)}
+        onClose={() =>
+          setSnackbar((prev) => ({
+            ...prev,
+            open: false,
+          }))
+        }
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
-        <Alert severity="success" variant="filled" onClose={() => setSnackbarOpen(false)}>
-          Usuário cadastrado com sucesso.
+        <Alert
+          severity={snackbar.severity}
+          variant="filled"
+          onClose={() =>
+            setSnackbar((prev) => ({
+              ...prev,
+              open: false,
+            }))
+          }
+        >
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </AppLayout>

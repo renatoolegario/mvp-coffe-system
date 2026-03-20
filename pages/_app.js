@@ -81,6 +81,23 @@ const theme = createTheme({
         },
       },
     },
+    MuiPopover: {
+      styleOverrides: {
+        root: {
+          // Os drawers de formulário usam z-index acima do modal para não ficarem
+          // atrás do AppBar. Sem elevar o popover, os menus de select ficam
+          // renderizados por baixo do drawer e parecem "não clicáveis".
+          zIndex: 1380,
+        },
+      },
+    },
+    MuiPopper: {
+      styleOverrides: {
+        root: {
+          zIndex: 1380,
+        },
+      },
+    },
     MuiOutlinedInput: {
       styleOverrides: {
         notchedOutline: {

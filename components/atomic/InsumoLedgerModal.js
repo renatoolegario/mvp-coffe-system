@@ -31,8 +31,8 @@ const getTipoLabel = (tipo) => {
     RESERVA_PRODUCAO: "Reserva para OP",
     ENTRADA_PRODUCAO: "Entrada de OP",
     ESTORNO_PRODUCAO: "Estorno de OP",
-    TRANSFERENCIA_SAIDA: "Transferencia (Saida)",
-    TRANSFERENCIA_ENTRADA: "Transferencia (Entrada)",
+    TRANSFERENCIA_SAIDA: "Transferência (Saída)",
+    TRANSFERENCIA_ENTRADA: "Transferência (Entrada)",
     VENDA: "Venda",
   };
   return map[tipo] || tipo;
@@ -80,7 +80,7 @@ export default function InsumoLedgerModal({ open, onClose, insumo }) {
     if (!movimentosOrdenados.length) {
       setFeedback({
         open: true,
-        message: "Nao ha historico para exportar.",
+        message: "Não há histórico para exportar.",
         severity: "warning",
       });
       return;
@@ -108,13 +108,13 @@ export default function InsumoLedgerModal({ open, onClose, insumo }) {
           columns: [
             { key: "data", header: "Data" },
             { key: "movimento", header: "Movimento" },
-            { key: "variacao_kg", header: "Variacao (kg)" },
+            { key: "variacao_kg", header: "Variação (kg)" },
             { key: "saldo_kg", header: "Saldo (kg)" },
-            { key: "custo_unit_kg", header: "Custo unitario (R$/kg)" },
+            { key: "custo_unit_kg", header: "Custo unitário (R$/kg)" },
             { key: "custo_total_mov", header: "Custo total (R$)" },
             { key: "referencia_tipo", header: "Origem tipo" },
-            { key: "referencia_id", header: "Origem codigo completo" },
-            { key: "observacao", header: "Observacao" },
+            { key: "referencia_id", header: "Origem código completo" },
+            { key: "observacao", header: "Observação" },
           ],
           rows,
         },
@@ -148,13 +148,13 @@ export default function InsumoLedgerModal({ open, onClose, insumo }) {
       }
       setFeedback({
         open: true,
-        message: "Codigo de referencia copiado.",
+        message: "Código de referência copiado.",
         severity: "success",
       });
     } catch (error) {
       setFeedback({
         open: true,
-        message: "Nao foi possivel copiar a referencia.",
+        message: "Não foi possível copiar a referência.",
         severity: "error",
       });
     }
@@ -187,11 +187,11 @@ export default function InsumoLedgerModal({ open, onClose, insumo }) {
             <Box>
               <Typography variant="h6">Extrato: {insumo?.nome}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Acompanhamento de entradas e saidas e impacto no custo medio
+                Acompanhamento de entradas e saídas e impacto no custo médio
               </Typography>
             </Box>
             <Stack direction="row" spacing={0.5}>
-              <Tooltip title="Baixar historico em XLSX">
+              <Tooltip title="Baixar histórico em XLSX">
                 <IconButton onClick={handleExportLedger} size="small">
                   <DownloadRounded fontSize="small" />
                 </IconButton>
@@ -210,7 +210,7 @@ export default function InsumoLedgerModal({ open, onClose, insumo }) {
                     <TableCell>Movimento</TableCell>
                     <TableCell align="right">Qtd</TableCell>
                     <TableCell align="right">Saldo</TableCell>
-                    <TableCell align="right">Custo Unit</TableCell>
+                    <TableCell align="right">Custo unitário</TableCell>
                     <TableCell align="right">Custo Total</TableCell>
                     <TableCell>Origem (Ref)</TableCell>
                   </TableRow>
@@ -268,7 +268,7 @@ export default function InsumoLedgerModal({ open, onClose, insumo }) {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={7} align="center">
-                        Nenhuma movimentacao encontrada para este insumo.
+                        Nenhuma movimentação encontrada para este insumo.
                       </TableCell>
                     </TableRow>
                   )}

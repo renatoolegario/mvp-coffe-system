@@ -243,7 +243,7 @@ exports.up = async (pgm) => {
   `);
 
   if (!insumosResult.rows.length) {
-    throw new Error("Nao ha insumos ativos para gerar o seed 2.");
+    throw new Error("Não há insumos ativos para gerar o seed 2.");
   }
 
   const insumos = insumosResult.rows.map((row) => ({
@@ -305,7 +305,7 @@ exports.up = async (pgm) => {
 
   const clientesRows = clientesNomes.map((nome, index) => {
     const idx = index + 1;
-    const email = `cliente.seed2.${fmt(idx)}@mvpcafe.local`;
+    const email = `cliente.seed2.${fmt(idx)}@essenciasdobrasil.local`;
     const cpfCnpj =
       idx % 3 === 0 ? generateCpf(200 + idx) : generateCnpj(300 + idx);
     const row = {
@@ -326,7 +326,7 @@ exports.up = async (pgm) => {
 
   const fornecedoresRows = fornecedoresNomes.map((razaoSocial, index) => {
     const idx = index + 1;
-    const email = `fornecedor.seed2.${fmt(idx)}@mvpcafe.local`;
+    const email = `fornecedor.seed2.${fmt(idx)}@essenciasdobrasil.local`;
     const row = {
       id: makeUuid("44f10000", idx),
       razao_social: encrypt(razaoSocial),

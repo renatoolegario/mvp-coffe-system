@@ -17,6 +17,7 @@ import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { isValidCpfCnpj, normalizeCpfCnpj } from "../../utils/document";
+import { formatDate } from "../../utils/format";
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -28,6 +29,7 @@ const FornecedoresPage = () => {
     email: "",
     cpf_cnpj: "",
     telefone: "",
+    data_aniversario: "",
     endereco: "",
   });
   const [errors, setErrors] = useState({
@@ -68,9 +70,9 @@ const FornecedoresPage = () => {
     const nextErrors = { email: "", cpf_cnpj: "" };
 
     if (!normalizedEmail) {
-      nextErrors.email = "Informe o email do fornecedor.";
+      nextErrors.email = "Informe o e-mail do fornecedor.";
     } else if (!isValidEmail(normalizedEmail)) {
-      nextErrors.email = "Informe um email válido.";
+      nextErrors.email = "Informe um e-mail válido.";
     } else if (
       fornecedores.some(
         (fornecedor) =>
@@ -79,7 +81,7 @@ const FornecedoresPage = () => {
             .toLowerCase() === normalizedEmail,
       )
     ) {
-      nextErrors.email = "Já existe um fornecedor com este email.";
+      nextErrors.email = "Já existe um fornecedor com este e-mail.";
     }
 
     if (!normalizedCpfCnpj) {
@@ -124,6 +126,7 @@ const FornecedoresPage = () => {
       email: "",
       cpf_cnpj: "",
       telefone: "",
+      data_aniversario: "",
       endereco: "",
     });
     setDrawerOpen(false);
@@ -166,7 +169,16 @@ const FornecedoresPage = () => {
                     {fornecedor.telefone || "Sem telefone"}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {fornecedor.email || "Sem email"}
+                    {fornecedor.email || "Sem e-mail"}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    {fornecedor.data_aniversario
+                      ? `Aniversário: ${formatDate(fornecedor.data_aniversario)}`
+                      : "Sem data de aniversário"}
                   </Typography>
                 </Paper>
               ))}
@@ -207,7 +219,7 @@ const FornecedoresPage = () => {
               required
             />
             <TextField
-              label="Email"
+              label="E-mail"
               type="email"
               value={form.email}
               onChange={handleChange("email")}
@@ -227,6 +239,13 @@ const FornecedoresPage = () => {
               label="Telefone"
               value={form.telefone}
               onChange={handleChange("telefone")}
+            />
+            <TextField
+              label="Data de aniversário"
+              type="date"
+              value={form.data_aniversario}
+              onChange={handleChange("data_aniversario")}
+              InputLabelProps={{ shrink: true }}
             />
             <TextField
               label="Endereço"

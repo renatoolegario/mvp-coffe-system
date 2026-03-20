@@ -11,7 +11,7 @@
     "format:check": "prettier --check .",
     "test": "jest --runInBand",
     "migration:create": "node-pg-migrate --migrations-dir infra/migrations create",
-    "migration:up": "node-pg-migrate --migrations-dir infra/migrations --envPath .env up"
+    "migration:up": "dotenv -e .env -- node scripts/migration-up.js"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

@@ -3,9 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Drawer,
   Grid,
   IconButton,
@@ -16,8 +13,6 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseIcon from "@mui/icons-material/Close";
 import DownloadIcon from "@mui/icons-material/Download";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
@@ -29,7 +24,6 @@ import { formatCurrency } from "../../utils/format";
 import { downloadWorkbookXlsx } from "../../utils/xlsx";
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
-const monthPattern = /^\d{4}-\d{2}$/;
 
 const toIsoDate = (date) => {
   const year = date.getFullYear();
@@ -39,7 +33,14 @@ const toIsoDate = (date) => {
 };
 
 const todayDate = () => toIsoDate(new Date());
-const toMonthValue = (date) => toIsoDate(date).slice(0, 7);
+
+const getCurrentMonthRange = () => {
+  const current = new Date();
+  return {
+    start: toIsoDate(new Date(current.getFullYear(), current.getMonth(), 1)),
+    end: toIsoDate(new Date(current.getFullYear(), current.getMonth() + 1, 0)),
+  };
+};
 
 const normalizeDateValue = (value) => {
   if (!value) return "";
@@ -67,69 +68,18 @@ const formatQuantity = (value) => {
   });
 };
 
-const getMonthRange = (monthValue) => {
-  if (!monthPattern.test(String(monthValue || ""))) {
-    return getMonthRange(toMonthValue(new Date()));
-  }
-
-  const [year, month] = monthValue.split("-").map((part) => Number(part));
-  const first = new Date(year, month - 1, 1);
-  const last = new Date(year, month, 0);
-
-  return {
-    start: toIsoDate(first),
-    end: toIsoDate(last),
-  };
-};
-
-const shiftMonth = (monthValue, offset) => {
-  const safeMonth = monthPattern.test(String(monthValue || ""))
-    ? monthValue
-    : toMonthValue(new Date());
-  const [year, month] = safeMonth.split("-").map((part) => Number(part));
-  const date = new Date(year, month - 1, 1);
-  date.setMonth(date.getMonth() + offset);
-  return toMonthValue(date);
-};
+const normalizeText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 
 const isDateWithinRange = (dateValue, start, end) => {
   if (!dateValue) return false;
   if (start && dateValue < start) return false;
   if (end && dateValue > end) return false;
   return true;
-};
-
-const buildCalendarDays = (monthValue, salesByDate) => {
-  if (!monthPattern.test(String(monthValue || ""))) return [];
-
-  const [year, month] = monthValue.split("-").map((part) => Number(part));
-  const firstDay = new Date(year, month - 1, 1);
-  const firstWeekDay = firstDay.getDay();
-  const totalDays = new Date(year, month, 0).getDate();
-  const cells = [];
-
-  for (let index = 0; index < firstWeekDay; index += 1) {
-    cells.push({ key: `empty-start-${index}`, isCurrentMonth: false });
-  }
-
-  for (let day = 1; day <= totalDays; day += 1) {
-    const date = toIsoDate(new Date(year, month - 1, day));
-    const summary = salesByDate.get(date) || { total: 0, count: 0 };
-    cells.push({
-      key: date,
-      date,
-      day,
-      total: summary.total,
-      count: summary.count,
-      isCurrentMonth: true,
-    });
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push({ key: `empty-end-${cells.length}`, isCurrentMonth: false });
-  }
-
-  return cells;
 };
 
 const createDespesa = () => ({
@@ -142,27 +92,38 @@ const createDespesa = () => ({
   forma_pagamento: "TRANSFERENCIA",
 });
 
+const sortRowsBySaleDateDesc = (rowA, rowB) => {
+  const dateOrder = String(rowB.saleDate || "").localeCompare(
+    String(rowA.saleDate || ""),
+  );
+  if (dateOrder !== 0) return dateOrder;
+  return String(rowB.venda.id || "").localeCompare(String(rowA.venda.id || ""));
+};
+
 const VendasPage = () => {
   const vendas = useDataStore((state) => state.vendas);
   const vendaItens = useDataStore((state) => state.vendaItens);
   const clientes = useDataStore((state) => state.clientes);
   const insumos = useDataStore((state) => state.insumos);
   const contasReceber = useDataStore((state) => state.contasReceber);
-  const contasReceberParcelas = useDataStore((state) => state.contasReceberParcelas);
+  const contasReceberParcelas = useDataStore(
+    (state) => state.contasReceberParcelas,
+  );
   const fornecedores = useDataStore((state) => state.fornecedores);
-  const confirmarEntregaVenda = useDataStore((state) => state.confirmarEntregaVenda);
+  const confirmarEntregaVenda = useDataStore(
+    (state) => state.confirmarEntregaVenda,
+  );
 
   const [vendaSelecionada, setVendaSelecionada] = useState(null);
   const [dataEntrega, setDataEntrega] = useState(todayDate());
   const [despesas, setDespesas] = useState([]);
-  const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [overdueDrawerOpen, setOverdueDrawerOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [receiptFilter, setReceiptFilter] = useState("TODOS");
 
-  const initialMonth = toMonthValue(new Date());
-  const initialRange = getMonthRange(initialMonth);
-  const [calendarMonth, setCalendarMonth] = useState(initialMonth);
+  const initialRange = getCurrentMonthRange();
   const [intervalStart, setIntervalStart] = useState(initialRange.start);
   const [intervalEnd, setIntervalEnd] = useState(initialRange.end);
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
 
   const clientesById = useMemo(
     () => new Map(clientes.map((cliente) => [cliente.id, cliente])),
@@ -232,7 +193,8 @@ const VendasPage = () => {
       const produtos = itens
         .map((item) => {
           const nome = insumosById.get(item.insumo_id)?.nome || "Produto";
-          const quantidade = Number(item.quantidade_informada ?? item.quantidade_kg) || 0;
+          const quantidade =
+            Number(item.quantidade_informada ?? item.quantidade_kg) || 0;
           const unidade = Number(item.kg_por_saco) > 0 ? "saco" : "kg";
           return `${nome} (${formatQuantity(quantidade)} ${unidade})`;
         })
@@ -258,123 +220,180 @@ const VendasPage = () => {
     return { start: intervalEnd, end: intervalStart };
   }, [intervalStart, intervalEnd]);
 
-  const salesByDate = useMemo(() => {
-    const map = new Map();
-    vendas.forEach((venda) => {
-      const saleDate = normalizeDateValue(venda.data_venda);
-      if (!saleDate) return;
-
-      const current = map.get(saleDate) || { total: 0, count: 0 };
-      map.set(saleDate, {
-        total: current.total + (Number(venda.valor_total) || 0),
-        count: current.count + 1,
-      });
-    });
-    return map;
-  }, [vendas]);
-
-  const calendarDays = useMemo(
-    () => buildCalendarDays(calendarMonth, salesByDate),
-    [calendarMonth, salesByDate],
-  );
-
-  const overdueSales = useMemo(() => {
+  const salesRows = useMemo(() => {
     const today = todayDate();
-    return vendas
-      .filter((venda) => (venda.status_entrega || "PENDENTE") !== "ENTREGUE")
-      .filter((venda) => {
-        const date = normalizeDateValue(venda.data_programada_entrega);
-        return Boolean(date && date < today);
-      })
-      .sort((a, b) =>
-        normalizeDateValue(a.data_programada_entrega).localeCompare(
-          normalizeDateValue(b.data_programada_entrega),
-        ),
-      );
-  }, [vendas]);
 
-  const overdueIds = useMemo(
-    () => new Set(overdueSales.map((venda) => venda.id)),
-    [overdueSales],
-  );
-
-  const salesHistory = useMemo(
-    () =>
-      vendas
-        .filter((venda) => {
-          const saleDate = normalizeDateValue(venda.data_venda);
-          if (!isDateWithinRange(saleDate, normalizedInterval.start, normalizedInterval.end)) {
-            return false;
-          }
-          if (selectedCalendarDate && saleDate !== selectedCalendarDate) {
-            return false;
-          }
-          return !overdueIds.has(venda.id);
-        })
-        .sort((a, b) =>
-          normalizeDateValue(b.data_venda).localeCompare(normalizeDateValue(a.data_venda)),
-        ),
-    [
-      vendas,
-      normalizedInterval.start,
-      normalizedInterval.end,
-      selectedCalendarDate,
-      overdueIds,
-    ],
-  );
-
-  const exportSales = useMemo(() => {
-    const selectedById = new Map();
-
-    vendas.forEach((venda) => {
+    return vendas.map((venda) => {
       const saleDate = normalizeDateValue(venda.data_venda);
-      const inRange = isDateWithinRange(
-        saleDate,
-        normalizedInterval.start,
-        normalizedInterval.end,
-      );
-      if (inRange || overdueIds.has(venda.id)) {
-        selectedById.set(venda.id, venda);
-      }
-    });
-
-    return Array.from(selectedById.values()).sort((a, b) =>
-      normalizeDateValue(b.data_venda).localeCompare(normalizeDateValue(a.data_venda)),
-    );
-  }, [vendas, normalizedInterval.start, normalizedInterval.end, overdueIds]);
-
-  const handleDownloadSales = () => {
-    if (!exportSales.length) return;
-
-    const today = todayDate();
-    const rows = [];
-
-    exportSales.forEach((venda) => {
-      const parcelas = parcelasByVendaId.get(venda.id) || [];
-      const clientName = clientesById.get(venda.cliente_id)?.nome || "-";
       const scheduledDate = normalizeDateValue(venda.data_programada_entrega);
       const deliveredDate = normalizeDateValue(venda.data_entrega);
-      const saleDate = normalizeDateValue(venda.data_venda);
+      const clientName = clientesById.get(venda.cliente_id)?.nome || "-";
+      const products = produtosByVendaId.get(venda.id) || "-";
+      const parcelas = parcelasByVendaId.get(venda.id) || [];
+      const receivedCount = parcelas.filter(
+        (parcela) => String(parcela.status || "").toUpperCase() === "RECEBIDA",
+      ).length;
+      const totalInstallments = parcelas.length;
+      const receiptStatus =
+        totalInstallments > 0 && receivedCount === totalInstallments
+          ? "RECEBIDO"
+          : "NAO_RECEBIDO";
+      const receiptLabel =
+        receiptStatus === "RECEBIDO" ? "Recebido" : "Não recebido";
+      const pendingInstallments = parcelas
+        .filter(
+          (parcela) =>
+            String(parcela.status || "").toUpperCase() !== "RECEBIDA",
+        )
+        .sort((a, b) =>
+          normalizeDateValue(a.vencimento).localeCompare(
+            normalizeDateValue(b.vencimento),
+          ),
+        );
+      const nextPendingInstallment = pendingInstallments[0] || null;
       const isOverdue =
         (venda.status_entrega || "PENDENTE") !== "ENTREGUE" &&
         Boolean(scheduledDate && scheduledDate < today);
 
+      const searchableText = normalizeText(
+        [
+          venda.id,
+          clientName,
+          products,
+          venda.status_entrega || "PENDENTE",
+          receiptLabel,
+          venda.tipo_pagamento,
+          venda.forma_pagamento,
+          saleDate,
+          scheduledDate,
+          deliveredDate,
+        ].join(" "),
+      );
+
+      return {
+        venda,
+        clientName,
+        products,
+        saleDate,
+        scheduledDate,
+        deliveredDate,
+        parcelas,
+        receivedCount,
+        totalInstallments,
+        receiptStatus,
+        receiptLabel,
+        nextPendingInstallment,
+        isOverdue,
+        searchableText,
+      };
+    });
+  }, [clientesById, parcelasByVendaId, produtosByVendaId, vendas]);
+
+  const overdueSales = useMemo(
+    () =>
+      salesRows
+        .filter((row) => row.isOverdue)
+        .sort((rowA, rowB) => {
+          const dateOrder = String(rowA.scheduledDate || "").localeCompare(
+            String(rowB.scheduledDate || ""),
+          );
+          if (dateOrder !== 0) return dateOrder;
+          return sortRowsBySaleDateDesc(rowA, rowB);
+        }),
+    [salesRows],
+  );
+
+  const normalizedHistorySearch = useMemo(
+    () => normalizeText(historySearch),
+    [historySearch],
+  );
+
+  const salesHistory = useMemo(
+    () =>
+      salesRows
+        .filter((row) =>
+          isDateWithinRange(
+            row.saleDate,
+            normalizedInterval.start,
+            normalizedInterval.end,
+          ),
+        )
+        .filter((row) => {
+          if (receiptFilter === "TODOS") return true;
+          return row.receiptStatus === receiptFilter;
+        })
+        .filter((row) => {
+          if (!normalizedHistorySearch) return true;
+          return row.searchableText.includes(normalizedHistorySearch);
+        })
+        .sort(sortRowsBySaleDateDesc),
+    [
+      normalizedHistorySearch,
+      normalizedInterval.end,
+      normalizedInterval.start,
+      receiptFilter,
+      salesRows,
+    ],
+  );
+
+  const exportSales = useMemo(() => {
+    const rowsById = new Map();
+
+    salesHistory.forEach((row) => {
+      rowsById.set(row.venda.id, {
+        ...row,
+        inHistory: true,
+        inOverdue: false,
+      });
+    });
+
+    overdueSales.forEach((row) => {
+      const current = rowsById.get(row.venda.id);
+      rowsById.set(row.venda.id, {
+        ...row,
+        inHistory: current?.inHistory || false,
+        inOverdue: true,
+      });
+    });
+
+    return Array.from(rowsById.values()).sort(sortRowsBySaleDateDesc);
+  }, [overdueSales, salesHistory]);
+
+  const handleDownloadSales = () => {
+    if (!exportSales.length) return;
+
+    const rows = [];
+
+    exportSales.forEach((row) => {
+      const { venda } = row;
       const base = {
+        origem_tela:
+          row.inHistory && row.inOverdue
+            ? "HISTORICO_E_ATRASADAS"
+            : row.inOverdue
+              ? "ATRASADAS"
+              : "HISTORICO_INTERVALO",
         venda_id: venda.id,
-        cliente: clientName,
-        data_venda: saleDate,
-        data_programada_entrega: scheduledDate,
-        data_entrega: deliveredDate,
+        cliente: row.clientName,
+        data_venda: row.saleDate,
+        data_programada_entrega: row.scheduledDate,
+        data_entrega: row.deliveredDate,
         status_entrega: venda.status_entrega || "PENDENTE",
-        entrega_atrasada: isOverdue ? "SIM" : "NAO",
+        entrega_atrasada: row.isOverdue ? "SIM" : "NAO",
+        status_recebimento: row.receiptLabel,
+        parcelas_recebidas: row.receivedCount,
+        parcelas_totais: row.totalInstallments,
+        proximo_vencimento_aberto: row.nextPendingInstallment
+          ? normalizeDateValue(row.nextPendingInstallment.vencimento)
+          : "",
         valor_venda: Number(venda.valor_total || 0),
-        produtos: produtosByVendaId.get(venda.id) || "-",
+        produtos: row.products,
         tipo_pagamento: venda.tipo_pagamento || "-",
         forma_pagamento_venda: venda.forma_pagamento || "-",
         observacoes_venda: venda.obs || "-",
       };
 
-      if (!parcelas.length) {
+      if (!row.parcelas.length) {
         rows.push({
           ...base,
           parcela_num: "",
@@ -389,16 +408,19 @@ const VendasPage = () => {
         return;
       }
 
-      parcelas.forEach((parcela) => {
+      row.parcelas.forEach((parcela) => {
         rows.push({
           ...base,
           parcela_num: parcela.parcela_num ?? "",
           status_parcela: parcela.status || "",
           data_vencimento: normalizeDateValue(parcela.vencimento),
           data_pagamento: normalizeDateValue(parcela.data_recebimento),
-          valor_programado_parcela: Number(parcela.valor_programado ?? parcela.valor ?? 0),
+          valor_programado_parcela: Number(
+            parcela.valor_programado ?? parcela.valor ?? 0,
+          ),
           valor_recebido_parcela:
-            parcela.valor_recebido === null || parcela.valor_recebido === undefined
+            parcela.valor_recebido === null ||
+            parcela.valor_recebido === undefined
               ? ""
               : Number(parcela.valor_recebido),
           forma_recebimento_real:
@@ -414,13 +436,24 @@ const VendasPage = () => {
         {
           name: "Vendas",
           columns: [
+            { key: "origem_tela", header: "Origem na tela" },
             { key: "venda_id", header: "ID venda" },
             { key: "cliente", header: "Cliente" },
             { key: "data_venda", header: "Data venda" },
-            { key: "data_programada_entrega", header: "Data programada entrega" },
+            {
+              key: "data_programada_entrega",
+              header: "Data programada entrega",
+            },
             { key: "data_entrega", header: "Data entrega" },
             { key: "status_entrega", header: "Status entrega" },
             { key: "entrega_atrasada", header: "Entrega atrasada" },
+            { key: "status_recebimento", header: "Status recebimento" },
+            { key: "parcelas_recebidas", header: "Parcelas recebidas" },
+            { key: "parcelas_totais", header: "Parcelas totais" },
+            {
+              key: "proximo_vencimento_aberto",
+              header: "Próximo vencimento aberto",
+            },
             { key: "valor_venda", header: "Valor venda" },
             { key: "produtos", header: "Produtos" },
             { key: "tipo_pagamento", header: "Tipo pagamento" },
@@ -429,7 +462,10 @@ const VendasPage = () => {
             { key: "status_parcela", header: "Status parcela" },
             { key: "data_vencimento", header: "Data vencimento" },
             { key: "data_pagamento", header: "Data pagamento" },
-            { key: "valor_programado_parcela", header: "Valor programado parcela" },
+            {
+              key: "valor_programado_parcela",
+              header: "Valor programado parcela",
+            },
             { key: "valor_recebido_parcela", header: "Valor recebido parcela" },
             { key: "forma_recebimento_real", header: "Forma recebimento real" },
             { key: "observacoes_venda", header: "Observações venda" },
@@ -441,17 +477,14 @@ const VendasPage = () => {
     });
   };
 
-  const applyMonth = (nextMonth) => {
-    if (!monthPattern.test(String(nextMonth || ""))) return;
-    setCalendarMonth(nextMonth);
-    const range = getMonthRange(nextMonth);
-    setIntervalStart(range.start);
-    setIntervalEnd(range.end);
-    setSelectedCalendarDate("");
+  const resetToCurrentMonth = () => {
+    const currentRange = getCurrentMonthRange();
+    setIntervalStart(currentRange.start);
+    setIntervalEnd(currentRange.end);
   };
 
   const abrirFinalizacao = (venda) => {
-    setAlertModalOpen(false);
+    setOverdueDrawerOpen(false);
     setVendaSelecionada(venda);
     setDataEntrega(venda.data_programada_entrega || todayDate());
     setDespesas([]);
@@ -475,9 +508,7 @@ const VendasPage = () => {
       }))
       .filter(
         (despesa) =>
-          despesa.fornecedor_id &&
-          despesa.valor > 0 &&
-          despesa.descricao,
+          despesa.fornecedor_id && despesa.valor > 0 && despesa.descricao,
       );
 
     await confirmarEntregaVenda({
@@ -495,8 +526,8 @@ const VendasPage = () => {
     <AppLayout>
       <PageHeader
         title="Gestão de Vendas"
-        subtitle="Calendário mensal com histórico de vendas e alerta fixo de entregas atrasadas."
-        action={(
+        subtitle="Intervalo de datas com histórico filtrável, status de recebimento e painel fixo de entregas atrasadas."
+        action={
           <Button
             variant="outlined"
             startIcon={<DownloadIcon />}
@@ -505,340 +536,390 @@ const VendasPage = () => {
           >
             Download de vendas
           </Button>
-        )}
+        }
       />
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={5}>
-          <Paper sx={{ p: 3 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6">Calendário mensal</Typography>
-              <Stack direction="row" spacing={0.5}>
-                <IconButton
-                  size="small"
-                  onClick={() => applyMonth(shiftMonth(calendarMonth, -1))}
-                >
-                  <ChevronLeftRoundedIcon />
-                </IconButton>
-                <IconButton
-                  size="small"
-                  onClick={() => applyMonth(shiftMonth(calendarMonth, 1))}
-                >
-                  <ChevronRightRoundedIcon />
-                </IconButton>
-              </Stack>
-            </Stack>
-
-            <Grid container spacing={1.5} mb={2}>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Mês"
-                  type="month"
-                  value={calendarMonth}
-                  onChange={(event) => applyMonth(event.target.value)}
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Início"
-                  type="date"
-                  value={intervalStart}
-                  onChange={(event) => {
-                    const nextStart = event.target.value;
-                    setIntervalStart(nextStart);
-                    if (nextStart) setCalendarMonth(nextStart.slice(0, 7));
-                    setSelectedCalendarDate("");
-                  }}
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Fim"
-                  type="date"
-                  value={intervalEnd}
-                  onChange={(event) => {
-                    setIntervalEnd(event.target.value);
-                    setSelectedCalendarDate("");
-                  }}
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-            </Grid>
-
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                gap: 1,
-              }}
-            >
-              {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((weekDay) => (
-                <Typography
-                  key={weekDay}
-                  variant="caption"
-                  color="text.secondary"
-                  textAlign="center"
-                >
-                  {weekDay}
-                </Typography>
-              ))}
-
-              {calendarDays.map((day) => {
-                if (!day.isCurrentMonth) {
-                  return <Box key={day.key} sx={{ minHeight: 94 }} />;
-                }
-
-                const inInterval = isDateWithinRange(
-                  day.date,
-                  normalizedInterval.start,
-                  normalizedInterval.end,
-                );
-                const isToday = day.date === todayDate();
-                const isSelected = day.date === selectedCalendarDate;
-
-                return (
-                  <Paper
-                    key={day.key}
-                    onClick={() =>
-                      setSelectedCalendarDate((current) =>
-                        current === day.date ? "" : day.date,
-                      )
-                    }
-                    sx={{
-                      p: 1,
-                      cursor: "pointer",
-                      border: isSelected ? "2px solid" : "1px solid",
-                      borderColor: isSelected
-                        ? "primary.main"
-                        : isToday
-                          ? "secondary.main"
-                          : inInterval
-                            ? "success.light"
-                            : "divider",
-                      bgcolor: inInterval ? "success.50" : "background.paper",
-                      minHeight: 94,
-                    }}
-                  >
-                    <Typography variant="body2" fontWeight={700}>
-                      {day.day}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      sx={{ display: "block", fontWeight: 600, mt: 0.5 }}
-                    >
-                      {formatCurrency(day.total)}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ display: "block" }}
-                    >
-                      {day.count} venda(s)
-                    </Typography>
-                  </Paper>
-                );
-              })}
+      <Stack spacing={2}>
+        <Paper sx={{ p: 3 }}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", md: "center" }}
+            spacing={1.5}
+            mb={2}
+          >
+            <Box>
+              <Typography variant="h6">Intervalo de datas</Typography>
+              <Typography variant="body2" color="text.secondary">
+                O histórico e o download seguem esse intervalo. Entregas
+                atrasadas continuam visíveis mesmo fora dele.
+              </Typography>
             </Box>
+            <Button variant="outlined" onClick={resetToCurrentMonth}>
+              Mês atual
+            </Button>
+          </Stack>
 
-            {selectedCalendarDate ? (
-              <Stack direction="row" justifyContent="space-between" alignItems="center" mt={2}>
-                <Typography variant="body2" color="text.secondary">
-                  Filtro de dia: {formatDateLabel(selectedCalendarDate)}
-                </Typography>
-                <Button size="small" onClick={() => setSelectedCalendarDate("")}>
-                  Limpar dia
-                </Button>
-              </Stack>
-            ) : null}
-          </Paper>
-        </Grid>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Data inicial"
+                type="date"
+                value={intervalStart}
+                onChange={(event) => setIntervalStart(event.target.value)}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Data final"
+                type="date"
+                value={intervalEnd}
+                onChange={(event) => setIntervalEnd(event.target.value)}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+          </Grid>
+        </Paper>
 
-        <Grid item xs={12} md={7}>
-          <Stack spacing={2}>
-            <Paper sx={{ p: 2.5 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12} lg={4}>
+            <Paper sx={{ p: 3, height: "100%" }}>
               <Stack
-                direction={{ xs: "column", sm: "row" }}
+                direction={{ xs: "column", sm: "row", lg: "column", xl: "row" }}
                 justifyContent="space-between"
-                alignItems={{ xs: "flex-start", sm: "center" }}
+                alignItems={{
+                  xs: "flex-start",
+                  sm: "center",
+                  lg: "flex-start",
+                  xl: "center",
+                }}
                 spacing={1}
-                mb={1}
+                mb={1.5}
               >
-                <Typography variant="h6">Entregas atrasadas</Typography>
+                <Typography variant="h6">
+                  Entregas atrasadas ({overdueSales.length})
+                </Typography>
                 <Button
                   variant="outlined"
                   color="warning"
                   startIcon={<WarningAmberRoundedIcon />}
-                  onClick={() => setAlertModalOpen(true)}
+                  onClick={() => setOverdueDrawerOpen(true)}
                   disabled={!overdueSales.length}
                 >
-                  Abrir alerta ({overdueSales.length})
+                  Abrir painel
                 </Button>
               </Stack>
-              <Alert severity={overdueSales.length ? "warning" : "success"}>
+
+              <Alert
+                severity={overdueSales.length ? "warning" : "success"}
+                sx={{ mb: 2 }}
+              >
                 {overdueSales.length
-                  ? `${overdueSales.length} entrega(s) atrasada(s) pendente(s) de baixa. Elas aparecem sempre, independente do filtro.`
+                  ? "Todas as entregas atrasadas ficam visíveis aqui, mesmo fora do intervalo de datas."
                   : "Nenhuma entrega atrasada no momento."}
               </Alert>
-            </Paper>
 
-            <Paper sx={{ p: 3 }}>
               <Stack
-                direction={{ xs: "column", sm: "row" }}
-                justifyContent="space-between"
-                alignItems={{ xs: "flex-start", sm: "center" }}
-                spacing={1}
-                mb={2}
+                spacing={1.5}
+                sx={{ maxHeight: 520, overflowY: "auto", pr: 0.5 }}
               >
-                <Typography variant="h6">
-                  Histórico de vendas ({salesHistory.length})
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Período: {formatDateLabel(normalizedInterval.start)} até{" "}
-                  {formatDateLabel(normalizedInterval.end)}
-                </Typography>
-              </Stack>
+                {overdueSales.map((row) => (
+                  <Paper key={row.venda.id} variant="outlined" sx={{ p: 2 }}>
+                    <Stack spacing={1.25}>
+                      <Box>
+                        <Typography fontWeight={700}>
+                          Venda #{row.venda.id.slice(0, 8)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Cliente: {row.clientName}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Programada: {formatDateLabel(row.scheduledDate)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Valor: {formatCurrency(row.venda.valor_total)}
+                        </Typography>
+                      </Box>
 
-              <Stack spacing={1.5}>
-                {salesHistory.map((venda) => {
-                  const saleDate = normalizeDateValue(venda.data_venda);
-                  const parcelas = parcelasByVendaId.get(venda.id) || [];
-                  const recebidas = parcelas.filter(
-                    (parcela) => parcela.status === "RECEBIDA",
-                  ).length;
-                  const nextParcela = parcelas
-                    .filter((parcela) => parcela.status !== "RECEBIDA")
-                    .sort((a, b) =>
-                      normalizeDateValue(a.vencimento).localeCompare(
-                        normalizeDateValue(b.vencimento),
-                      ),
-                    )[0];
-
-                  return (
-                    <Paper key={venda.id} variant="outlined" sx={{ p: 2 }}>
                       <Stack
-                        direction={{ xs: "column", md: "row" }}
-                        justifyContent="space-between"
-                        alignItems={{ xs: "flex-start", md: "center" }}
-                        spacing={1.5}
+                        direction="row"
+                        spacing={1}
+                        flexWrap="wrap"
+                        useFlexGap
                       >
-                        <Box sx={{ pr: 1 }}>
-                          <Typography fontWeight={700}>
-                            Venda #{venda.id.slice(0, 8)}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Cliente: {clientesById.get(venda.cliente_id)?.nome || "-"}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Venda: {formatDateLabel(saleDate)} • Programada:{" "}
-                            {formatDateLabel(venda.data_programada_entrega)}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Entrega: {formatDateLabel(venda.data_entrega)} • Valor:{" "}
-                            {formatCurrency(venda.valor_total)}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Produtos: {produtosByVendaId.get(venda.id) || "-"}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Pagamento: {recebidas}/{parcelas.length} parcela(s) recebida(s)
-                            {nextParcela
-                              ? ` • Próx. vencimento ${formatDateLabel(nextParcela.vencimento)}`
-                              : ""}
-                          </Typography>
-                        </Box>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Chip
-                            label={venda.status_entrega || "PENDENTE"}
-                            color={
-                              venda.status_entrega === "ENTREGUE" ? "success" : "warning"
-                            }
-                          />
-                          {venda.status_entrega !== "ENTREGUE" ? (
-                            <Button
-                              variant="contained"
-                              onClick={() => abrirFinalizacao(venda)}
-                            >
-                              Finalizar entrega
-                            </Button>
-                          ) : null}
-                        </Stack>
+                        <Chip label="ATRASADA" color="error" size="small" />
+                        <Chip
+                          label={row.receiptLabel}
+                          color={
+                            row.receiptStatus === "RECEBIDO"
+                              ? "success"
+                              : "warning"
+                          }
+                          size="small"
+                        />
                       </Stack>
-                    </Paper>
-                  );
-                })}
 
-                {!salesHistory.length ? (
+                      <Button
+                        variant="contained"
+                        onClick={() => abrirFinalizacao(row.venda)}
+                      >
+                        Finalizar entrega
+                      </Button>
+                    </Stack>
+                  </Paper>
+                ))}
+
+                {!overdueSales.length ? (
                   <Typography variant="body2" color="text.secondary">
-                    Nenhuma venda no intervalo selecionado.
+                    Não há entregas atrasadas para acompanhar.
                   </Typography>
                 ) : null}
               </Stack>
             </Paper>
-          </Stack>
-        </Grid>
-      </Grid>
+          </Grid>
 
-      <Dialog
-        open={alertModalOpen}
-        onClose={() => setAlertModalOpen(false)}
-        maxWidth="md"
-        fullWidth
-        sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
+          <Grid item xs={12} lg={8}>
+            <Paper sx={{ p: 3 }}>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                justifyContent="space-between"
+                alignItems={{ xs: "flex-start", md: "center" }}
+                spacing={1.5}
+                mb={2}
+              >
+                <Box>
+                  <Typography variant="h6">
+                    Histórico de vendas ({salesHistory.length})
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Período: {formatDateLabel(normalizedInterval.start)} até{" "}
+                    {formatDateLabel(normalizedInterval.end)}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  O download considera esse histórico filtrado mais as entregas
+                  atrasadas.
+                </Typography>
+              </Stack>
+
+              <Grid container spacing={1.5} mb={2}>
+                <Grid item xs={12} md={8}>
+                  <TextField
+                    label="Filtro interno"
+                    placeholder="Buscar por cliente, venda, produto ou status"
+                    value={historySearch}
+                    onChange={(event) => setHistorySearch(event.target.value)}
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    select
+                    label="Recebimento"
+                    value={receiptFilter}
+                    onChange={(event) => setReceiptFilter(event.target.value)}
+                    fullWidth
+                  >
+                    <MenuItem value="TODOS">Todos</MenuItem>
+                    <MenuItem value="RECEBIDO">Recebido</MenuItem>
+                    <MenuItem value="NAO_RECEBIDO">Não recebido</MenuItem>
+                  </TextField>
+                </Grid>
+              </Grid>
+
+              <Stack spacing={1.5}>
+                {salesHistory.map((row) => (
+                  <Paper key={row.venda.id} variant="outlined" sx={{ p: 2 }}>
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      justifyContent="space-between"
+                      alignItems={{ xs: "flex-start", md: "center" }}
+                      spacing={1.5}
+                    >
+                      <Box sx={{ pr: 1 }}>
+                        <Typography fontWeight={700}>
+                          Venda #{row.venda.id.slice(0, 8)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Cliente: {row.clientName}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Venda: {formatDateLabel(row.saleDate)} • Programada:{" "}
+                          {formatDateLabel(row.scheduledDate)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Entrega: {formatDateLabel(row.deliveredDate)} • Valor:{" "}
+                          {formatCurrency(row.venda.valor_total)}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Produtos: {row.products}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Recebimento: {row.receiptLabel} ({row.receivedCount}/
+                          {row.totalInstallments || 0} parcela(s) recebida(s))
+                          {row.nextPendingInstallment
+                            ? ` • Próx. vencimento ${formatDateLabel(row.nextPendingInstallment.vencimento)}`
+                            : ""}
+                        </Typography>
+                      </Box>
+
+                      <Stack
+                        spacing={1}
+                        alignItems={{ xs: "flex-start", md: "flex-end" }}
+                      >
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          flexWrap="wrap"
+                          useFlexGap
+                        >
+                          <Chip
+                            label={row.receiptLabel}
+                            color={
+                              row.receiptStatus === "RECEBIDO"
+                                ? "success"
+                                : "warning"
+                            }
+                          />
+                          <Chip
+                            label={row.venda.status_entrega || "PENDENTE"}
+                            color={
+                              row.venda.status_entrega === "ENTREGUE"
+                                ? "success"
+                                : row.isOverdue
+                                  ? "error"
+                                  : "warning"
+                            }
+                          />
+                          {row.isOverdue ? (
+                            <Chip
+                              label="ATRASADA"
+                              color="error"
+                              variant="outlined"
+                            />
+                          ) : null}
+                        </Stack>
+
+                        {row.venda.status_entrega !== "ENTREGUE" ? (
+                          <Button
+                            variant="contained"
+                            onClick={() => abrirFinalizacao(row.venda)}
+                          >
+                            Finalizar entrega
+                          </Button>
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))}
+
+                {!salesHistory.length ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Nenhuma venda encontrada para o intervalo e filtros
+                    informados.
+                  </Typography>
+                ) : null}
+              </Stack>
+            </Paper>
+          </Grid>
+        </Grid>
+      </Stack>
+
+      <Drawer
+        anchor="right"
+        open={overdueDrawerOpen}
+        onClose={() => setOverdueDrawerOpen(false)}
+        ModalProps={{
+          sx: { zIndex: (theme) => theme.zIndex.modal + 20 },
+        }}
+        PaperProps={{
+          sx: {
+            width: { xs: "100%", lg: "40vw" },
+            minWidth: { lg: 420 },
+            height: "100vh",
+            p: 3,
+            display: "flex",
+            flexDirection: "column",
+          },
+        }}
       >
-        <DialogTitle sx={{ pr: 6 }}>
-          Entregas atrasadas sem baixa ({overdueSales.length})
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="flex-start"
+          spacing={1}
+          mb={2}
+        >
+          <Box>
+            <Typography variant="h6" fontWeight={700}>
+              Entregas atrasadas
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {overdueSales.length} venda(s) atrasada(s), independente do
+              intervalo de datas.
+            </Typography>
+          </Box>
           <IconButton
-            aria-label="Fechar modal de alerta"
-            onClick={() => setAlertModalOpen(false)}
-            sx={{ position: "absolute", right: 8, top: 8 }}
+            aria-label="Fechar painel de entregas atrasadas"
+            onClick={() => setOverdueDrawerOpen(false)}
           >
             <CloseIcon />
           </IconButton>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={1.5}>
-            {overdueSales.map((venda) => (
-              <Paper key={venda.id} variant="outlined" sx={{ p: 2 }}>
-                <Stack
-                  direction={{ xs: "column", md: "row" }}
-                  justifyContent="space-between"
-                  spacing={1.5}
-                >
-                  <Box>
-                    <Typography fontWeight={700}>Venda #{venda.id.slice(0, 8)}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Cliente: {clientesById.get(venda.cliente_id)?.nome || "-"}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Programada: {formatDateLabel(venda.data_programada_entrega)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Valor: {formatCurrency(venda.valor_total)}
-                    </Typography>
-                  </Box>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip label="ATRASADA" color="error" />
-                    <Button variant="contained" onClick={() => abrirFinalizacao(venda)}>
-                      Finalizar entrega
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Paper>
-            ))}
+        </Stack>
 
-            {!overdueSales.length ? (
-              <Typography variant="body2" color="text.secondary">
-                Não há entregas atrasadas neste momento.
-              </Typography>
-            ) : null}
-          </Stack>
-        </DialogContent>
-      </Dialog>
+        <Stack spacing={1.5} sx={{ flex: 1, overflowY: "auto", pr: 0.5 }}>
+          {overdueSales.map((row) => (
+            <Paper key={row.venda.id} variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.25}>
+                <Box>
+                  <Typography fontWeight={700}>
+                    Venda #{row.venda.id.slice(0, 8)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Cliente: {row.clientName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Venda: {formatDateLabel(row.saleDate)} • Programada:{" "}
+                    {formatDateLabel(row.scheduledDate)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Valor: {formatCurrency(row.venda.valor_total)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Produtos: {row.products}
+                  </Typography>
+                </Box>
+
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Chip label="ATRASADA" color="error" />
+                  <Chip
+                    label={row.receiptLabel}
+                    color={
+                      row.receiptStatus === "RECEBIDO" ? "success" : "warning"
+                    }
+                  />
+                </Stack>
+
+                <Button
+                  variant="contained"
+                  onClick={() => abrirFinalizacao(row.venda)}
+                >
+                  Finalizar entrega
+                </Button>
+              </Stack>
+            </Paper>
+          ))}
+
+          {!overdueSales.length ? (
+            <Typography variant="body2" color="text.secondary">
+              Não há entregas atrasadas neste momento.
+            </Typography>
+          ) : null}
+        </Stack>
+      </Drawer>
 
       <Drawer
         anchor="right"
@@ -865,7 +946,8 @@ const VendasPage = () => {
               Venda #{vendaSelecionada.id.slice(0, 8)}
             </Typography>
             <Typography variant="body2">
-              Cliente: {clientesById.get(vendaSelecionada.cliente_id)?.nome || "-"}
+              Cliente:{" "}
+              {clientesById.get(vendaSelecionada.cliente_id)?.nome || "-"}
             </Typography>
             <Typography variant="body2">
               Valor: {formatCurrency(vendaSelecionada.valor_total)}
@@ -879,12 +961,18 @@ const VendasPage = () => {
               InputLabelProps={{ shrink: true }}
             />
 
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              alignItems="center"
+            >
               <Typography fontWeight={600}>Custos extras (opcional)</Typography>
               <Button
                 variant="outlined"
                 startIcon={<AddIcon />}
-                onClick={() => setDespesas((prev) => [...prev, createDespesa()])}
+                onClick={() =>
+                  setDespesas((prev) => [...prev, createDespesa()])
+                }
               >
                 Adicionar
               </Button>
@@ -899,7 +987,11 @@ const VendasPage = () => {
                       label="Fornecedor"
                       value={despesa.fornecedor_id}
                       onChange={(event) =>
-                        handleDespesaChange(despesa.id, "fornecedor_id", event.target.value)
+                        handleDespesaChange(
+                          despesa.id,
+                          "fornecedor_id",
+                          event.target.value,
+                        )
                       }
                       fullWidth
                     >
@@ -915,7 +1007,11 @@ const VendasPage = () => {
                       label="Descrição"
                       value={despesa.descricao}
                       onChange={(event) =>
-                        handleDespesaChange(despesa.id, "descricao", event.target.value)
+                        handleDespesaChange(
+                          despesa.id,
+                          "descricao",
+                          event.target.value,
+                        )
                       }
                       fullWidth
                     />
@@ -926,7 +1022,11 @@ const VendasPage = () => {
                       type="number"
                       value={despesa.valor}
                       onChange={(event) =>
-                        handleDespesaChange(despesa.id, "valor", event.target.value)
+                        handleDespesaChange(
+                          despesa.id,
+                          "valor",
+                          event.target.value,
+                        )
                       }
                       fullWidth
                     />
@@ -937,7 +1037,11 @@ const VendasPage = () => {
                       type="date"
                       value={despesa.data}
                       onChange={(event) =>
-                        handleDespesaChange(despesa.id, "data", event.target.value)
+                        handleDespesaChange(
+                          despesa.id,
+                          "data",
+                          event.target.value,
+                        )
                       }
                       InputLabelProps={{ shrink: true }}
                       fullWidth
@@ -949,7 +1053,11 @@ const VendasPage = () => {
                       label="Status"
                       value={despesa.status_pagamento}
                       onChange={(event) =>
-                        handleDespesaChange(despesa.id, "status_pagamento", event.target.value)
+                        handleDespesaChange(
+                          despesa.id,
+                          "status_pagamento",
+                          event.target.value,
+                        )
                       }
                       fullWidth
                     >
@@ -962,7 +1070,11 @@ const VendasPage = () => {
                       label="Método pagamento"
                       value={despesa.forma_pagamento}
                       onChange={(event) =>
-                        handleDespesaChange(despesa.id, "forma_pagamento", event.target.value)
+                        handleDespesaChange(
+                          despesa.id,
+                          "forma_pagamento",
+                          event.target.value,
+                        )
                       }
                       fullWidth
                     />
@@ -972,7 +1084,10 @@ const VendasPage = () => {
             ))}
 
             <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button variant="outlined" onClick={() => setVendaSelecionada(null)}>
+              <Button
+                variant="outlined"
+                onClick={() => setVendaSelecionada(null)}
+              >
                 Cancelar
               </Button>
               <Button variant="contained" onClick={finalizarEntrega}>

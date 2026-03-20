@@ -1,6 +1,11 @@
 export const sumBy = (items, selector) =>
   items.reduce((total, item) => total + selector(item), 0);
 
+export const normalizeStockNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export const getSaldoInsumo = (movimentos, insumoId) => {
   const entradas = movimentos.filter(
     (mov) => mov.insumo_id === insumoId && mov.tipo.startsWith("ENTRADA"),
@@ -113,6 +118,93 @@ export const getCustoConsumoFifo = (
     quantidadeAtendida,
     quantidadePendente,
   };
+};
+
+export const getSaldoMovimentosKg = (movimentos = [], insumoId) =>
+  (movimentos || [])
+    .filter((movimento) => String(movimento.insumo_id) === String(insumoId))
+    .reduce(
+      (total, movimento) => total + normalizeStockNumber(movimento.quantidade),
+      0,
+    );
+
+export const getEstoqueMinimoKg = (insumo = {}) => {
+  const estoqueMinimo = normalizeStockNumber(insumo.estoque_minimo);
+  const kgPorSaco = normalizeStockNumber(insumo.kg_por_saco) || 1;
+  const unidadeEstoque = String(
+    insumo.estoque_minimo_unidade_codigo || insumo.unidade_codigo || "KG",
+  )
+    .trim()
+    .toUpperCase();
+
+  return unidadeEstoque === "SACO" ? estoqueMinimo * kgPorSaco : estoqueMinimo;
+};
+
+export const getFaixaStatusEstoque = (percentual, faixas = []) => {
+  const valor = normalizeStockNumber(percentual);
+  const ordered = [...faixas].sort((a, b) => {
+    const byOrder =
+      normalizeStockNumber(a?.ordem) - normalizeStockNumber(b?.ordem);
+    if (byOrder !== 0) return byOrder;
+    return (
+      normalizeStockNumber(a?.percentual_min) -
+      normalizeStockNumber(b?.percentual_min)
+    );
+  });
+
+  return (
+    ordered.find((faixa) => {
+      const minimo = normalizeStockNumber(faixa?.percentual_min);
+      const maximo =
+        faixa?.percentual_max === null || faixa?.percentual_max === ""
+          ? null
+          : normalizeStockNumber(faixa?.percentual_max);
+
+      if (valor < minimo) return false;
+      if (maximo === null) return true;
+      return valor < maximo;
+    }) || null
+  );
+};
+
+export const buildInsumoEstoqueStatus = ({
+  insumo = {},
+  saldoKg = 0,
+  faixas = [],
+} = {}) => {
+  const saldoNormalizado = normalizeStockNumber(saldoKg);
+  const estoqueMinimoKg = getEstoqueMinimoKg(insumo);
+  const percentualEstoque = estoqueMinimoKg
+    ? (saldoNormalizado / estoqueMinimoKg) * 100
+    : 0;
+  const faixaStatus = getFaixaStatusEstoque(percentualEstoque, faixas);
+
+  return {
+    saldo_kg: saldoNormalizado,
+    estoque_minimo_kg: estoqueMinimoKg,
+    percentual_estoque: percentualEstoque,
+    status_estoque: faixaStatus?.chave || null,
+    status_label: faixaStatus?.label || "Sem faixa",
+  };
+};
+
+export const getStockStatusColor = (status) => {
+  switch (
+    String(status || "")
+      .trim()
+      .toUpperCase()
+  ) {
+    case "CRITICO":
+      return "error";
+    case "NORMAL":
+      return "success";
+    case "ELEVADO":
+      return "warning";
+    case "EXCESSO":
+      return "info";
+    default:
+      return "default";
+  }
 };
 
 export const getParcelas = (valorTotal, quantidade) => {

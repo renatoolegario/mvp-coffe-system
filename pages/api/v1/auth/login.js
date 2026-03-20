@@ -6,7 +6,7 @@ import { toPerfilCode } from "../../../../utils/profile";
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "Método não permitido." });
   }
 
   const email = String(req.body?.email || "")
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   const senha = String(req.body?.senha || "").trim();
 
   if (!email || !senha) {
-    return res.status(400).json({ error: "Email e senha são obrigatórios." });
+    return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
   }
 
   try {
@@ -50,6 +50,6 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    return res.status(500).json({ error: "Erro ao autenticar usuário." });
+    return res.status(500).json({ error: "Erro ao autenticar o usuário." });
   }
 }

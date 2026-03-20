@@ -191,7 +191,7 @@ exports.up = async (pgm) => {
 
   if (!hasResultados.rows[0]) {
     throw new Error(
-      "A tabela producao_resultados nao existe. Rode a migration 045 antes desta seed.",
+      "A tabela producao_resultados não existe. Rode a migration 045 antes desta seed.",
     );
   }
 
@@ -236,11 +236,11 @@ exports.up = async (pgm) => {
   const baseDate = addDays(now, -420);
 
   const usuariosBase = [
-    { nome: "Administrador Geral", email: "admin@mvpcoffee.local", senha: "Admin@123", perfil: 1 },
-    { nome: "Gestor Financeiro", email: "financeiro@mvpcoffee.local", senha: "Finance@123", perfil: 1 },
-    { nome: "Operador Estoque", email: "estoque@mvpcoffee.local", senha: "Estoque@123", perfil: 2 },
-    { nome: "Operador Comercial", email: "comercial@mvpcoffee.local", senha: "Comercial@123", perfil: 2 },
-    { nome: "Analista Auditoria", email: "auditoria@mvpcoffee.local", senha: "Auditoria@123", perfil: 1 },
+    { nome: "Administrador Geral", email: "admin@essenciasdobrasil.local", senha: "Admin@123", perfil: 1 },
+    { nome: "Gestor Financeiro", email: "financeiro@essenciasdobrasil.local", senha: "Finance@123", perfil: 1 },
+    { nome: "Operador Estoque", email: "estoque@essenciasdobrasil.local", senha: "Estoque@123", perfil: 2 },
+    { nome: "Operador Comercial", email: "comercial@essenciasdobrasil.local", senha: "Comercial@123", perfil: 2 },
+    { nome: "Analista Auditoria", email: "auditoria@essenciasdobrasil.local", senha: "Auditoria@123", perfil: 1 },
   ];
 
   const usuariosRows = usuariosBase.map((usuario, index) => ({
@@ -312,7 +312,7 @@ exports.up = async (pgm) => {
     return {
       id: randomUUID(),
       nome: encrypt(nome),
-      email: encrypt(`cliente.seed3.${fmt(idx)}@mvpcoffee.local`),
+      email: encrypt(`cliente.seed3.${fmt(idx)}@essenciasdobrasil.local`),
       cpf_cnpj: encrypt(idx % 3 === 0 ? generateCpf(100 + idx) : generateCnpj(200 + idx)),
       telefone: encrypt(`(34) 9${fmt(3000 + idx, 4)}-${fmt(5000 + idx, 4)}`),
       endereco: encrypt(`Rua Comercial ${idx}, ${pick(cidades)}`),
@@ -344,7 +344,7 @@ exports.up = async (pgm) => {
     return {
       id: randomUUID(),
       razao_social: encrypt(razaoSocial),
-      email: encrypt(`fornecedor.seed3.${fmt(idx)}@mvpcoffee.local`),
+      email: encrypt(`fornecedor.seed3.${fmt(idx)}@essenciasdobrasil.local`),
       cpf_cnpj: encrypt(idx % 2 === 0 ? generateCnpj(500 + idx) : generateCpf(800 + idx)),
       telefone: encrypt(`(35) 9${fmt(4000 + idx, 4)}-${fmt(6000 + idx, 4)}`),
       endereco: encrypt(`Avenida Industrial ${idx}, ${pick(cidades)}`),

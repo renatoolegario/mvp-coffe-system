@@ -1,6 +1,6 @@
 # Description
 
-Este documento descreve o schema e fluxo **atuais** do MVP.
+Este documento descreve o schema e o fluxo **atuais** do sistema.
 
 ## Tabelas principais em uso
 - `usuarios`

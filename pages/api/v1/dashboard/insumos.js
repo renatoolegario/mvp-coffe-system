@@ -1,29 +1,9 @@
 import { query } from "../../../../infra/database";
 import { requireAuth } from "../../../../infra/auth";
-
-const normalizeNumber = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const getFaixaStatus = (percentual, faixas = []) => {
-  const valor = normalizeNumber(percentual);
-  const ordered = [...faixas].sort((a, b) => a.ordem - b.ordem);
-
-  return (
-    ordered.find((faixa) => {
-      const minimo = normalizeNumber(faixa.percentual_min);
-      const maximo =
-        faixa.percentual_max === null
-          ? null
-          : normalizeNumber(faixa.percentual_max);
-
-      if (valor < minimo) return false;
-      if (maximo === null) return true;
-      return valor < maximo;
-    }) || null
-  );
-};
+import {
+  buildInsumoEstoqueStatus,
+  normalizeStockNumber,
+} from "../../../../utils/stock";
 
 const getResumoInsumo = (insumoId, movimentos = []) => {
   const orderedMovimentos = [...movimentos].sort(
@@ -37,9 +17,11 @@ const getResumoInsumo = (insumoId, movimentos = []) => {
   let custoMedio = 0;
 
   orderedMovimentos.forEach((movimento) => {
-    const quantidadeEntrada = normalizeNumber(movimento.quantidade_entrada);
-    const quantidadeSaida = normalizeNumber(movimento.quantidade_saida);
-    const custoUnitario = normalizeNumber(movimento.custo_unitario);
+    const quantidadeEntrada = normalizeStockNumber(
+      movimento.quantidade_entrada,
+    );
+    const quantidadeSaida = normalizeStockNumber(movimento.quantidade_saida);
+    const custoUnitario = normalizeStockNumber(movimento.custo_unitario);
     const isTransitoAberto =
       movimento.tipo_movimento === "RESERVA_PRODUCAO" &&
       movimento.status_producao === "PENDENTE";
@@ -48,7 +30,7 @@ const getResumoInsumo = (insumoId, movimentos = []) => {
       const novoSaldo = saldoDisponivel + quantidadeEntrada;
       custoMedio = novoSaldo
         ? (saldoDisponivel * custoMedio + quantidadeEntrada * custoUnitario) /
-        novoSaldo
+          novoSaldo
         : 0;
       saldoDisponivel = novoSaldo;
     }
@@ -125,20 +107,16 @@ export default async function handler(req, res) {
 
     const dashboard = insumosResult.rows.map((insumo) => {
       const resumo = getResumoInsumo(insumo.id, movimentosPorInsumo[insumo.id]);
-      const kgPorSaco = normalizeNumber(insumo.kg_por_saco) || 1;
-      const custoMedioKg = normalizeNumber(resumo.custo_medio);
+      const kgPorSaco = normalizeStockNumber(insumo.kg_por_saco) || 1;
+      const custoMedioKg = normalizeStockNumber(resumo.custo_medio);
       const custoMedioSaco = custoMedioKg * kgPorSaco;
       const saldoSacos = resumo.saldo_kg / kgPorSaco;
-      const estoqueMinimoKg =
-        insumo.estoque_minimo_unidade_codigo === "SACO"
-          ? normalizeNumber(insumo.estoque_minimo) * kgPorSaco
-          : normalizeNumber(insumo.estoque_minimo);
-      const percentualEstoque = estoqueMinimoKg
-        ? (normalizeNumber(resumo.saldo_kg) / estoqueMinimoKg) * 100
-        : 0;
-      const faixaStatus = getFaixaStatus(percentualEstoque, faixasResult.rows);
-
       const saldoTransitoSacos = resumo.saldo_transito_kg / kgPorSaco;
+      const estoqueStatus = buildInsumoEstoqueStatus({
+        insumo,
+        saldoKg: resumo.saldo_kg,
+        faixas: faixasResult.rows,
+      });
 
       return {
         ...insumo,
@@ -147,10 +125,7 @@ export default async function handler(req, res) {
         saldo_transito_sacos: saldoTransitoSacos,
         custo_medio_kg: custoMedioKg,
         custo_medio_saco: custoMedioSaco,
-        estoque_minimo_kg: estoqueMinimoKg,
-        percentual_estoque: percentualEstoque,
-        status_estoque: faixaStatus?.chave || null,
-        status_label: faixaStatus?.label || "Sem faixa",
+        ...estoqueStatus,
       };
     });
 

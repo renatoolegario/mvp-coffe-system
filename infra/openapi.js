@@ -1,7 +1,7 @@
 export const openApiSpec = {
   openapi: "3.0.3",
   info: {
-    title: "MVP Coffee System - APIs Internas",
+    title: "Café Essências do Brasil - APIs Internas",
     version: "1.0.0",
     description:
       "Documentação dos endpoints internos utilizados pelo frontend do sistema.",
@@ -55,6 +55,21 @@ export const openApiSpec = {
     "/data": {
       get: {
         summary: "Carregar snapshot completo para a store",
+        description:
+          "Aceita token Bearer normalmente e também o query param admin=1 quando consumido pelo fluxo /system.",
+        parameters: [
+          {
+            in: "query",
+            name: "admin",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["1"],
+            },
+            description:
+              "Quando igual a 1, libera o acesso sem token para o fluxo administrativo de /system.",
+          },
+        ],
         responses: { 200: { description: "Dados carregados" } },
       },
     },
@@ -163,26 +178,93 @@ export const openApiSpec = {
         responses: { 200: { description: "Integração atualizada" } },
       },
     },
-    "/configuracao-empresa/feedback": {
+    "/integracoes/asaas/clientes/sincronizar": {
+      post: {
+        summary: "Consultar ou criar cliente no ASAAS e salvar o ID local",
+        responses: { 200: { description: "Cliente sincronizado" } },
+      },
+    },
+    "/integracoes/asaas/cobrancas": {
+      post: {
+        summary: "Criar uma ou mais cobranças no ASAAS",
+        responses: { 201: { description: "Cobrança criada" } },
+      },
+    },
+    "/integracoes/asaas/cobrancas/{id}": {
       get: {
-        summary:
-          "Listar feedbacks com filtros opcionais por status e modo admin",
+        summary: "Consultar cobrança do ASAAS por ID local ou remoto",
+        responses: { 200: { description: "Cobrança retornada" } },
+      },
+      delete: {
+        summary: "Remover cobrança do ASAAS por ID local ou remoto",
+        responses: { 200: { description: "Cobrança removida" } },
+      },
+    },
+    "/integracoes/asaas/webhook": {
+      post: {
+        summary: "Receber webhooks do ASAAS",
+        security: [],
+        responses: { 200: { description: "Webhook processado" } },
+      },
+    },
+    "/cron/contas-receber-hoje": {
+      get: {
+        summary: "Enviar lembrete diário de contas a receber com vencimento hoje",
+        responses: { 200: { description: "Cron executado" } },
+      },
+    },
+    "/cron/cobrancas-asaas-hoje": {
+      get: {
+        summary: "Enviar lembrete diário de cobranças ASAAS com vencimento hoje",
+        responses: { 200: { description: "Cron executado" } },
+      },
+    },
+    "/cron/entregas-hoje": {
+      get: {
+        summary: "Enviar lembrete diário de entregas programadas para hoje",
+        responses: { 200: { description: "Cron executado" } },
+      },
+    },
+    "/system/feedbacks/task": {
+      get: {
+        summary: "Listar feedbacks e pendências operacionais",
+        security: [],
         responses: { 200: { description: "Feedbacks listados" } },
       },
       post: {
         summary: "Criar novo feedback",
+        security: [],
         responses: { 201: { description: "Feedback criado" } },
       },
-    },
-    "/configuracao-empresa/feedback/{id}/finalizar": {
+      put: {
+        summary: "Atualizar status, parecer técnico e commit do feedback",
+        security: [],
+        responses: { 200: { description: "Feedback atualizado" } },
+      },
       patch: {
-        summary: "Finalizar feedback pendente",
-        responses: { 200: { description: "Feedback finalizado" } },
+        summary: "Editar dados básicos do feedback",
+        security: [],
+        responses: { 200: { description: "Feedback editado" } },
       },
     },
     "/system/seed": {
       post: {
         summary: "Recriar dados base do sistema",
+        description:
+          "Exige administrador autenticado ou aceita query param admin=1 no fluxo administrativo de /system.",
+        parameters: [
+          {
+            in: "query",
+            name: "admin",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["1"],
+            },
+            description:
+              "Quando igual a 1, libera a execução sem token para o fluxo administrativo de /system.",
+          },
+        ],
         responses: { 200: { description: "Seed executada" } },
       },
     },

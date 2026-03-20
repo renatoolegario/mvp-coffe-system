@@ -39,8 +39,8 @@ exports.up = async (pgm) => {
     [
       "00000000-0000-4000-8000-000000000001",
       encrypt("Administrador"),
-      encrypt("admin@cafemvp.com"),
-      encrypt("mvp_admin_123"),
+      encrypt("admin@essenciasdobrasil.local"),
+      encrypt("Admin@123"),
     ],
   );
 
@@ -55,7 +55,7 @@ exports.up = async (pgm) => {
     [
       "00000000-0000-4000-8000-000000000002",
       encrypt("Operador Comum"),
-      encrypt("operador@cafemvp.com"),
+      encrypt("operador@essenciasdobrasil.local"),
       encrypt("12345"),
     ],
   );

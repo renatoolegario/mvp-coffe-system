@@ -29,10 +29,10 @@ exports.up = async (pgm) => {
   );
 
   const defaults = [
-    { nome: "Administrador Geral", email: "admin@mvpcoffee.local", senha: "Admin@123", perfil: 1 },
-    { nome: "Gestor Financeiro", email: "financeiro@mvpcoffee.local", senha: "Finance@123", perfil: 1 },
-    { nome: "Operador Estoque", email: "estoque@mvpcoffee.local", senha: "Estoque@123", perfil: 2 },
-    { nome: "Operador Comercial", email: "comercial@mvpcoffee.local", senha: "Comercial@123", perfil: 2 },
+    { nome: "Administrador Geral", email: "admin@essenciasdobrasil.local", senha: "Admin@123", perfil: 1 },
+    { nome: "Gestor Financeiro", email: "financeiro@essenciasdobrasil.local", senha: "Finance@123", perfil: 1 },
+    { nome: "Operador Estoque", email: "estoque@essenciasdobrasil.local", senha: "Estoque@123", perfil: 2 },
+    { nome: "Operador Comercial", email: "comercial@essenciasdobrasil.local", senha: "Comercial@123", perfil: 2 },
   ];
 
   for (let i = 0; i < usersResult.rows.length; i += 1) {

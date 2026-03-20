@@ -1,7 +1,7 @@
-# MVP – Sistema de Gestão de Café (8k) – PostgreSQL
+# Sistema de Gestão de Café (8k) – PostgreSQL
 
 ## Objetivo
-Entregar um MVP demonstrável com backend e banco PostgreSQL, rodando com:
+Entregar uma base demonstrável com backend e banco PostgreSQL, rodando com:
 - Estoque de Insumos (matérias-primas)
 - Produção/Fabricação de Café
 - Vendas e Controle de Recebíveis
@@ -16,7 +16,7 @@ Armazenamento: PostgreSQL (persistência via API).
 
 ### 1) Autenticação e Acesso
 Funções
-- Login por email/senha (MVP).
+- Login por email/senha.
 - Cria sessão local (token + expiração).
 - Impede acesso sem sessão ativa.
 - Perfil define permissões no menu (admin/financeiro/vendas/producao).
@@ -122,4 +122,4 @@ Telas
 
 ---
 
-Para detalhes completos de módulos, regras de negócio e fluxo do MVP, consulte `docs/description.md`.
+Para detalhes completos de módulos, regras de negócio e fluxo do sistema, consulte `docs/description.md`.

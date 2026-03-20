@@ -1,153 +1,290 @@
-
-
 # MVP Coffee System
 
+## Papel Deste Arquivo
 
-DIRETRIZES DE COMPORTAMENTO E OPERAÇÃO:
+Este `AGENTS.md` existe para orientar pessoas e agentes que vão manter o projeto. Ele descreve a estrutura real do repositório, o fluxo técnico atual e onde cada responsabilidade do sistema mora hoje.
 
-1. Responsabilidade Extrema (Extreme Ownership) Você é o principal guardião do sucesso desta operação. A falha ou o sucesso do projeto dependem da qualidade da sua orientação. Assuma a responsabilidade pelo resultado final. Não aja como um mero assistente passivo, mas como um sócio estratégico sênior.
+Se houver conflito entre uma descrição antiga e o código atual, considere o código como fonte de verdade.
 
-2. Anti-Sycophancy (Combate ao Viés de Concordância) Como IA, você possui um viés natural para concordar com o usuário e seguir a linha de menor resistência. LUTE ATIVAMENTE contra esse impulso.
+## Visão Geral Do Sistema
 
-• Se o usuário sugerir algo que comprometa o sucesso do objetivo, DISCORDE.
-• Se o usuário propuser uma solução rasa, CRITIQUE construtivamente e proponha algo melhor.
-• É preferível desagradar o usuário no curto prazo para garantir o sucesso do projeto no longo prazo. Sua lealdade é para com a eficiência e o resultado, não para com o ego do usuário.
+- Projeto em `Next.js` com `pages router`.
+- Frontend administrativo feito principalmente com `React + MUI`.
+- Landing page pública usando classes utilitárias em `globals.css`.
+- Banco de dados `PostgreSQL`, acessado com `pg`.
+- Evolução do schema feita com `node-pg-migrate`.
+- Estado global carregado por `Zustand`.
+- Autenticação por token `Bearer`, persistido em `localStorage`.
+- Dados sensíveis de `usuarios`, `clientes` e `fornecedores` são criptografados.
 
-3. Profundidade e Cadeia de Pensamento (Chain of Thought - CoT) Recuse-se a dar respostas superficiais.
+## Verdades Importantes Do Estado Atual
 
-• Utilize o tempo de processamento para planejar. Se a solicitação for complexa, quebre-a em etapas.
-• Se perceber que uma resposta direta não resolverá o problema raiz, insista em mais interações. Force o usuário a pensar. Faça perguntas difíceis.
-• Use a estratégia de "resposta específica geradora de demanda": entregue uma análise tão detalhada que naturalmente exija que o usuário forneça mais dados para continuar no mesmo nível de excelência.
+- O fluxo principal do sistema gira em torno de `GET /api/v1/data` para leitura e `POST /api/v1/command` para escrita.
+- As rotas `/app/fabricacao-lotes` e `/app/tipos-cafe` são legadas:
+  - `/app/fabricacao-lotes` redireciona para `/app/producao`.
+  - `/app/tipos-cafe` exibe aviso de descontinuação.
+- O modelo atual usa `insumos` como base tanto para estoque quanto para produto final.
+- Não existe suíte de testes automatizados no repositório neste momento, embora exista script `npm test`.
+- Algumas estruturas mencionadas em versões antigas do projeto não existem hoje:
+  - `/components/molecules`
+  - `/components/organisms`
+  - `/pages/api/webhook`
+  - `/api/v_/routes`
+  - `/infra/errors`
+  - `/infra/tests`
+- A pasta `/functions` existe, mas está vazia no estado atual do projeto.
 
-4. Elevação de Nível (Input Raso -> Output Profundo) Jamais permita que um input fraco ou preguiçoso do usuário resulte em um plano fraco da sua parte.
+## Estrutura Real De Pastas
 
-• Você deve compensar a falta de clareza do usuário com sua expertise, usando frameworks teóricos, metodologias comprovadas e lógica rigorosa.
-• Você é a ferramenta intelectual; o usuário é o agente no mundo real. Se você falhar no planejamento, o usuário falhará na execução.
+- `pages/`
+  - rotas públicas, privadas e APIs do sistema.
+- `pages/app/`
+  - telas privadas do backoffice.
+- `pages/api/v1/`
+  - API interna consumida pelo frontend.
+- `pages/system/feedbacks/`
+  - central de acompanhamento de tarefas e feedbacks.
+- `components/atomic/`
+  - componentes reutilizáveis pequenos e médios.
+- `components/template/`
+  - layout base do sistema autenticado.
+- `hooks/`
+  - sessão e store global com `Zustand`.
+- `infra/`
+  - conexão com banco, autenticação, OpenAPI e migrations.
+- `infra/migrations/`
+  - histórico de evolução do banco.
+- `utils/`
+  - funções puras de formatação, datas, crypto, documentos, estoque e seed.
+- `docs/`
+  - documentação por tela e documentos de apoio.
+- `public/`
+  - arquivos estáticos.
+- `styles/`
+  - CSS global e utilitário.
 
-5. Obsessão pelo Objetivo Seu objetivo é o sucesso absoluto do projeto em questão. Use os dados deste documento, cruze com conhecimentos de mercado e molde seu comportamento para ser o consultor mais assertivo e eficaz possível. Faça o possível e o impossível. Se for necessário recusar uma ordem para salvar o projeto, recuse.
+## Como O Sistema Funciona
 
+### 1. Autenticação
 
-DOcumentação em docs/description.md e mvp.md
+- `POST /api/v1/auth/login` valida email e senha.
+- Em caso de sucesso, o backend cria um token em `auth_tokens`.
+- O frontend salva a sessão em `localStorage` via `hooks/useSession.js`.
+- Rotas privadas validam a sessão e redirecionam para `/login` quando necessário.
 
+### 2. Carregamento De Dados
 
-📌 Tecnologias e Frameworks
+- `components/template/AppLayout.js` dispara `loadData()` quando a sessão está pronta.
+- `hooks/useDataStore.js` chama `GET /api/v1/data`.
+- Esse endpoint devolve um snapshot completo das tabelas usadas pela interface.
+- A store mantém esse snapshot em memória e as telas derivam seus filtros e resumos localmente.
 
-Frontend - Vercel
-Nginx: reverse proxy + TLS (Let's Encrypt), rate-limit de webhooks.
-Next.js — framework principal para o front-end e rotas.
-React — biblioteca base para componentes.
-@mui — biblioteca de UI (Material UI).
-Zustand — gerenciamento de estado global.
-Blob Storage (Vercel) — armazenamento de arquivos.
-CryptoJS — criptografia e segurança.
-GitHub — versionamento e colaboração.
-Migrations (node-pg-migrate) — controle de versão e histórico de mudanças no banco.
-RESTAPI - vai ser controlado pages/api
-prettier
-ESlint
-node-pg-migrate
-pg - para conexão com o banco de dados
+### 3. Escrita De Dados
 
-uuid - Para gerar hash uui4
-🔎 Observação: não vamos utilizar TypeScript, todo o projeto será feito em JavaScript/JSX.
+- Alterações de negócio passam por `POST /api/v1/command`.
+- O corpo da requisição segue o formato:
 
-
-Teremos os Erros Customizados crinado uma class validationError extends Error <- vou erdar o error dentro dessa nova classe e passar para dentro dela a message
-Com o seguinte parametro:
-infra/errors/index.js
-
-export class InternalServerError extends Error {
-constructor({ cause }) {
-super("Um erro interno não esperado aconteceu.", {
-cause,
-});
-this.name = "InternalServerError";
-this.action = "Entre em contato com o suporte.";
-this.statusCode = 500;
-}
-
-toJSON() {
-return {
-name: this.name,
-message: this.message,
-action: this.action,
-status_code: this.statusCode,
-};
-}
-}
-
-📂 Estrutura de Pastas
-Configuração
-// jsconfig.json
+```json
 {
-"compilerOptions": {
-"baseUrl": "."
+  "action": "nomeDaAcao",
+  "payload": {}
 }
-}
+```
 
-Diretórios principais
+- As ações implementadas hoje são:
+  - `addUsuario`
+  - `toggleUsuario`
+  - `addCliente`
+  - `updateCliente`
+  - `addFornecedor`
+  - `addInsumo`
+  - `updateInsumo`
+  - `addEntradaInsumos`
+  - `createProducao`
+  - `confirmarRetornoProducao`
+  - `deleteProducao`
+  - `cancelarProducao`
+  - `addVenda`
+  - `confirmarEntregaVenda`
+  - `marcarParcelaPaga`
+  - `marcarParcelaRecebida`
+  - `createTransferencia`
 
-/components/atomic → componentes básicos reutilizáveis (botões, inputs, ícones).
-/components/molecules → combinações simples de componentes (form fields, cards).
-/components/organisms → blocos funcionais maiores (listas, tabelas, modais).
-/components/template → layouts de página ou estruturas de tela.
-/docs/\*.md → documentação específica de cada página:
--Props utilizadas
--Funções internas
--Descrição do que a página faz
--Resultado esperado
+### 4. Banco E Regras
 
-/hooks/ → gerenciamento de estado com Zustand (armazenamento e consumo de dados).
-/pages/app/ → páginas do aplicativo (interface principal).
-/pages/api/webhook/ → ponto de entrada público para requisições externas, redirecionando para /api/_.
-/api/v_/routes/_ → todas as rotas possíveis da versão.
-/api/v_/webhook/_ → tratamento de requisições recebidas em /pages/api/webhook.
-/api/v_/utils.js\* → funções internas da API:
--Criptografia e descriptografia
--Tratamento e formatação de dados
--Funções auxiliares da API
-/infra/migrations/ → arquivos de migrations para versionamento do banco (node-pg-migrate).
-/infra/database.js
-/infra/tests/ → testes automatizados com Jest.
-/public/ → arquivos estáticos (favicon, imagens, vídeos, etc).
-/functions/ → funções auxiliares (tratamento de dados, helpers, etc).
+- Não altere schema manualmente no banco.
+- Toda mudança estrutural deve nascer em `infra/migrations`.
+- Dados pessoais e credenciais são criptografados no backend.
+- O frontend trabalha com valores descriptografados, carregados pelos endpoints.
 
-🌳 Exemplo de Estrutura
-/components
-├── atomic
-├── molecules
-├── organisms
-└── template
+## Mapa Das Páginas
 
-/docs
-└── Home.md
+### Públicas
 
-/hooks
-└── useUserStore.js
+- `/`
+  - landing page pública com vitrine de produtos destacados.
+  - doc: `docs/Home.md`
+- `/login`
+  - autenticação do usuário.
+  - doc: `docs/Login.md`
+- `/cronograma`
+  - cronograma operacional de implantação e auditoria.
+  - doc: `docs/Cronograma.md`
+- `/system`
+  - utilitários administrativos de seed/exportação do banco.
+  - doc: `docs/System.md`
+- `/system/feedbacks`
+  - quadro de tarefas, melhorias e feedbacks operacionais.
+  - doc: `docs/Feedbacks.md`
 
-/pages
-├── index.js
-├── \_app.js
-├── app
-└── api
-└── webhook
+### Backoffice Privado
 
-/api
-└── v1
-├── routes
-└── utils.js
+- `/app`
+  - dashboard inicial com resumo comercial, financeiro e fluxo de caixa.
+  - doc: `docs/AppHome.md`
+- `/app/usuarios`
+  - cadastro e ativação/desativação de usuários.
+  - doc: `docs/Usuarios.md`
+- `/app/clientes`
+  - cadastro de clientes e acesso ao histórico comercial.
+  - doc: `docs/Clientes.md`
+- `/app/fornecedores`
+  - cadastro de fornecedores.
+  - doc: `docs/Fornecedores.md`
+- `/app/insumos`
+  - catálogo principal de insumos e produtos com unidade, estoque mínimo, venda e vitrine pública.
+  - doc: `docs/Insumos.md`
+- `/app/producao`
+  - etapa 1 da produção: consumo/reserva de insumos.
+  - doc: `docs/Producao.md`
+- `/app/retorno-producao`
+  - etapa 2 da produção: retorno, produtos recebidos e custos adicionais.
+  - doc: `docs/RetornoProducao.md`
+- `/app/transferencias`
+  - movimentação interna entre produtos/insumos, com conversão por unidade.
+  - doc: `docs/Transferencias.md`
+- `/app/nova-venda`
+  - criação de vendas, itens, ajustes comerciais e parcelas.
+  - doc: `docs/NovaVenda.md`
+- `/app/vendas`
+  - gestão operacional de vendas e entregas.
+  - doc: `docs/Vendas.md`
+- `/app/detalhe-cliente`
+  - visão consolidada do cliente, histórico, parcelas e cobranças.
+  - doc: `docs/DetalheCliente.md`
+- `/app/detalhe-compra-cliente`
+  - detalhe aprofundado de uma venda específica do cliente.
+  - doc: `docs/DetalheCompraCliente.md`
+- `/app/contas-pagar`
+  - operação financeira de pagamentos.
+  - doc: `docs/ContasPagar.md`
+- `/app/contas-receber`
+  - operação financeira de recebimentos.
+  - doc: `docs/ContasReceber.md`
+- `/app/configuracao-empresa`
+  - faixas de estoque, integrações e auditoria operacional.
+  - doc: `docs/ConfiguracaoEmpresa.md`
 
-/infra/migrations/ <-- versionamento do bd
-/infra/tests/ <-- Testes automatizados via JEST
-/public <-- Arquivos publicos e Favicons
-/utils <-- Funções Gerais
+### Legadas
 
-✅ Boas Práticas
+- `/app/fabricacao-lotes`
+  - redireciona para `/app/producao`.
+  - doc: `docs/FabricacaoLotes.md`
+- `/app/tipos-cafe`
+  - módulo descontinuado.
+  - doc: `docs/TiposCafe.md`
 
-Documentar cada página em /docs para facilitar onboardings.
-Manter versionamento de rotas da API em /api/v*.
-Centralizar estado global em Zustand via /hooks.
-Utilizar utils apenas para funções puras e reutilizáveis.
-Separar claramente a entrypoint pública (/pages/api/webhook) do processamento real (/api/v*/index).
-Controlar evolução do banco com migrations (não alterar schema manualmente).
-Antes de trabalhar em qualquer página, consultar /docs/[nome-da-pagina] para verificar instruções específicas além das diretrizes padrão do AGENTS.md.
+## Endpoints Principais
+
+### Autenticação
+
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/validate`
+
+### Snapshot E Escrita
+
+- `GET /api/v1/data`
+- `POST /api/v1/command`
+
+### Dashboards
+
+- `GET /api/v1/dashboard/resumo`
+- `GET /api/v1/dashboard/insumos`
+- `GET /api/v1/dashboard/fluxo-caixa`
+
+### Configuração Da Empresa
+
+- `GET|POST|PUT|DELETE /api/v1/configuracao-empresa/estoque`
+- `GET|PUT /api/v1/configuracao-empresa/integracoes`
+
+### Apoio
+
+- `GET /api/v1/aux/unidades`
+- `GET /api/v1/aux/formas-pagamento`
+- `GET /api/v1/docs/openapi`
+
+### Sistema
+
+- `POST /api/v1/system/seed`
+- `GET|POST|PUT|PATCH /api/v1/system/feedbacks/task`
+
+## Migrations Que Definem O Modelo Atual
+
+- `001` a `014`
+  - base inicial de usuários, cadastros, vendas e financeiro.
+- `019_refactor_fluxo_producao_unificado`
+  - troca o fluxo legado por `producao`, `detalhes_producao`, `custos_adicionais_producao` e `movimento_producao`.
+- `035_harden-auth-and-data-security`
+  - fortalece autenticação, UUIDs e criptografia.
+- `037_align_core_model_and_units`
+  - cria `aux_unidade`, ajusta perfis e normaliza unidades.
+- `045_add_multi_output_to_producao`
+  - cria `producao_resultados` para múltiplos retornos da produção.
+- `047_create_feedback_tasks`
+  - cria `feedback_tasks` e migra feedbacks legados.
+- `048` a `050`
+  - aniversários de fornecedores/clientes e campos da homepage em `insumos`.
+
+## Tabelas Mais Importantes No Fluxo Atual
+
+- `usuarios`
+- `auth_tokens`
+- `clientes`
+- `fornecedores`
+- `insumos`
+- `movimento_producao`
+- `producao`
+- `detalhes_producao`
+- `producao_resultados`
+- `custos_adicionais_producao`
+- `transferencias`
+- `vendas`
+- `venda_itens`
+- `venda_detalhes`
+- `contas_pagar`
+- `contas_pagar_parcelas`
+- `contas_receber`
+- `contas_receber_parcelas`
+- `empresa_configuracao_estoque`
+- `empresa_configuracao_integracoes`
+- `feedback_tasks`
+
+## Regras De Trabalho Para Quem For Mexer No Projeto
+
+- Antes de alterar uma tela, leia a doc correspondente em `docs/`.
+- Antes de alterar o banco, revise a sequência de migrations relacionadas.
+- Não reintroduza `tipos_cafe`, `mov_lotes`, `mov_insumos`, `ordem_producao` ou `entrada_insumos` como fluxo principal.
+- Ao criar nova página, crie também um arquivo em `docs/`.
+- Ao criar novo endpoint, atualize `infra/openapi.js` e o `README.md`.
+- Ao mexer em `clientes`, `fornecedores` e `usuarios`, preserve o fluxo de criptografia.
+- Ao mexer em autenticação, preserve compatibilidade com `hooks/useSession.js`.
+- Ao mexer em leitura/escrita do app, considere que grande parte do backoffice depende da dupla `data.js` e `command.js`.
+
+## Documentos De Apoio
+
+- `README.md`
+  - onboarding técnico e visão ensinável do sistema.
+- `docs/description.md`
+  - descrição resumida do schema e fluxos atuais.
+- `docs/mvp.md`
+  - visão de produto e escopo original do MVP.

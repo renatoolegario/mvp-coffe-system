@@ -1,19 +1,26 @@
 # Página Contas a Receber
 
 ## Descrição
-Painel financeiro com contas e parcelas a receber.
+Painel financeiro com foco em parcelas a receber, separado em duas abas:
+
+- `Contas vencidas`: histórico de todas as parcelas com vencimento anterior ao dia atual, incluindo as já recebidas.
+- `Contas à vencer`: parcelas em aberto com vencimento no dia atual ou futuro.
+
 Aceita filtros por query string (`cliente_id` e `parcela_id`) para abrir a tela já focada em um cliente/parcela específica.
 
 ## Props utilizadas
 - Nenhuma.
 
 ## Funções internas
-- Filtra faturas por cliente e período de vencimento (`Data between`).
-- Lista apenas faturas com pelo menos uma parcela em aberto.
-- Seleção única de fatura para exibir as parcelas na lateral direita.
-- Permite selecionar parcelas abertas da fatura e confirmar recebimento com ajuste.
-- Exibe aviso de filtro rápido quando acessada por atalho de outra tela e permite limpar a query.
+- Filtra globalmente por cliente.
+- Usa busca textual para refinar a visualização por cliente, data, conta, parcela ou status.
+- Aplica filtro opcional de intervalo de datas apenas na aba `Contas à vencer`.
+- Mantém o atalho vindo de `Detalhe do Cliente`, destacando a parcela alvo e escolhendo a aba correta.
+- Permite navegar para `Detalhe do Cliente` pela linha da tabela.
+- Permite confirmar recebimento individual em drawer lateral, preservando o fluxo de ajuste, diferença e comprovante.
 
 ## Resultado esperado
-- Controle de recebíveis com visão por fatura e baixa de parcelas com rastreio de diferença.
-- Ao chegar de `Detalhe do Cliente`, a página deve abrir já filtrada por cliente/parcela.
+- Visão tabular mais direta para contas vencidas e a vencer.
+- Histórico de vencidas sem dependência de calendário mensal.
+- Filtro por intervalo de datas disponível apenas para parcelas ainda não vencidas.
+- Ação de recebimento por linha, sem perder o fluxo de baixa financeira já existente.

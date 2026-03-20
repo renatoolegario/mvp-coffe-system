@@ -114,11 +114,11 @@ exports.up = async (pgm) => {
     [
       ids.usuarios.admin,
       encrypt("Administrador"),
-      encrypt("admin@cafemvp.com"),
-      encrypt("mvp_admin_123"),
+      encrypt("admin@essenciasdobrasil.local"),
+      encrypt("Admin@123"),
       ids.usuarios.comum,
       encrypt("Operador Comum"),
-      encrypt("operador@cafemvp.com"),
+      encrypt("operador@essenciasdobrasil.local"),
       encrypt("12345"),
     ],
   );

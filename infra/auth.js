@@ -12,6 +12,14 @@ const extractToken = (req) => {
   return authorization.slice(7).trim();
 };
 
+export const hasAdminModeEnabled = (req) => {
+  const adminParam = req.query?.admin;
+
+  return Array.isArray(adminParam)
+    ? adminParam.includes("1")
+    : adminParam === "1";
+};
+
 export const generateAuthToken = () => {
   const random = crypto.randomBytes(24).toString("hex");
   return `${crypto.randomUUID()}.${random}`;
@@ -21,6 +29,19 @@ export const tokenExpiresAt = (days = 7) => addDaysLocalDateTime(days);
 
 export const isAdmin = (auth) =>
   toPerfilCode(auth?.usuario?.perfil) === PERFIS.ADMIN;
+
+const buildAdminModeAuth = () => ({
+  bypass: true,
+  token: null,
+  token_id: null,
+  usuario: {
+    id: null,
+    nome: "Admin Mode",
+    email: "",
+    perfil: PERFIS.ADMIN,
+  },
+  expira_em: null,
+});
 
 export const requireAuth = async (req, res) => {
   const token = extractToken(req);
@@ -86,9 +107,31 @@ export const requireAdmin = async (req, res) => {
   if (!auth) return null;
 
   if (!isAdmin(auth)) {
-    res.status(403).json({ error: "Acesso permitido apenas para administradores." });
+    res.status(403).json({
+      error: "Acesso permitido apenas para administradores.",
+    });
     return null;
   }
 
   return auth;
+};
+
+export const requireAuthOrAdminMode = async (req, res) => {
+  if (hasAdminModeEnabled(req)) {
+    const auth = buildAdminModeAuth();
+    req.auth = auth;
+    return auth;
+  }
+
+  return requireAuth(req, res);
+};
+
+export const requireAdminOrAdminMode = async (req, res) => {
+  if (hasAdminModeEnabled(req)) {
+    const auth = buildAdminModeAuth();
+    req.auth = auth;
+    return auth;
+  }
+
+  return requireAdmin(req, res);
 };

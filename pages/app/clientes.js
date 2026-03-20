@@ -17,6 +17,7 @@ import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
 import { isValidCpfCnpj, normalizeCpfCnpj } from "../../utils/document";
+import { formatDate } from "../../utils/format";
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -29,6 +30,7 @@ const ClientesPage = () => {
     cpf_cnpj: "",
     telefone: "",
     endereco: "",
+    data_aniversario: "",
   });
   const [errors, setErrors] = useState({
     email: "",
@@ -68,9 +70,9 @@ const ClientesPage = () => {
     const nextErrors = { email: "", cpf_cnpj: "" };
 
     if (!normalizedEmail) {
-      nextErrors.email = "Informe o email do cliente.";
+      nextErrors.email = "Informe o e-mail do cliente.";
     } else if (!isValidEmail(normalizedEmail)) {
-      nextErrors.email = "Informe um email válido.";
+      nextErrors.email = "Informe um e-mail válido.";
     } else if (
       clientes.some(
         (cliente) =>
@@ -79,7 +81,7 @@ const ClientesPage = () => {
             .toLowerCase() === normalizedEmail,
       )
     ) {
-      nextErrors.email = "Já existe um cliente com este email.";
+      nextErrors.email = "Já existe um cliente com este e-mail.";
     }
 
     if (!normalizedCpfCnpj) {
@@ -124,6 +126,7 @@ const ClientesPage = () => {
       cpf_cnpj: "",
       telefone: "",
       endereco: "",
+      data_aniversario: "",
     });
     setDrawerOpen(false);
     setFeedback({
@@ -163,7 +166,16 @@ const ClientesPage = () => {
                     {cliente.telefone || "Sem telefone"}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {cliente.email || "Sem email"}
+                    {cliente.email || "Sem e-mail"}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    {cliente.data_aniversario
+                      ? `Aniversário: ${formatDate(cliente.data_aniversario)}`
+                      : "Sem data de aniversário"}
                   </Typography>
                   {cliente.protegido ? (
                     <Typography variant="caption" color="warning.main">
@@ -209,7 +221,7 @@ const ClientesPage = () => {
               required
             />
             <TextField
-              label="Email"
+              label="E-mail"
               type="email"
               value={form.email}
               onChange={handleChange("email")}
@@ -229,6 +241,13 @@ const ClientesPage = () => {
               label="Telefone"
               value={form.telefone}
               onChange={handleChange("telefone")}
+            />
+            <TextField
+              label="Data de aniversário"
+              type="date"
+              value={form.data_aniversario}
+              onChange={handleChange("data_aniversario")}
+              InputLabelProps={{ shrink: true }}
             />
             <TextField
               label="Endereço"

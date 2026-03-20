@@ -19,13 +19,13 @@ const encrypt = (content) => {
 };
 
 exports.up = async (pgm) => {
-  const senhaCriptografada = encrypt("mvp_admin_123");
+  const senhaCriptografada = encrypt("Admin@123");
 
   await pgm.db.query(
     `
     UPDATE usuarios
     SET senha = $1
-    WHERE email = 'admin@cafemvp.com'
+    WHERE email = 'admin@essenciasdobrasil.local'
     `,
     [senhaCriptografada],
   );
@@ -35,8 +35,8 @@ exports.down = async (pgm) => {
   await pgm.db.query(
     `
     UPDATE usuarios
-    SET senha = 'mvp_admin_123'
-    WHERE email = 'admin@cafemvp.com'
+    SET senha = 'Admin@123'
+    WHERE email = 'admin@essenciasdobrasil.local'
     `,
   );
 };

@@ -60,7 +60,8 @@ const viradaD0 = [
   },
   {
     prazo: "Domingo antes do D0 • até 9h",
-    atividade: "Ajustar todas as reprovações identificadas na primeira validação.",
+    atividade:
+      "Ajustar todas as reprovações identificadas na primeira validação.",
   },
   {
     prazo: "Domingo antes do D0 • até 12h",
@@ -70,7 +71,7 @@ const viradaD0 = [
 ];
 
 const semanaD0 = [
-  "Criar e usar a página /feedback com: nome da página, descrição e print (descrição obrigatória).",
+  "Criar e usar a página /system/feedbacks com: origem, descrição e print (descrição obrigatória).",
   "Registrar reportes de dificuldades.",
   "Registrar reportes de melhorias.",
   "Tratar demandas dentro da própria semana e reservar 1 hora para reunião de alinhamento.",
@@ -130,7 +131,7 @@ const CronogramaPage = () => {
               <Box
                 component="img"
                 src="/logotipo.jpg"
-                alt="Logotipo MVP Coffee"
+                alt="Logotipo Café Essências do Brasil"
                 sx={{
                   height: { xs: 72, md: 84 },
                   width: { xs: 72, md: 84 },
@@ -150,7 +151,10 @@ const CronogramaPage = () => {
               <Typography
                 variant="h3"
                 fontWeight={900}
-                sx={{ letterSpacing: 0.5, fontSize: { xs: "2rem", md: "2.6rem" } }}
+                sx={{
+                  letterSpacing: 0.5,
+                  fontSize: { xs: "2rem", md: "2.6rem" },
+                }}
               >
                 Cronograma
               </Typography>
@@ -162,243 +166,251 @@ const CronogramaPage = () => {
           </Paper>
 
           <Grid container spacing={3} sx={{ width: "100%", maxWidth: 980 }}>
-          <Grid item xs={12} lg={7}>
-            <Paper sx={sectionCardSx}>
-              <Stack spacing={2.2}>
-                <Stack direction="row" spacing={1.2} alignItems="center">
-                  <RuleFolder color="primary" />
-                  <Typography variant="h6" fontWeight={700}>
-                    Decisões da Reunião
-                  </Typography>
+            <Grid item xs={12} lg={7}>
+              <Paper sx={sectionCardSx}>
+                <Stack spacing={2.2}>
+                  <Stack direction="row" spacing={1.2} alignItems="center">
+                    <RuleFolder color="primary" />
+                    <Typography variant="h6" fontWeight={700}>
+                      Decisões da Reunião
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1.15}>
+                    {reuniaoDecisoes.map((item) => (
+                      <Stack key={item} direction="row" spacing={1.25}>
+                        <TaskAlt sx={{ color: "primary.main", fontSize: 20 }} />
+                        <Typography variant="body2">{item}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
                 </Stack>
-                <Stack spacing={1.15}>
-                  {reuniaoDecisoes.map((item) => (
-                    <Stack key={item} direction="row" spacing={1.25}>
-                      <TaskAlt sx={{ color: "primary.main", fontSize: 20 }} />
-                      <Typography variant="body2">{item}</Typography>
-                    </Stack>
-                  ))}
+              </Paper>
+            </Grid>
+            <Grid item xs={12} lg={5}>
+              <Paper sx={sectionCardSx}>
+                <Stack spacing={2.2}>
+                  <Stack direction="row" spacing={1.2} alignItems="center">
+                    <Coffee color="primary" />
+                    <Typography variant="h6" fontWeight={700}>
+                      Fluxo Sugerido para Vendas de Balcão
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1.2}>
+                    {fluxoBalcao.map((item, index) => (
+                      <Stack key={item} direction="row" spacing={1.25}>
+                        <Chip
+                          label={index + 1}
+                          size="small"
+                          color="primary"
+                          sx={{ minWidth: 28, fontWeight: 700 }}
+                        />
+                        <Typography variant="body2">{item}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
                 </Stack>
-              </Stack>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} lg={5}>
-            <Paper sx={sectionCardSx}>
-              <Stack spacing={2.2}>
-                <Stack direction="row" spacing={1.2} alignItems="center">
-                  <Coffee color="primary" />
-                  <Typography variant="h6" fontWeight={700}>
-                    Fluxo Sugerido para Vendas de Balcão
-                  </Typography>
-                </Stack>
-                <Stack spacing={1.2}>
-                  {fluxoBalcao.map((item, index) => (
-                    <Stack key={item} direction="row" spacing={1.25}>
-                      <Chip
-                        label={index + 1}
-                        size="small"
-                        color="primary"
-                        sx={{ minWidth: 28, fontWeight: 700 }}
-                      />
-                      <Typography variant="body2">{item}</Typography>
-                    </Stack>
-                  ))}
-                </Stack>
-              </Stack>
-            </Paper>
-          </Grid>
+              </Paper>
+            </Grid>
 
-          <Grid item xs={12}>
-            <Paper sx={sectionCardSx}>
-              <Stack spacing={2.3}>
-                <Stack direction="row" spacing={1.2} alignItems="center">
-                  <Checklist color="primary" />
-                  <Typography variant="h6" fontWeight={700}>
-                    Fase Pré-D0 (1 a 2 semanas antes)
+            <Grid item xs={12}>
+              <Paper sx={sectionCardSx}>
+                <Stack spacing={2.3}>
+                  <Stack direction="row" spacing={1.2} alignItems="center">
+                    <Checklist color="primary" />
+                    <Typography variant="h6" fontWeight={700}>
+                      Fase Pré-D0 (1 a 2 semanas antes)
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    Definir oficialmente o D0 (sugestão: segunda-feira) e
+                    concluir os itens abaixo antes da virada.
                   </Typography>
-                </Stack>
-                <Typography variant="body2" color="text.secondary">
-                  Definir oficialmente o D0 (sugestão: segunda-feira) e concluir
-                  os itens abaixo antes da virada.
-                </Typography>
-                <Grid container spacing={1.4}>
-                  {preparacaoAntesD0.map((item) => (
-                    <Grid item xs={12} md={6} key={item}>
-                      <Paper
-                        variant="outlined"
-                        sx={{
-                          p: 1.5,
-                          borderRadius: 2,
-                          backgroundColor: "rgba(15,36,31,0.6)",
-                        }}
-                      >
-                        <Stack direction="row" spacing={1.2}>
-                          <TaskAlt
-                            sx={{ color: "primary.main", fontSize: 19, mt: 0.1 }}
-                          />
-                          <Typography variant="body2">{item}</Typography>
-                        </Stack>
-                      </Paper>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Stack>
-            </Paper>
-          </Grid>
-
-          <Grid item xs={12} lg={6}>
-            <Paper sx={sectionCardSx}>
-              <Stack spacing={2}>
-                <Stack direction="row" spacing={1.2} alignItems="center">
-                  <EventAvailable color="primary" />
-                  <Typography variant="h6" fontWeight={700}>
-                    Virada D0 (Fim de Semana Anterior)
-                  </Typography>
-                </Stack>
-                <Stack spacing={1.45}>
-                  {viradaD0.map((etapa, index) => (
-                    <Box key={etapa.prazo}>
-                      <Chip
-                        label={etapa.prazo}
-                        size="small"
-                        sx={{
-                          mb: 0.85,
-                          fontWeight: 700,
-                          backgroundColor: "rgba(242,183,5,0.16)",
-                          color: "primary.main",
-                        }}
-                      />
-                      <Typography variant="body2">{etapa.atividade}</Typography>
-                      {index < viradaD0.length - 1 ? (
-                        <Divider sx={{ mt: 1.2 }} />
-                      ) : null}
-                    </Box>
-                  ))}
-                </Stack>
-              </Stack>
-            </Paper>
-          </Grid>
-
-          <Grid item xs={12} lg={6}>
-            <Paper sx={sectionCardSx}>
-              <Stack spacing={2}>
-                <Stack direction="row" spacing={1.2} alignItems="center">
-                  <Feedback color="primary" />
-                  <Typography variant="h6" fontWeight={700}>
-                    Semana do D0
-                  </Typography>
-                </Stack>
-                <Stack spacing={1.15}>
-                  {semanaD0.map((item) => (
-                    <Stack key={item} direction="row" spacing={1.25}>
-                      <TaskAlt sx={{ color: "primary.main", fontSize: 20 }} />
-                      <Typography variant="body2">{item}</Typography>
-                    </Stack>
-                  ))}
-                </Stack>
-                <Alert
-                  severity="info"
-                  sx={{
-                    borderRadius: 2,
-                    backgroundColor: "rgba(63,169,245,0.12)",
-                    color: "text.primary",
-                  }}
-                >
-                  Regra operacional: ao lançar feedback, agenda de alinhamento
-                  deve ser criada para as 17h30 do mesmo dia.
-                </Alert>
-              </Stack>
-            </Paper>
-          </Grid>
-
-          <Grid item xs={12}>
-            <Paper sx={sectionCardSx}>
-              <Stack spacing={2.3}>
-                <Stack direction="row" spacing={1.2} alignItems="center">
-                  <Gavel color="primary" />
-                  <Typography variant="h6" fontWeight={700}>
-                    Auditorias Programadas
-                  </Typography>
-                </Stack>
-                <Grid container spacing={2}>
-                  {auditorias.map((auditoria) => (
-                    <Grid item xs={12} md={4} key={auditoria.marco}>
-                      <Paper
-                        variant="outlined"
-                        sx={{
-                          p: 2,
-                          borderRadius: 2.5,
-                          minHeight: "100%",
-                          backgroundColor: "rgba(15,36,31,0.62)",
-                        }}
-                      >
-                        <Stack spacing={1.2}>
-                          <Stack
-                            direction="row"
-                            justifyContent="space-between"
-                            alignItems="center"
-                          >
-                            <Typography variant="subtitle1" fontWeight={700}>
-                              {auditoria.titulo}
-                            </Typography>
-                            <Chip
-                              label={auditoria.marco}
-                              color="primary"
-                              size="small"
-                              sx={{ fontWeight: 700 }}
+                  <Grid container spacing={1.4}>
+                    {preparacaoAntesD0.map((item) => (
+                      <Grid item xs={12} md={6} key={item}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2,
+                            backgroundColor: "rgba(15,36,31,0.6)",
+                          }}
+                        >
+                          <Stack direction="row" spacing={1.2}>
+                            <TaskAlt
+                              sx={{
+                                color: "primary.main",
+                                fontSize: 19,
+                                mt: 0.1,
+                              }}
                             />
+                            <Typography variant="body2">{item}</Typography>
                           </Stack>
-                          <Typography variant="body2" color="text.secondary">
-                            {auditoria.detalhe}
-                          </Typography>
-                          <Divider />
-                          <Stack spacing={1}>
-                            {auditoriaChecklist.map((item) => (
-                              <Stack key={item} direction="row" spacing={1}>
-                                <TaskAlt
-                                  sx={{
-                                    color: "primary.main",
-                                    fontSize: 18,
-                                    mt: 0.15,
-                                  }}
-                                />
-                                <Typography variant="body2">{item}</Typography>
-                              </Stack>
-                            ))}
-                          </Stack>
-                        </Stack>
-                      </Paper>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Stack>
-            </Paper>
-          </Grid>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Stack>
+              </Paper>
+            </Grid>
 
-          <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 2.2,
-                borderRadius: 2.5,
-                border: "1px dashed",
-                borderColor: "primary.main",
-                backgroundColor: "rgba(242,183,5,0.06)",
-              }}
-            >
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={1}
-                alignItems={{ xs: "flex-start", sm: "center" }}
+            <Grid item xs={12} lg={6}>
+              <Paper sx={sectionCardSx}>
+                <Stack spacing={2}>
+                  <Stack direction="row" spacing={1.2} alignItems="center">
+                    <EventAvailable color="primary" />
+                    <Typography variant="h6" fontWeight={700}>
+                      Virada D0 (Fim de Semana Anterior)
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1.45}>
+                    {viradaD0.map((etapa, index) => (
+                      <Box key={etapa.prazo}>
+                        <Chip
+                          label={etapa.prazo}
+                          size="small"
+                          sx={{
+                            mb: 0.85,
+                            fontWeight: 700,
+                            backgroundColor: "rgba(242,183,5,0.16)",
+                            color: "primary.main",
+                          }}
+                        />
+                        <Typography variant="body2">
+                          {etapa.atividade}
+                        </Typography>
+                        {index < viradaD0.length - 1 ? (
+                          <Divider sx={{ mt: 1.2 }} />
+                        ) : null}
+                      </Box>
+                    ))}
+                  </Stack>
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} lg={6}>
+              <Paper sx={sectionCardSx}>
+                <Stack spacing={2}>
+                  <Stack direction="row" spacing={1.2} alignItems="center">
+                    <Feedback color="primary" />
+                    <Typography variant="h6" fontWeight={700}>
+                      Semana do D0
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1.15}>
+                    {semanaD0.map((item) => (
+                      <Stack key={item} direction="row" spacing={1.25}>
+                        <TaskAlt sx={{ color: "primary.main", fontSize: 20 }} />
+                        <Typography variant="body2">{item}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                  <Alert
+                    severity="info"
+                    sx={{
+                      borderRadius: 2,
+                      backgroundColor: "rgba(63,169,245,0.12)",
+                      color: "text.primary",
+                    }}
+                  >
+                    Regra operacional: ao lançar feedback, agenda de alinhamento
+                    deve ser criada para as 17h30 do mesmo dia.
+                  </Alert>
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper sx={sectionCardSx}>
+                <Stack spacing={2.3}>
+                  <Stack direction="row" spacing={1.2} alignItems="center">
+                    <Gavel color="primary" />
+                    <Typography variant="h6" fontWeight={700}>
+                      Auditorias Programadas
+                    </Typography>
+                  </Stack>
+                  <Grid container spacing={2}>
+                    {auditorias.map((auditoria) => (
+                      <Grid item xs={12} md={4} key={auditoria.marco}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 2,
+                            borderRadius: 2.5,
+                            minHeight: "100%",
+                            backgroundColor: "rgba(15,36,31,0.62)",
+                          }}
+                        >
+                          <Stack spacing={1.2}>
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                              alignItems="center"
+                            >
+                              <Typography variant="subtitle1" fontWeight={700}>
+                                {auditoria.titulo}
+                              </Typography>
+                              <Chip
+                                label={auditoria.marco}
+                                color="primary"
+                                size="small"
+                                sx={{ fontWeight: 700 }}
+                              />
+                            </Stack>
+                            <Typography variant="body2" color="text.secondary">
+                              {auditoria.detalhe}
+                            </Typography>
+                            <Divider />
+                            <Stack spacing={1}>
+                              {auditoriaChecklist.map((item) => (
+                                <Stack key={item} direction="row" spacing={1}>
+                                  <TaskAlt
+                                    sx={{
+                                      color: "primary.main",
+                                      fontSize: 18,
+                                      mt: 0.15,
+                                    }}
+                                  />
+                                  <Typography variant="body2">
+                                    {item}
+                                  </Typography>
+                                </Stack>
+                              ))}
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper
+                sx={{
+                  p: 2.2,
+                  borderRadius: 2.5,
+                  border: "1px dashed",
+                  borderColor: "primary.main",
+                  backgroundColor: "rgba(242,183,5,0.06)",
+                }}
               >
-                <Groups sx={{ color: "primary.main" }} />
-                <Typography variant="body2" fontWeight={600}>
-                  FIM: manter a disciplina do cronograma e registrar qualquer
-                  desvio na rotina de feedback.
-                </Typography>
-              </Stack>
-            </Paper>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                >
+                  <Groups sx={{ color: "primary.main" }} />
+                  <Typography variant="body2" fontWeight={600}>
+                    FIM: manter a disciplina do cronograma e registrar qualquer
+                    desvio na rotina de feedback.
+                  </Typography>
+                </Stack>
+              </Paper>
+            </Grid>
           </Grid>
-        </Grid>
         </Stack>
       </Container>
     </Box>

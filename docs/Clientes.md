@@ -9,9 +9,10 @@ Cadastro de clientes e acesso rápido ao histórico comercial.
 ## Funções internas
 - Cria novos clientes.
 - Lista clientes cadastrados.
+- Permite informar data de aniversário no cadastro.
 - Valida email obrigatório e único.
 - Valida CPF/CNPJ obrigatório, único e com dígitos válidos.
 - Exibe alertas imediatos de recusa no cadastro.
 
 ## Resultado esperado
-- Base de clientes pronta para vendas e contas a receber.
+- Base de clientes pronta para vendas e contas a receber, com data de aniversário disponível no cadastro.

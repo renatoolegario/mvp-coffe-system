@@ -161,7 +161,9 @@ exports.up = async (pgm) => {
   }
 
   const usuariosRows = seed.usuarios.map((usuario, index) => {
-    const email = String(usuario.email || `usuario${index + 1}@mvpcoffee.local`)
+    const email = String(
+      usuario.email || `usuario${index + 1}@essenciasdobrasil.local`,
+    )
       .trim()
       .toLowerCase();
 
@@ -196,7 +198,9 @@ exports.up = async (pgm) => {
     };
 
     if (hasClientesEmail) {
-      const email = String(cliente.email || `cliente${index + 1}@mvpcoffee.local`)
+      const email = String(
+        cliente.email || `cliente${index + 1}@essenciasdobrasil.local`,
+      )
         .trim()
         .toLowerCase();
       row.email = encrypt(email);
@@ -225,7 +229,7 @@ exports.up = async (pgm) => {
 
     if (hasFornecedoresEmail) {
       const email = String(
-        fornecedor.email || `fornecedor${index + 1}@mvpcoffee.local`,
+        fornecedor.email || `fornecedor${index + 1}@essenciasdobrasil.local`,
       )
         .trim()
         .toLowerCase();

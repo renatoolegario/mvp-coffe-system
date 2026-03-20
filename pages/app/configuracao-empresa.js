@@ -2,7 +2,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   FormControl,
   Grid,
   InputLabel,
@@ -16,17 +15,40 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { authenticatedFetch, getAuthToken } from "../../hooks/useSession";
 import { useDataStore } from "../../hooks/useDataStore";
 
 const integracoesIniciais = {
-  asaas: { chave: "", configurado: false, editando: true },
-  resend: { chave: "", configurado: false, editando: true },
+  asaas: {
+    chave: "",
+    configurado: false,
+    editando: true,
+    environment: "production",
+    webhook_url: "",
+    webhook_registered_at: "",
+    webhook_error: "",
+  },
+  resend: {
+    chave: "",
+    configurado: false,
+    editando: true,
+    from_email: "",
+    notification_recipients_text: "",
+  },
 };
+
+const parseRecipientsInput = (value) =>
+  Array.from(
+    new Set(
+      String(value || "")
+        .split(/[\n,;]+/)
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 
 const auditFieldLabels = {
   id: "ID",
@@ -42,33 +64,6 @@ const auditFieldLabels = {
 
 const normalizeAuditValue = (value) => String(value ?? "").trim();
 const toAuditComparable = (value) => normalizeAuditValue(value).toLowerCase();
-const FEEDBACK_STATUS_OPTIONS = {
-  PROGRAMADO: {
-    label: "Programado",
-    color: "warning",
-  },
-  FINALIZADO: {
-    label: "Finalizado",
-    color: "success",
-  },
-};
-
-const toDateInputValue = (value = new Date()) => {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const createNovoFeedbackInicial = () => ({
-  data: toDateInputValue(),
-  nome_pagina: "",
-  descricao: "",
-  anexo_base64: "",
-  anexo_nome: "",
-});
 
 const resolveAuditTimeline = (row = {}, dateFields = []) => {
   for (const field of dateFields) {
@@ -173,16 +168,9 @@ const buildAuditTrail = (referenceCode, sources = []) => {
 };
 
 const ConfiguracaoEmpresaPage = () => {
-  const router = useRouter();
   const [tab, setTab] = useState("estoque");
   const [faixas, setFaixas] = useState([]);
   const [integracoes, setIntegracoes] = useState(integracoesIniciais);
-  const [feedbackItens, setFeedbackItens] = useState([]);
-  const [feedbackFiltroStatus, setFeedbackFiltroStatus] = useState("todos");
-  const [feedbackCarregando, setFeedbackCarregando] = useState(false);
-  const [feedbackAdminMode, setFeedbackAdminMode] = useState(false);
-  const [feedbackNovoAberto, setFeedbackNovoAberto] = useState(false);
-  const [novoFeedback, setNovoFeedback] = useState(createNovoFeedbackInicial);
   const [feedback, setFeedback] = useState({
     open: false,
     severity: "success",
@@ -192,6 +180,7 @@ const ConfiguracaoEmpresaPage = () => {
   const [codigoAuditoriaBusca, setCodigoAuditoriaBusca] = useState("");
   const [auditoriaRealizada, setAuditoriaRealizada] = useState(false);
   const [swaggerErro, setSwaggerErro] = useState("");
+  const [appOrigin, setAppOrigin] = useState("");
   const swaggerContainerRef = useRef(null);
 
   const hydrated = useDataStore((state) => state.hydrated);
@@ -199,11 +188,14 @@ const ConfiguracaoEmpresaPage = () => {
   const vendaItens = useDataStore((state) => state.vendaItens);
   const vendaDetalhes = useDataStore((state) => state.vendaDetalhes);
   const contasPagar = useDataStore((state) => state.contasPagar);
-  const contasPagarParcelas = useDataStore((state) => state.contasPagarParcelas);
+  const contasPagarParcelas = useDataStore(
+    (state) => state.contasPagarParcelas,
+  );
   const contasReceber = useDataStore((state) => state.contasReceber);
   const contasReceberParcelas = useDataStore(
     (state) => state.contasReceberParcelas,
   );
+  const asaasCobrancas = useDataStore((state) => state.asaasCobrancas || []);
   const producoes = useDataStore((state) => state.producoes);
   const detalhesProducao = useDataStore((state) => state.detalhesProducao);
   const custosAdicionaisProducao = useDataStore(
@@ -264,6 +256,20 @@ const ConfiguracaoEmpresaPage = () => {
         dateFields: ["vencimento", "data_recebimento", "criado_em"],
       },
       {
+        key: "asaas_cobrancas",
+        label: "Cobranças ASAAS",
+        rows: asaasCobrancas,
+        traceFields: [
+          "id",
+          "asaas_payment_id",
+          "venda_id",
+          "conta_receber_id",
+          "conta_receber_parcela_id",
+          "external_reference",
+        ],
+        dateFields: ["due_date", "last_event_at", "atualizado_em", "criado_em"],
+      },
+      {
         key: "producao",
         label: "Produção",
         rows: producoes,
@@ -300,6 +306,7 @@ const ConfiguracaoEmpresaPage = () => {
       },
     ],
     [
+      asaasCobrancas,
       contasPagar,
       contasPagarParcelas,
       contasReceber,
@@ -315,6 +322,14 @@ const ConfiguracaoEmpresaPage = () => {
     ],
   );
 
+  const defaultWebhookUrl = useMemo(
+    () =>
+      appOrigin
+        ? `${appOrigin}/api/v1/integracoes/asaas/webhook`
+        : "",
+    [appOrigin],
+  );
+
   const auditoriaRegistros = useMemo(
     () => buildAuditTrail(codigoAuditoriaBusca, auditSources),
     [codigoAuditoriaBusca, auditSources],
@@ -323,15 +338,17 @@ const ConfiguracaoEmpresaPage = () => {
   const auditoriaResumo = useMemo(() => {
     const counters = {};
     auditoriaRegistros.forEach((registro) => {
-      counters[registro.sourceLabel] = (counters[registro.sourceLabel] || 0) + 1;
+      counters[registro.sourceLabel] =
+        (counters[registro.sourceLabel] || 0) + 1;
     });
     return Object.entries(counters).sort((a, b) => b[1] - a[1]);
   }, [auditoriaRegistros]);
-  const isAdminFeedbackMode = String(router.query?.admin || "") === "1";
 
   const loadFaixas = async () => {
     try {
-      const response = await authenticatedFetch("/api/v1/configuracao-empresa/estoque");
+      const response = await authenticatedFetch(
+        "/api/v1/configuracao-empresa/estoque",
+      );
       if (!response.ok) return;
       const data = await response.json();
       setFaixas(data.faixas || []);
@@ -342,7 +359,9 @@ const ConfiguracaoEmpresaPage = () => {
 
   const loadIntegracoes = async () => {
     try {
-      const response = await authenticatedFetch("/api/v1/configuracao-empresa/integracoes");
+      const response = await authenticatedFetch(
+        "/api/v1/configuracao-empresa/integracoes",
+      );
       if (!response.ok) return;
       const data = await response.json();
 
@@ -350,11 +369,30 @@ const ConfiguracaoEmpresaPage = () => {
         const next = { ...prev };
         for (const integracao of data.integracoes || []) {
           const provedor = integracao.provedor;
+          const config = integracao.config || {};
           next[provedor] = {
             ...prev[provedor],
             configurado: Boolean(integracao.configurado),
             editando: !integracao.configurado,
             chave: "",
+            ...(provedor === "asaas"
+              ? {
+                  environment: "production",
+                  webhook_url: config.webhook_url || "",
+                  webhook_registered_at: config.webhook_registered_at || "",
+                  webhook_error: config.webhook_error || "",
+                }
+              : {}),
+            ...(provedor === "resend"
+              ? {
+                  from_email: config.from_email || "",
+                  notification_recipients_text: Array.isArray(
+                    config.notification_recipients,
+                  )
+                    ? config.notification_recipients.join(", ")
+                    : "",
+                }
+              : {}),
           };
         }
         return next;
@@ -364,60 +402,15 @@ const ConfiguracaoEmpresaPage = () => {
     }
   };
 
-  const loadFeedbacks = useCallback(async () => {
-    setFeedbackCarregando(true);
-    try {
-      const params = new URLSearchParams();
-      if (feedbackFiltroStatus !== "todos") {
-        params.set("status", feedbackFiltroStatus);
-      }
-      if (isAdminFeedbackMode) {
-        params.set("admin", "1");
-      }
-
-      const queryString = params.toString();
-      const response = await authenticatedFetch(
-        `/api/v1/configuracao-empresa/feedback${
-          queryString ? `?${queryString}` : ""
-        }`,
-      );
-      const data = await response.json();
-
-      if (!response.ok) {
-        setFeedback({
-          open: true,
-          severity: "error",
-          message: data.error || "Não foi possível carregar os feedbacks.",
-        });
-        setFeedbackItens([]);
-        setFeedbackAdminMode(isAdminFeedbackMode);
-        return;
-      }
-
-      setFeedbackItens(data.feedbacks || []);
-      setFeedbackAdminMode(Boolean(data.admin));
-    } catch (error) {
-      setFeedbackItens([]);
-      setFeedbackAdminMode(isAdminFeedbackMode);
-      setFeedback({
-        open: true,
-        severity: "error",
-        message: "Erro ao carregar os feedbacks.",
-      });
-    } finally {
-      setFeedbackCarregando(false);
-    }
-  }, [feedbackFiltroStatus, isAdminFeedbackMode]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setAppOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     loadFaixas();
     loadIntegracoes();
   }, []);
-
-  useEffect(() => {
-    if (tab !== "feedback") return;
-    loadFeedbacks();
-  }, [tab, loadFeedbacks]);
 
   useEffect(() => {
     if (tab !== "apis") return;
@@ -438,7 +431,8 @@ const ConfiguracaoEmpresaPage = () => {
       if (!window.SwaggerUIBundle) {
         await new Promise((resolve, reject) => {
           const script = document.createElement("script");
-          script.src = "https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js";
+          script.src =
+            "https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js";
           script.onload = resolve;
           script.onerror = reject;
           document.body.appendChild(script);
@@ -446,7 +440,8 @@ const ConfiguracaoEmpresaPage = () => {
       }
 
       const token = getAuthToken();
-      if (!token || !swaggerContainerRef.current || !window.SwaggerUIBundle) return;
+      if (!token || !swaggerContainerRef.current || !window.SwaggerUIBundle)
+        return;
 
       swaggerContainerRef.current.innerHTML = "";
       window.SwaggerUIBundle({
@@ -483,13 +478,13 @@ const ConfiguracaoEmpresaPage = () => {
     );
   };
 
-  const handleIntegracaoField = (provedor) => (event) => {
+  const handleIntegracaoField = (provedor, field = "chave") => (event) => {
     const value = event.target.value;
     setIntegracoes((prev) => ({
       ...prev,
       [provedor]: {
         ...prev[provedor],
-        chave: value,
+        [field]: value,
       },
     }));
   };
@@ -506,9 +501,10 @@ const ConfiguracaoEmpresaPage = () => {
   };
 
   const handleSalvarIntegracao = async (provedor) => {
-    const chave = integracoes[provedor]?.chave?.trim();
+    const integracao = integracoes[provedor];
+    const chave = integracao?.chave?.trim();
 
-    if (!chave) {
+    if (!chave && !integracao?.configurado) {
       setFeedback({
         open: true,
         severity: "error",
@@ -517,12 +513,52 @@ const ConfiguracaoEmpresaPage = () => {
       return;
     }
 
+    const config = {};
+
+    if (provedor === "asaas") {
+      config.environment = "production";
+      config.webhook_url = integracao.webhook_url || defaultWebhookUrl;
+    }
+
+    if (provedor === "resend") {
+      const fromEmail = String(integracao.from_email || "")
+        .trim()
+        .toLowerCase();
+      const recipients = parseRecipientsInput(
+        integracao.notification_recipients_text,
+      );
+
+      if (!fromEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
+        setFeedback({
+          open: true,
+          severity: "error",
+          message: "Informe um remetente válido para o Resend.",
+        });
+        return;
+      }
+
+      if (!recipients.length) {
+        setFeedback({
+          open: true,
+          severity: "error",
+          message: "Informe ao menos um destinatário para os lembretes.",
+        });
+        return;
+      }
+
+      config.from_email = fromEmail;
+      config.notification_recipients = recipients;
+    }
+
     try {
-      const response = await authenticatedFetch("/api/v1/configuracao-empresa/integracoes", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provedor, chave }),
-      });
+      const response = await authenticatedFetch(
+        "/api/v1/configuracao-empresa/integracoes",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provedor, chave, config }),
+        },
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -541,12 +577,35 @@ const ConfiguracaoEmpresaPage = () => {
           configurado: true,
           editando: false,
           chave: "",
+          ...(provedor === "asaas"
+            ? {
+                environment: "production",
+                webhook_url:
+                  data.config?.webhook_url || config.webhook_url || "",
+                webhook_registered_at:
+                  data.config?.webhook_registered_at || "",
+                webhook_error: data.config?.webhook_error || "",
+              }
+            : {}),
+          ...(provedor === "resend"
+            ? {
+                from_email: data.config?.from_email || config.from_email || "",
+                notification_recipients_text: Array.isArray(
+                  data.config?.notification_recipients,
+                )
+                  ? data.config.notification_recipients.join(", ")
+                  : integracao.notification_recipients_text,
+              }
+            : {}),
         },
       }));
       setFeedback({
         open: true,
         severity: "success",
-        message: `Integração ${provedor.toUpperCase()} salva com sucesso.`,
+        message:
+          provedor === "asaas" && data.webhook?.error
+            ? `Integração ${provedor.toUpperCase()} salva, mas o webhook precisa ser revisado.`
+            : `Integração ${provedor.toUpperCase()} salva com sucesso.`,
       });
     } catch (error) {
       setFeedback({
@@ -557,13 +616,35 @@ const ConfiguracaoEmpresaPage = () => {
     }
   };
 
+  const handleCopyWebhook = async (value) => {
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setFeedback({
+        open: true,
+        severity: "success",
+        message: "URL do webhook copiada com sucesso.",
+      });
+    } catch (error) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: "Não foi possível copiar a URL do webhook.",
+      });
+    }
+  };
+
   const handleSaveFaixas = async () => {
     try {
-      const response = await authenticatedFetch("/api/v1/configuracao-empresa/estoque", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ faixas }),
-      });
+      const response = await authenticatedFetch(
+        "/api/v1/configuracao-empresa/estoque",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ faixas }),
+        },
+      );
       const data = await response.json();
       if (!response.ok) {
         setFeedback({
@@ -608,128 +689,6 @@ const ConfiguracaoEmpresaPage = () => {
     setAuditoriaRealizada(false);
   };
 
-  const handleNovoFeedbackField = (field) => (event) => {
-    const value = event.target.value;
-    setNovoFeedback((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleNovoFeedbackAnexo = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setNovoFeedback((prev) => ({
-        ...prev,
-        anexo_base64: "",
-        anexo_nome: "",
-      }));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setNovoFeedback((prev) => ({
-        ...prev,
-        anexo_base64: String(reader.result || ""),
-        anexo_nome: file.name,
-      }));
-    };
-    reader.onerror = () => {
-      setFeedback({
-        open: true,
-        severity: "error",
-        message: "Não foi possível processar o anexo.",
-      });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleFecharNovoFeedback = () => {
-    setFeedbackNovoAberto(false);
-    setNovoFeedback(createNovoFeedbackInicial());
-  };
-
-  const handleSalvarNovoFeedback = async () => {
-    const descricao = novoFeedback.descricao.trim();
-    if (!descricao) {
-      setFeedback({
-        open: true,
-        severity: "error",
-        message: "Descrição é obrigatória para registrar feedback.",
-      });
-      return;
-    }
-
-    try {
-      const response = await authenticatedFetch("/api/v1/configuracao-empresa/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: novoFeedback.data,
-          nome_pagina: novoFeedback.nome_pagina,
-          descricao,
-          anexo_base64: novoFeedback.anexo_base64,
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        setFeedback({
-          open: true,
-          severity: "error",
-          message: data.error || "Não foi possível salvar o feedback.",
-        });
-        return;
-      }
-
-      setFeedback({
-        open: true,
-        severity: "success",
-        message: "Feedback criado com sucesso.",
-      });
-      handleFecharNovoFeedback();
-      loadFeedbacks();
-    } catch (error) {
-      setFeedback({
-        open: true,
-        severity: "error",
-        message: "Erro ao salvar feedback.",
-      });
-    }
-  };
-
-  const handleFinalizarFeedback = async (id) => {
-    try {
-      const response = await authenticatedFetch(
-        `/api/v1/configuracao-empresa/feedback/${id}/finalizar`,
-        { method: "PATCH" },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        setFeedback({
-          open: true,
-          severity: "error",
-          message: data.error || "Não foi possível finalizar o feedback.",
-        });
-        return;
-      }
-
-      setFeedback({
-        open: true,
-        severity: "success",
-        message: "Feedback finalizado com sucesso.",
-      });
-      loadFeedbacks();
-    } catch (error) {
-      setFeedback({
-        open: true,
-        severity: "error",
-        message: "Erro ao finalizar feedback.",
-      });
-    }
-  };
-
   return (
     <AppLayout>
       <PageHeader
@@ -743,7 +702,6 @@ const ConfiguracaoEmpresaPage = () => {
           <Tab value="integracoes" label="Integrações" />
           <Tab value="auditoria" label="Auditoria" />
           <Tab value="apis" label="APIs Internas" />
-          <Tab value="feedback" label="Feedback" />
         </Tabs>
       </Paper>
 
@@ -809,52 +767,142 @@ const ConfiguracaoEmpresaPage = () => {
         <Paper sx={{ p: 3 }}>
           <Stack spacing={3}>
             <Typography variant="body2" color="text.secondary">
-              Configure as chaves das integrações. Por segurança, a chave não é
-              exibida novamente depois de salva.
+              Configure as integrações externas. Por segurança, a chave não é
+              exibida novamente depois de salva, mas você pode manter a chave
+              atual ao editar apenas os metadados.
             </Typography>
 
             {Object.entries(integracoes).map(([provedor, integracao]) => {
               const bloqueado = integracao.configurado && !integracao.editando;
+              const webhookUrl = integracao.webhook_url || defaultWebhookUrl;
               return (
-                <Grid container spacing={2} key={provedor} alignItems="center">
-                  <Grid item xs={12} md={4}>
-                    <Typography fontWeight={700}>
-                      {provedor.toUpperCase()}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={5}>
-                    <TextField
-                      fullWidth
-                      type="password"
-                      label="Chave da integração"
-                      placeholder={
-                        bloqueado ? "••••••••••••" : "Digite a chave"
-                      }
-                      value={bloqueado ? "" : integracao.chave}
-                      onChange={handleIntegracaoField(provedor)}
-                      disabled={bloqueado}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    {bloqueado ? (
-                      <Button
-                        variant="outlined"
-                        fullWidth
-                        onClick={() => handleEditarIntegracao(provedor)}
-                      >
-                        Editar
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="contained"
-                        fullWidth
-                        onClick={() => handleSalvarIntegracao(provedor)}
-                      >
-                        Salvar
-                      </Button>
-                    )}
-                  </Grid>
-                </Grid>
+                <Paper key={provedor} variant="outlined" sx={{ p: 2.5 }}>
+                  <Stack spacing={2}>
+                    <Grid container spacing={2} alignItems="center">
+                      <Grid item xs={12} md={4}>
+                        <Typography fontWeight={700}>
+                          {provedor.toUpperCase()}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} md={5}>
+                        <TextField
+                          fullWidth
+                          type="password"
+                          label="Chave da integração"
+                          placeholder={
+                            bloqueado
+                              ? "••••••••••••"
+                              : integracao.configurado
+                                ? "Deixe em branco para manter a chave atual"
+                                : "Digite a chave"
+                          }
+                          value={bloqueado ? "" : integracao.chave}
+                          onChange={handleIntegracaoField(provedor)}
+                          disabled={bloqueado}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        {bloqueado ? (
+                          <Button
+                            variant="outlined"
+                            fullWidth
+                            onClick={() => handleEditarIntegracao(provedor)}
+                          >
+                            Editar
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="contained"
+                            fullWidth
+                            onClick={() => handleSalvarIntegracao(provedor)}
+                          >
+                            Salvar
+                          </Button>
+                        )}
+                      </Grid>
+                    </Grid>
+
+                    {provedor === "asaas" ? (
+                      <Stack spacing={2}>
+                        <Stack
+                          direction={{ xs: "column", md: "row" }}
+                          spacing={1.5}
+                        >
+                          <TextField
+                            fullWidth
+                            label="URL pública do webhook"
+                            value={webhookUrl}
+                            InputProps={{ readOnly: true }}
+                          />
+                          <Button
+                            variant="outlined"
+                            onClick={() => handleCopyWebhook(webhookUrl)}
+                            disabled={!webhookUrl}
+                          >
+                            Copiar URL
+                          </Button>
+                        </Stack>
+
+                        <Typography variant="body2" color="text.secondary">
+                          Cole essa URL no cadastro de webhook do ASAAS. Ao
+                          salvar a integração, o sistema também tenta fazer esse
+                          vínculo automaticamente via API.
+                        </Typography>
+
+                        {integracao.webhook_registered_at ? (
+                          <Alert severity="success">
+                            Webhook sincronizado em{" "}
+                            {formatAuditDateTime(
+                              integracao.webhook_registered_at,
+                            )}
+                            .
+                          </Alert>
+                        ) : (
+                          <Alert severity="info">
+                            O webhook ainda não foi confirmado. Você pode usar a
+                            URL acima para cadastrar manualmente no ASAAS.
+                          </Alert>
+                        )}
+
+                        {integracao.webhook_error ? (
+                          <Alert severity="warning">
+                            Registro automático do webhook:{" "}
+                            {integracao.webhook_error}
+                          </Alert>
+                        ) : null}
+                      </Stack>
+                    ) : null}
+
+                    {provedor === "resend" ? (
+                      <Stack spacing={2}>
+                        <TextField
+                          fullWidth
+                          label="E-mail remetente"
+                          placeholder="Ex.: Café Essências do Brasil <financeiro@empresa.com>"
+                          value={integracao.from_email}
+                          onChange={handleIntegracaoField(
+                            "resend",
+                            "from_email",
+                          )}
+                          disabled={bloqueado}
+                        />
+                        <TextField
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          label="Destinatários dos lembretes"
+                          placeholder="Separe por vírgula, ponto e vírgula ou quebra de linha"
+                          value={integracao.notification_recipients_text}
+                          onChange={handleIntegracaoField(
+                            "resend",
+                            "notification_recipients_text",
+                          )}
+                          disabled={bloqueado}
+                        />
+                      </Stack>
+                    ) : null}
+                  </Stack>
+                </Paper>
               );
             })}
           </Stack>
@@ -875,7 +923,9 @@ const ConfiguracaoEmpresaPage = () => {
                 label="Origem (Ref)"
                 placeholder="Ex.: 2b5f... ou crp-0004"
                 value={codigoAuditoriaInput}
-                onChange={(event) => setCodigoAuditoriaInput(event.target.value)}
+                onChange={(event) =>
+                  setCodigoAuditoriaInput(event.target.value)
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -916,7 +966,11 @@ const ConfiguracaoEmpresaPage = () => {
                       </Typography>
                       <Stack spacing={0.5}>
                         {auditoriaResumo.map(([label, total]) => (
-                          <Typography key={label} variant="body2" color="text.secondary">
+                          <Typography
+                            key={label}
+                            variant="body2"
+                            color="text.secondary"
+                          >
                             {label}: {total}
                           </Typography>
                         ))}
@@ -950,8 +1004,9 @@ const ConfiguracaoEmpresaPage = () => {
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           Vínculo:{" "}
-                          {auditFieldLabels[registro.matchedField] || registro.matchedField} ={" "}
-                          {registro.matchedValue}
+                          {auditFieldLabels[registro.matchedField] ||
+                            registro.matchedField}{" "}
+                          = {registro.matchedValue}
                         </Typography>
 
                         <Box
@@ -993,184 +1048,6 @@ const ConfiguracaoEmpresaPage = () => {
             </Typography>
             {swaggerErro ? <Alert severity="error">{swaggerErro}</Alert> : null}
             <Box ref={swaggerContainerRef} sx={{ minHeight: 560 }} />
-          </Stack>
-        </Paper>
-      ) : null}
-
-      {tab === "feedback" ? (
-        <Paper sx={{ p: 3 }}>
-          <Stack spacing={2}>
-            <Typography variant="body2" color="text.secondary">
-              Registre sugestões e pendências com data, descrição obrigatória e
-              print opcional (anexo em base64).
-            </Typography>
-
-            <Stack
-              direction={{ xs: "column", md: "row" }}
-              spacing={1.5}
-              justifyContent="space-between"
-              alignItems={{ xs: "stretch", md: "center" }}
-            >
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                <Button
-                  variant={feedbackNovoAberto ? "outlined" : "contained"}
-                  onClick={() =>
-                    feedbackNovoAberto
-                      ? handleFecharNovoFeedback()
-                      : setFeedbackNovoAberto(true)
-                  }
-                >
-                  {feedbackNovoAberto ? "Cancelar" : "Novo Feedback"}
-                </Button>
-                <FormControl sx={{ minWidth: 220 }} size="small">
-                  <InputLabel id="feedback-status-label">Filtrar status</InputLabel>
-                  <Select
-                    labelId="feedback-status-label"
-                    label="Filtrar status"
-                    value={feedbackFiltroStatus}
-                    onChange={(event) => setFeedbackFiltroStatus(event.target.value)}
-                  >
-                    <MenuItem value="todos">Todos</MenuItem>
-                    <MenuItem value="programado">Programado</MenuItem>
-                    <MenuItem value="finalizado">Finalizado</MenuItem>
-                  </Select>
-                </FormControl>
-              </Stack>
-              {feedbackAdminMode ? (
-                <Chip label="Modo admin ativo" color="info" variant="outlined" />
-              ) : null}
-            </Stack>
-
-            {feedbackNovoAberto ? (
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Stack spacing={2}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={3}>
-                      <TextField
-                        fullWidth
-                        type="date"
-                        label="Data"
-                        InputLabelProps={{ shrink: true }}
-                        value={novoFeedback.data}
-                        onChange={handleNovoFeedbackField("data")}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField
-                        fullWidth
-                        label="Nome da página"
-                        placeholder="Ex.: Configuração da Empresa"
-                        value={novoFeedback.nome_pagina}
-                        onChange={handleNovoFeedbackField("nome_pagina")}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={5}>
-                      <Button component="label" variant="outlined" fullWidth>
-                        {novoFeedback.anexo_nome
-                          ? `Anexo: ${novoFeedback.anexo_nome}`
-                          : "Selecionar print (opcional)"}
-                        <input
-                          type="file"
-                          hidden
-                          accept="image/*"
-                          onChange={handleNovoFeedbackAnexo}
-                        />
-                      </Button>
-                    </Grid>
-                  </Grid>
-                  <TextField
-                    fullWidth
-                    multiline
-                    minRows={3}
-                    label="Descrição *"
-                    placeholder="Descreva o feedback..."
-                    value={novoFeedback.descricao}
-                    onChange={handleNovoFeedbackField("descricao")}
-                  />
-                  <Box>
-                    <Button variant="contained" onClick={handleSalvarNovoFeedback}>
-                      Salvar feedback
-                    </Button>
-                  </Box>
-                </Stack>
-              </Paper>
-            ) : null}
-
-            {feedbackCarregando ? (
-              <Alert severity="info">Carregando feedbacks...</Alert>
-            ) : null}
-
-            {!feedbackCarregando && !feedbackItens.length ? (
-              <Alert severity="info">
-                Nenhum feedback encontrado para o filtro selecionado.
-              </Alert>
-            ) : null}
-
-            <Stack spacing={1.5}>
-              {feedbackItens.map((item) => {
-                const statusMeta =
-                  FEEDBACK_STATUS_OPTIONS[item.status] ||
-                  FEEDBACK_STATUS_OPTIONS.PROGRAMADO;
-                return (
-                  <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
-                    <Stack spacing={1}>
-                      <Stack
-                        direction={{ xs: "column", md: "row" }}
-                        justifyContent="space-between"
-                        alignItems={{ xs: "flex-start", md: "center" }}
-                        spacing={1}
-                      >
-                        <Typography variant="subtitle1" fontWeight={700}>
-                          {item.nome_pagina || "Página não informada"}
-                        </Typography>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Chip
-                            size="small"
-                            label={statusMeta.label}
-                            color={statusMeta.color}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            Data: {toDateInputValue(item.data)}
-                          </Typography>
-                        </Stack>
-                      </Stack>
-
-                      <Typography variant="body2">{item.descricao}</Typography>
-
-                      {item.anexo_base64 ? (
-                        <Box>
-                          <Button
-                            component="a"
-                            href={item.anexo_base64}
-                            target="_blank"
-                            rel="noreferrer"
-                            size="small"
-                          >
-                            Ver anexo
-                          </Button>
-                        </Box>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          Sem anexo.
-                        </Typography>
-                      )}
-
-                      {feedbackAdminMode && item.status === "PROGRAMADO" ? (
-                        <Box>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            onClick={() => handleFinalizarFeedback(item.id)}
-                          >
-                            Finalizar
-                          </Button>
-                        </Box>
-                      ) : null}
-                    </Stack>
-                  </Paper>
-                );
-              })}
-            </Stack>
           </Stack>
         </Paper>
       ) : null}

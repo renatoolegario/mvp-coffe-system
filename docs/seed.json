@@ -1,6 +1,6 @@
 {
   "meta": {
-    "seed_version": "2.1.0",
+    "seed_version": "2.2.0",
     "generated_at": "2026-03-04T12:00:00-03:00",
     "currency": "BRL",
     "timezone": "America/Sao_Paulo"
@@ -9,7 +9,7 @@
     {
       "id": "e4cf26b5-4f59-4687-839a-35f5db1fbb7c",
       "nome": "Administrador Geral",
-      "email": "admin@mvpcoffee.local",
+      "email": "admin@essenciasdobrasil.local",
       "senha_hash": "Admin@123",
       "perfil": 1,
       "ativo": true,
@@ -18,7 +18,7 @@
     {
       "id": "d5b32119-cdfd-43be-a3f2-42b3ec7f4f8d",
       "nome": "Gestor Financeiro",
-      "email": "financeiro@mvpcoffee.local",
+      "email": "financeiro@essenciasdobrasil.local",
       "senha_hash": "Finance@123",
       "perfil": 1,
       "ativo": true,
@@ -27,7 +27,7 @@
     {
       "id": "0fa511f4-ce90-4be0-bf91-b2da4e8c0fa2",
       "nome": "Operador Estoque",
-      "email": "estoque@mvpcoffee.local",
+      "email": "estoque@essenciasdobrasil.local",
       "senha_hash": "Estoque@123",
       "perfil": 2,
       "ativo": true,
@@ -36,7 +36,7 @@
     {
       "id": "74fe6f35-6c22-4f8d-8676-6ddfd078f391",
       "nome": "Operador Comercial",
-      "email": "comercial@mvpcoffee.local",
+      "email": "comercial@essenciasdobrasil.local",
       "senha_hash": "Comercial@123",
       "perfil": 2,
       "ativo": true,
@@ -47,10 +47,11 @@
     {
       "id": "2d6b6eca-6db6-44f3-beb9-676fc850ca4d",
       "nome": "Cliente Balcão",
-      "email": "balcao@mvpcoffee.local",
+      "email": "balcao@essenciasdobrasil.local",
       "cpf_cnpj": "487.123.220-40",
       "telefone": "",
       "endereco": "",
+      "data_aniversario": "",
       "ativo": true,
       "protegido": true,
       "criado_em": "2026-01-01T10:00:00"
@@ -58,10 +59,11 @@
     {
       "id": "7a032fb3-bca9-4ab7-bc2f-8bd4b930c560",
       "nome": "Cafeteria Central",
-      "email": "cafeteria.central@mvpcafe.local",
+      "email": "cafeteria.central@essenciasdobrasil.local",
       "cpf_cnpj": "12.345.678/0001-95",
       "telefone": "(34) 99999-1001",
       "endereco": "Uberlândia - MG",
+      "data_aniversario": "1991-05-12",
       "ativo": true,
       "protegido": false,
       "criado_em": "2026-01-10T10:00:00"
@@ -69,10 +71,11 @@
     {
       "id": "0e491fac-9228-4258-9f2d-98f2189c1828",
       "nome": "Empório do Café",
-      "email": "emporio.cafe@mvpcafe.local",
+      "email": "emporio.cafe@essenciasdobrasil.local",
       "cpf_cnpj": "45.111.222/0001-10",
       "telefone": "(34) 99999-1002",
       "endereco": "Patos de Minas - MG",
+      "data_aniversario": "1988-11-03",
       "ativo": true,
       "protegido": false,
       "criado_em": "2026-01-12T10:00:00"
@@ -80,10 +83,11 @@
     {
       "id": "d1d3f905-bd89-4f9e-ba8d-5f199799901a",
       "nome": "Mercado Santo Grão",
-      "email": "mercado.grao@mvpcafe.local",
+      "email": "mercado.grao@essenciasdobrasil.local",
       "cpf_cnpj": "09.888.777/0001-09",
       "telefone": "(34) 99999-1003",
       "endereco": "Araxá - MG",
+      "data_aniversario": "1994-08-27",
       "ativo": true,
       "protegido": false,
       "criado_em": "2026-01-15T10:00:00"
@@ -93,7 +97,7 @@
     {
       "id": "b341d2ec-2046-42ef-90ea-f0c0f7fa3070",
       "razao_social": "AgroInsumos Minas",
-      "email": "agroinsumos@mvpcafe.local",
+      "email": "agroinsumos@essenciasdobrasil.local",
       "cpf_cnpj": "11.222.333/0001-81",
       "telefone": "(34) 99999-2001",
       "endereco": "Uberaba - MG",
@@ -103,7 +107,7 @@
     {
       "id": "f33f5fa3-3d30-45d9-92d0-9fd77995a51b",
       "razao_social": "Embalagens Brasil",
-      "email": "embalagens@mvpcafe.local",
+      "email": "embalagens@essenciasdobrasil.local",
       "cpf_cnpj": "22.333.444/0001-81",
       "telefone": "(34) 99999-2002",
       "endereco": "Franca - SP",
@@ -113,7 +117,7 @@
     {
       "id": "87937fce-e3b0-4bda-87f8-aab0ca2314a7",
       "razao_social": "Transportes Cerrado",
-      "email": "transportes.cerrado@mvpcafe.local",
+      "email": "transportes.cerrado@essenciasdobrasil.local",
       "cpf_cnpj": "33.444.555/0001-81",
       "telefone": "(34) 99999-2003",
       "endereco": "Ribeirão Preto - SP",
@@ -123,7 +127,7 @@
     {
       "id": "276e3a27-e271-4479-85c8-9fee64ea3c40",
       "razao_social": "Logística Serra Azul",
-      "email": "logistica.serra.azul@mvpcafe.local",
+      "email": "logistica.serra.azul@essenciasdobrasil.local",
       "cpf_cnpj": "66.777.888/0001-81",
       "telefone": "(34) 99999-2004",
       "endereco": "Uberlândia - MG",

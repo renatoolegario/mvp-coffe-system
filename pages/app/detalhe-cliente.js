@@ -4,7 +4,9 @@ import {
   Chip,
   Drawer,
   IconButton,
+  MenuItem,
   Paper,
+  Snackbar,
   Stack,
   Table,
   TableBody,
@@ -15,12 +17,13 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Close, DownloadRounded } from "@mui/icons-material";
-import { useMemo, useState } from "react";
+import { Close, DownloadRounded, OpenInNewRounded } from "@mui/icons-material";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
+import { authenticatedFetch } from "../../hooks/useSession";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { downloadWorkbookXlsx } from "../../utils/xlsx";
 
@@ -43,7 +46,38 @@ const toFileSafeText = (value) => {
   return safe || "cliente";
 };
 
-const boolLabel = (value) => (value ? "Sim" : "Nao");
+const boolLabel = (value) => (value ? "Sim" : "Não");
+
+const buildClienteForm = (cliente) => ({
+  id: cliente?.id || "",
+  nome: cliente?.nome || "",
+  cpf_cnpj: cliente?.cpf_cnpj || "",
+  telefone: cliente?.telefone || "",
+  endereco: cliente?.endereco || "",
+  data_aniversario: cliente?.data_aniversario || "",
+});
+
+const buildCobrancaForm = (cliente) => ({
+  descricao: cliente?.nome ? `Cobrança manual - ${cliente.nome}` : "",
+  value: "",
+  due_date: exportDate(),
+  billing_type: "BOLETO",
+  venda_id: "",
+});
+
+const readApiBody = async (response) => {
+  try {
+    return await response.json();
+  } catch (error) {
+    return {};
+  }
+};
+
+const canDeleteCharge = (charge) =>
+  !charge?.deleted &&
+  !["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "REFUNDED", "DELETED"].includes(
+    String(charge?.status || "").toUpperCase(),
+  );
 
 const DetalheClientePage = () => {
   const router = useRouter();
@@ -52,9 +86,11 @@ const DetalheClientePage = () => {
   const vendaItens = useDataStore((state) => state.vendaItens || []);
   const contasReceber = useDataStore((state) => state.contasReceber);
   const parcelas = useDataStore((state) => state.contasReceberParcelas);
+  const asaasCobrancas = useDataStore((state) => state.asaasCobrancas || []);
   const vendaDetalhes = useDataStore((state) => state.vendaDetalhes || []);
   const insumos = useDataStore((state) => state.insumos || []);
   const updateCliente = useDataStore((state) => state.updateCliente);
+  const loadData = useDataStore((state) => state.loadData);
 
   const [search, setSearch] = useState("");
   const [drawer, setDrawer] = useState({ type: null, clienteId: null });
@@ -64,7 +100,16 @@ const DetalheClientePage = () => {
     cpf_cnpj: "",
     telefone: "",
     endereco: "",
+    data_aniversario: "",
   });
+  const [cobrancaForm, setCobrancaForm] = useState(buildCobrancaForm(null));
+  const [asaasConfigurado, setAsaasConfigurado] = useState(false);
+  const [feedback, setFeedback] = useState({
+    open: false,
+    severity: "success",
+    message: "",
+  });
+  const [loadingAction, setLoadingAction] = useState(false);
 
   const clientesFiltrados = useMemo(() => {
     const termo = search.trim().toLowerCase();
@@ -141,6 +186,47 @@ const DetalheClientePage = () => {
     return mapa;
   }, [selectedClienteVendas]);
 
+  const itensByVendaId = useMemo(() => {
+    const mapa = new Map();
+    vendaItens.forEach((item) => {
+      if (!item.venda_id) return;
+      const atual = mapa.get(item.venda_id) || [];
+      atual.push(item);
+      mapa.set(item.venda_id, atual);
+    });
+    return mapa;
+  }, [vendaItens]);
+
+  const eventosByVendaId = useMemo(() => {
+    const mapa = new Map();
+    historicoDrawer.forEach((evento) => {
+      const atual = mapa.get(evento.venda.id) || [];
+      atual.push(evento);
+      mapa.set(evento.venda.id, atual);
+    });
+    return mapa;
+  }, [historicoDrawer]);
+
+  const parcelasByVendaId = useMemo(() => {
+    const mapa = new Map();
+    parcelasDrawer.forEach((parcela) => {
+      const atual = mapa.get(parcela.venda.id) || [];
+      atual.push(parcela);
+      mapa.set(parcela.venda.id, atual);
+    });
+    return mapa;
+  }, [parcelasDrawer]);
+
+  const cobrancasCliente = useMemo(() => {
+    if (!selectedCliente) return [];
+
+    return asaasCobrancas
+      .filter((cobranca) => cobranca.cliente_id === selectedCliente.id)
+      .sort((a, b) =>
+        String(b.due_date || "").localeCompare(String(a.due_date || "")),
+      );
+  }, [asaasCobrancas, selectedCliente]);
+
   const handleExportClientes = () => {
     if (!clientes.length) return;
 
@@ -152,6 +238,9 @@ const DetalheClientePage = () => {
         cpf_cnpj: cliente.cpf_cnpj || "",
         telefone: cliente.telefone || "",
         endereco: cliente.endereco || "",
+        data_aniversario: cliente.data_aniversario
+          ? formatDate(cliente.data_aniversario)
+          : "",
         ativo: boolLabel(cliente.ativo),
         criado_em: formatDate(cliente.criado_em),
       }));
@@ -167,6 +256,7 @@ const DetalheClientePage = () => {
             { key: "cpf_cnpj", header: "CPF/CNPJ" },
             { key: "telefone", header: "Telefone" },
             { key: "endereco", header: "Endereco" },
+            { key: "data_aniversario", header: "Data aniversario" },
             { key: "ativo", header: "Ativo" },
             { key: "criado_em", header: "Data de cadastro" },
           ],
@@ -285,13 +375,13 @@ const DetalheClientePage = () => {
             { key: "data_entrega", header: "Data entrega" },
             { key: "desconto_tipo", header: "Tipo desconto" },
             { key: "desconto_valor", header: "Valor desconto" },
-            { key: "acrescimo_tipo", header: "Tipo acrescimo" },
-            { key: "acrescimo_valor", header: "Valor acrescimo" },
+            { key: "acrescimo_tipo", header: "Tipo acréscimo" },
+            { key: "acrescimo_valor", header: "Valor acréscimo" },
             { key: "conta_receber_id", header: "Conta a receber" },
             { key: "parcelas_abertas", header: "Parcelas abertas" },
             { key: "parcelas_recebidas", header: "Parcelas recebidas" },
             { key: "total_recebido", header: "Total recebido" },
-            { key: "observacoes", header: "Observacoes" },
+            { key: "observacoes", header: "Observações" },
           ],
           rows: vendasRows,
         },
@@ -303,7 +393,7 @@ const DetalheClientePage = () => {
             { key: "produto", header: "Produto" },
             { key: "quantidade_informada", header: "Quantidade informada" },
             { key: "quantidade_kg", header: "Quantidade kg" },
-            { key: "preco_unitario", header: "Preco unitario" },
+            { key: "preco_unitario", header: "Preço unitário" },
             { key: "valor_total_item", header: "Valor total item" },
           ],
           rows: itensRows,
@@ -322,8 +412,8 @@ const DetalheClientePage = () => {
             { key: "forma_real", header: "Forma real" },
             { key: "data_recebimento", header: "Data recebimento" },
             { key: "origem_recebimento", header: "Origem recebimento" },
-            { key: "motivo_diferenca", header: "Motivo diferenca" },
-            { key: "acao_diferenca", header: "Acao diferenca" },
+            { key: "motivo_diferenca", header: "Motivo da diferença" },
+            { key: "acao_diferenca", header: "Ação da diferença" },
           ],
           rows: parcelasRows,
         },
@@ -332,10 +422,10 @@ const DetalheClientePage = () => {
           columns: [
             { key: "evento_id", header: "ID evento" },
             { key: "venda_id", header: "ID venda" },
-            { key: "data_evento", header: "Data evento" },
-            { key: "tipo_evento", header: "Tipo evento" },
+            { key: "data_evento", header: "Data do evento" },
+            { key: "tipo_evento", header: "Tipo de evento" },
             { key: "valor", header: "Valor" },
-            { key: "descricao", header: "Descricao" },
+            { key: "descricao", header: "Descrição" },
           ],
           rows: eventosRows,
         },
@@ -379,7 +469,7 @@ const DetalheClientePage = () => {
             { key: "data_venda", header: "Data venda origem" },
             { key: "valor_venda", header: "Valor da venda" },
             { key: "parcela_id", header: "ID parcela" },
-            { key: "parcela_num", header: "Numero parcela" },
+            { key: "parcela_num", header: "Número da parcela" },
             { key: "status", header: "Status" },
             { key: "vencimento", header: "Vencimento" },
             { key: "valor_programado", header: "Valor programado" },
@@ -394,14 +484,14 @@ const DetalheClientePage = () => {
               header: "Forma recebimento real",
             },
             { key: "origem_recebimento", header: "Origem recebimento" },
-            { key: "motivo_diferenca", header: "Motivo diferenca" },
-            { key: "acao_diferenca", header: "Acao diferenca" },
+            { key: "motivo_diferenca", header: "Motivo da diferença" },
+            { key: "acao_diferenca", header: "Ação da diferença" },
             {
               key: "fornecedor_destino_id",
               header: "Fornecedor destino (quando houver)",
             },
             { key: "comprovante_url", header: "Comprovante URL" },
-            { key: "observacao_recebimento", header: "Observacao recebimento" },
+            { key: "observacao_recebimento", header: "Observação do recebimento" },
           ],
           rows,
         },
@@ -411,14 +501,47 @@ const DetalheClientePage = () => {
 
   const handleOpenDrawer = (type, cliente) => {
     setDrawer({ type, clienteId: cliente.id });
-    setClienteForm({
-      id: cliente.id,
-      nome: cliente.nome || "",
-      cpf_cnpj: cliente.cpf_cnpj || "",
-      telefone: cliente.telefone || "",
-      endereco: cliente.endereco || "",
+    setClienteForm(buildClienteForm(cliente));
+    if (type === "cobrancas") {
+      setCobrancaForm(buildCobrancaForm(cliente));
+    }
+  };
+
+  const handleVerMaisHistorico = (vendaId) => {
+    if (!selectedCliente || !vendaId) return;
+
+    router.push({
+      pathname: "/app/detalhe-compra-cliente",
+      query: {
+        cliente_id: selectedCliente.id,
+        venda_id: vendaId,
+        drawer: "historico",
+      },
     });
   };
+
+  useEffect(() => {
+    if (!router.isReady) return;
+
+    const drawerType =
+      typeof router.query.drawer === "string" ? router.query.drawer : null;
+    const clienteId =
+      typeof router.query.cliente_id === "string" ? router.query.cliente_id : null;
+
+    if (!drawerType || !clienteId) return;
+    if (!["cadastro", "historico", "parcelas", "cobrancas"].includes(drawerType))
+      return;
+
+    const cliente = clientes.find((item) => item.id === clienteId);
+    if (!cliente) return;
+
+    setDrawer((atual) =>
+      atual.type === drawerType && atual.clienteId === clienteId
+        ? atual
+        : { type: drawerType, clienteId },
+    );
+    setClienteForm(buildClienteForm(cliente));
+  }, [router.isReady, router.query.drawer, router.query.cliente_id, clientes]);
 
   const handleIrParaContasReceber = (parcelaId) => {
     if (!selectedCliente || !parcelaId) return;
@@ -430,6 +553,154 @@ const DetalheClientePage = () => {
         parcela_id: parcelaId,
       },
     });
+  };
+
+  useEffect(() => {
+    const loadIntegracoes = async () => {
+      try {
+        const response = await authenticatedFetch(
+          "/api/v1/configuracao-empresa/integracoes",
+        );
+        const data = await readApiBody(response);
+        if (!response.ok) return;
+
+        const asaas = (data.integracoes || []).find(
+          (item) => item.provedor === "asaas",
+        );
+        setAsaasConfigurado(Boolean(asaas?.configurado));
+      } catch (error) {
+        setAsaasConfigurado(false);
+      }
+    };
+
+    loadIntegracoes();
+  }, []);
+
+  useEffect(() => {
+    if (drawer.type !== "cobrancas" || !selectedCliente) return;
+    setCobrancaForm(buildCobrancaForm(selectedCliente));
+  }, [drawer.type, selectedCliente]);
+
+  const handleSyncClienteAsaas = async () => {
+    if (!selectedCliente) return;
+    setLoadingAction(true);
+
+    try {
+      const response = await authenticatedFetch(
+        "/api/v1/integracoes/asaas/clientes/sincronizar",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cliente_id: selectedCliente.id }),
+        },
+      );
+      const data = await readApiBody(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Não foi possível sincronizar o cliente.");
+      }
+
+      await loadData();
+      setFeedback({
+        open: true,
+        severity: "success",
+        message: `Cliente sincronizado com ASAAS: ${data.asaas_customer_id}.`,
+      });
+    } catch (error) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: error.message || "Erro ao sincronizar cliente no ASAAS.",
+      });
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleCriarCobrancaManual = async () => {
+    if (!selectedCliente) return;
+
+    const value = Number(cobrancaForm.value) || 0;
+    if (value <= 0 || !cobrancaForm.due_date) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: "Informe valor e vencimento válidos para a cobrança.",
+      });
+      return;
+    }
+
+    setLoadingAction(true);
+    try {
+      const response = await authenticatedFetch(
+        "/api/v1/integracoes/asaas/cobrancas",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cliente_id: selectedCliente.id,
+            venda_id: cobrancaForm.venda_id || null,
+            billing_type: cobrancaForm.billing_type,
+            due_date: cobrancaForm.due_date,
+            value,
+            descricao: cobrancaForm.descricao,
+            origem_tipo: cobrancaForm.venda_id ? "VENDA" : "MANUAL",
+          }),
+        },
+      );
+      const data = await readApiBody(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Não foi possível criar a cobrança.");
+      }
+
+      await loadData();
+      setCobrancaForm(buildCobrancaForm(selectedCliente));
+      setFeedback({
+        open: true,
+        severity: "success",
+        message: "Cobrança manual criada com sucesso no ASAAS.",
+      });
+    } catch (error) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: error.message || "Erro ao criar cobrança manual no ASAAS.",
+      });
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleRemoverCobranca = async (chargeId) => {
+    if (!chargeId) return;
+    setLoadingAction(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `/api/v1/integracoes/asaas/cobrancas/${chargeId}`,
+        {
+          method: "DELETE",
+        },
+      );
+      const data = await readApiBody(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Não foi possível remover a cobrança.");
+      }
+
+      await loadData();
+      setFeedback({
+        open: true,
+        severity: "success",
+        message: "Cobrança removida com sucesso do ASAAS.",
+      });
+    } catch (error) {
+      setFeedback({
+        open: true,
+        severity: "error",
+        message: error.message || "Erro ao remover cobrança do ASAAS.",
+      });
+    } finally {
+      setLoadingAction(false);
+    }
   };
 
   return (
@@ -466,6 +737,7 @@ const DetalheClientePage = () => {
                   <TableCell>Cliente</TableCell>
                   <TableCell>CPF/CNPJ</TableCell>
                   <TableCell>Telefone</TableCell>
+                  <TableCell>Data aniversário</TableCell>
                   <TableCell align="right">Ações</TableCell>
                 </TableRow>
               </TableHead>
@@ -475,6 +747,7 @@ const DetalheClientePage = () => {
                     <TableCell>{cliente.nome}</TableCell>
                     <TableCell>{cliente.cpf_cnpj || "-"}</TableCell>
                     <TableCell>{cliente.telefone || "-"}</TableCell>
+                    <TableCell>{formatDate(cliente.data_aniversario)}</TableCell>
                     <TableCell align="right">
                       <Stack
                         direction="row"
@@ -501,6 +774,13 @@ const DetalheClientePage = () => {
                           onClick={() => handleOpenDrawer("parcelas", cliente)}
                         >
                           Parcelas
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleOpenDrawer("cobrancas", cliente)}
+                        >
+                          Cobranças ASAAS
                         </Button>
                       </Stack>
                     </TableCell>
@@ -536,6 +816,7 @@ const DetalheClientePage = () => {
             {drawer.type === "cadastro" ? "Editar dados cadastrais" : null}
             {drawer.type === "historico" ? "Histórico de compras" : null}
             {drawer.type === "parcelas" ? "Parcelas do cliente" : null}
+            {drawer.type === "cobrancas" ? "Cobranças ASAAS" : null}
           </Typography>
 
           <Stack direction="row" spacing={1} alignItems="center">
@@ -602,6 +883,18 @@ const DetalheClientePage = () => {
               }
             />
             <TextField
+              label="Data de aniversário"
+              type="date"
+              value={clienteForm.data_aniversario}
+              onChange={(event) =>
+                setClienteForm((prev) => ({
+                  ...prev,
+                  data_aniversario: event.target.value,
+                }))
+              }
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
               label="Endereço"
               value={clienteForm.endereco}
               onChange={(event) =>
@@ -627,25 +920,37 @@ const DetalheClientePage = () => {
           <Stack spacing={2}>
             {selectedClienteVendas.map((venda) => (
               <Paper key={venda.id} variant="outlined" sx={{ p: 2 }}>
-                <Typography fontWeight={600}>
-                  Venda #{venda.id.slice(0, 8)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {formatDate(venda.data_venda)} • {formatCurrency(venda.valor_total)}
-                </Typography>
-              </Paper>
-            ))}
-
-            {historicoDrawer.map((evento) => (
-              <Paper key={evento.id} variant="outlined" sx={{ p: 2 }}>
-                <Typography fontWeight={600}>
-                  Ajuste: {evento.tipo_evento}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Venda #{evento.venda.id.slice(0, 8)} • {formatDate(evento.data_evento)} •{" "}
-                  {formatCurrency(evento.valor)}
-                </Typography>
-                <Typography variant="body2">{evento.descricao}</Typography>
+                <Stack spacing={1.2}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    spacing={1}
+                  >
+                    <Typography fontWeight={600}>Venda #{venda.id.slice(0, 8)}</Typography>
+                    <Chip
+                      label={venda.status_entrega || "PENDENTE"}
+                      size="small"
+                      color={venda.status_entrega === "ENTREGUE" ? "success" : "warning"}
+                    />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    {formatDate(venda.data_venda)} • {formatCurrency(venda.valor_total)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Itens: {(itensByVendaId.get(venda.id) || []).length} • Parcelas:{" "}
+                    {(parcelasByVendaId.get(venda.id) || []).length} • Eventos:{" "}
+                    {(eventosByVendaId.get(venda.id) || []).length}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<OpenInNewRounded />}
+                    onClick={() => handleVerMaisHistorico(venda.id)}
+                  >
+                    Ver mais
+                  </Button>
+                </Stack>
               </Paper>
             ))}
 
@@ -654,6 +959,195 @@ const DetalheClientePage = () => {
                 Este cliente ainda não possui compras registradas.
               </Alert>
             ) : null}
+          </Stack>
+        ) : null}
+
+        {drawer.type === "cobrancas" ? (
+          <Stack spacing={2}>
+            {!asaasConfigurado ? (
+              <Alert severity="warning">
+                A integração ASAAS ainda não está configurada em Configuração da
+                Empresa.
+              </Alert>
+            ) : null}
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.2}>
+                <Typography fontWeight={600}>Cliente sincronizado</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  ID ASAAS: {selectedCliente?.asaas_customer_id || "Ainda não sincronizado"}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleSyncClienteAsaas}
+                  disabled={!asaasConfigurado || loadingAction}
+                >
+                  {selectedCliente?.asaas_customer_id
+                    ? "Revalidar cliente no ASAAS"
+                    : "Sincronizar cliente no ASAAS"}
+                </Button>
+              </Stack>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Typography fontWeight={600}>Nova cobrança manual</Typography>
+                <TextField
+                  label="Descrição"
+                  value={cobrancaForm.descricao}
+                  onChange={(event) =>
+                    setCobrancaForm((prev) => ({
+                      ...prev,
+                      descricao: event.target.value,
+                    }))
+                  }
+                  fullWidth
+                />
+                <TextField
+                  label="Valor"
+                  type="number"
+                  value={cobrancaForm.value}
+                  onChange={(event) =>
+                    setCobrancaForm((prev) => ({
+                      ...prev,
+                      value: event.target.value,
+                    }))
+                  }
+                  fullWidth
+                />
+                <TextField
+                  label="Vencimento"
+                  type="date"
+                  value={cobrancaForm.due_date}
+                  onChange={(event) =>
+                    setCobrancaForm((prev) => ({
+                      ...prev,
+                      due_date: event.target.value,
+                    }))
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+                <TextField
+                  select
+                  label="Tipo de cobrança"
+                  value={cobrancaForm.billing_type}
+                  onChange={(event) =>
+                    setCobrancaForm((prev) => ({
+                      ...prev,
+                      billing_type: event.target.value,
+                    }))
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="BOLETO">Boleto</MenuItem>
+                  <MenuItem value="PIX">Pix</MenuItem>
+                  <MenuItem value="UNDEFINED">A definir</MenuItem>
+                </TextField>
+                <TextField
+                  select
+                  label="Vincular a uma venda (opcional)"
+                  value={cobrancaForm.venda_id}
+                  onChange={(event) =>
+                    setCobrancaForm((prev) => ({
+                      ...prev,
+                      venda_id: event.target.value,
+                    }))
+                  }
+                  fullWidth
+                >
+                  <MenuItem value="">Sem vínculo</MenuItem>
+                  {selectedClienteVendas.map((venda) => (
+                    <MenuItem key={venda.id} value={venda.id}>
+                      {`Venda #${venda.id.slice(0, 8)} • ${formatCurrency(
+                        venda.valor_total,
+                      )}`}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Button
+                  variant="contained"
+                  onClick={handleCriarCobrancaManual}
+                  disabled={!asaasConfigurado || loadingAction}
+                >
+                  Criar cobrança manual
+                </Button>
+              </Stack>
+            </Paper>
+
+            <Stack spacing={1.5}>
+              {cobrancasCliente.map((cobranca) => (
+                <Paper key={cobranca.id} variant="outlined" sx={{ p: 2 }}>
+                  <Stack spacing={1}>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
+                      <Typography fontWeight={600}>
+                        Cobrança {cobranca.asaas_payment_id || cobranca.id}
+                      </Typography>
+                      <Chip
+                        label={cobranca.status || "PENDING"}
+                        size="small"
+                        color={
+                          ["RECEIVED", "CONFIRMED"].includes(
+                            String(cobranca.status || "").toUpperCase(),
+                          )
+                            ? "success"
+                            : cobranca.deleted
+                              ? "default"
+                              : "warning"
+                        }
+                      />
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary">
+                      {formatDate(cobranca.due_date)} •{" "}
+                      {formatCurrency(cobranca.value)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Tipo: {cobranca.billing_type || "-"} • Venda:{" "}
+                      {cobranca.venda_id ? `#${cobranca.venda_id.slice(0, 8)}` : "Sem vínculo"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {cobranca.descricao || "Sem descrição"}
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      {cobranca.invoice_url ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          component="a"
+                          href={cobranca.invoice_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Abrir fatura
+                        </Button>
+                      ) : null}
+                      {canDeleteCharge(cobranca) ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => handleRemoverCobranca(cobranca.id)}
+                          disabled={loadingAction}
+                        >
+                          Remover cobrança
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  </Stack>
+                </Paper>
+              ))}
+
+              {!cobrancasCliente.length ? (
+                <Alert severity="info">
+                  Nenhuma cobrança ASAAS encontrada para este cliente.
+                </Alert>
+              ) : null}
+            </Stack>
           </Stack>
         ) : null}
 
@@ -703,6 +1197,20 @@ const DetalheClientePage = () => {
           </Stack>
         ) : null}
       </Drawer>
+
+      <Snackbar
+        open={feedback.open}
+        autoHideDuration={4500}
+        onClose={() => setFeedback((prev) => ({ ...prev, open: false }))}
+      >
+        <Alert
+          severity={feedback.severity}
+          onClose={() => setFeedback((prev) => ({ ...prev, open: false }))}
+          variant="filled"
+        >
+          {feedback.message}
+        </Alert>
+      </Snackbar>
     </AppLayout>
   );
 };

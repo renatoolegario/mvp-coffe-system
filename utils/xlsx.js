@@ -43,7 +43,7 @@ const toCellReference = (rowIndex, columnIndex) =>
 const toDisplayValue = (value) => {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString();
-  if (typeof value === "boolean") return value ? "Sim" : "Nao";
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
   return value;
 };
 

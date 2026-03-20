@@ -14,6 +14,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import StockStatusChip from "../../components/atomic/StockStatusChip";
 import { useDataStore } from "../../hooks/useDataStore";
 import { formatCurrency } from "../../utils/format";
 
@@ -46,6 +47,9 @@ const ProducaoPage = () => {
   const insumos = useDataStore((state) => state.insumos);
   const auxUnidades = useDataStore((state) => state.auxUnidades);
   const movimentoProducao = useDataStore((state) => state.movInsumos);
+  const getInsumoEstoqueStatus = useDataStore(
+    (state) => state.getInsumoEstoqueStatus,
+  );
   const createProducao = useDataStore((state) => state.createProducao);
 
   const [obsCriacao, setObsCriacao] = useState("");
@@ -65,16 +69,25 @@ const ProducaoPage = () => {
           ? getSaldo(movimentoProducao, detalhe.insumo_id)
           : 0;
         const custoUnitario = toNumber(insumo?.preco_kg);
+        const estoqueAtual = insumo
+          ? getInsumoEstoqueStatus(insumo.id, saldo)
+          : null;
+        const estoqueProjetado = insumo
+          ? getInsumoEstoqueStatus(insumo.id, saldo - quantidadeKg)
+          : null;
+
         return {
           ...detalhe,
           quantidadeKg,
           saldo,
           custoUnitario,
           custoTotal: quantidadeKg * custoUnitario,
+          estoqueAtual,
+          estoqueProjetado,
           semSaldo: quantidadeKg > saldo,
         };
       }),
-    [detalhes, insumos, movimentoProducao],
+    [detalhes, getInsumoEstoqueStatus, insumos, movimentoProducao],
   );
 
   const consumoTotalKg = detalhesComMetadados.reduce(
@@ -146,10 +159,16 @@ const ProducaoPage = () => {
             </Typography>
             <Box component="form" onSubmit={handleCriarProducao}>
               <Stack spacing={2}>
-                <Typography variant="subtitle1">Insumos enviados na OP</Typography>
+                <Typography variant="subtitle1">
+                  Insumos enviados na OP
+                </Typography>
 
                 {detalhesComMetadados.map((item, index) => (
-                  <Paper key={`detalhe-${index}`} variant="outlined" sx={{ p: 2 }}>
+                  <Paper
+                    key={`detalhe-${index}`}
+                    variant="outlined"
+                    sx={{ p: 2 }}
+                  >
                     <Grid container spacing={1.5} alignItems="center">
                       <Grid item xs={12} md={4}>
                         <TextField
@@ -157,7 +176,11 @@ const ProducaoPage = () => {
                           label="Insumo"
                           value={item.insumo_id}
                           onChange={(event) =>
-                            handleChangeDetalhe(index, "insumo_id", event.target.value)
+                            handleChangeDetalhe(
+                              index,
+                              "insumo_id",
+                              event.target.value,
+                            )
                           }
                           fullWidth
                         >
@@ -174,7 +197,11 @@ const ProducaoPage = () => {
                           label="Unidade"
                           value={item.unidade}
                           onChange={(event) =>
-                            handleChangeDetalhe(index, "unidade", event.target.value)
+                            handleChangeDetalhe(
+                              index,
+                              "unidade",
+                              event.target.value,
+                            )
                           }
                           fullWidth
                         >
@@ -197,7 +224,11 @@ const ProducaoPage = () => {
                           type="number"
                           value={item.quantidade}
                           onChange={(event) =>
-                            handleChangeDetalhe(index, "quantidade", event.target.value)
+                            handleChangeDetalhe(
+                              index,
+                              "quantidade",
+                              event.target.value,
+                            )
                           }
                           fullWidth
                         />
@@ -209,8 +240,49 @@ const ProducaoPage = () => {
                         <Typography variant="caption" color="text.secondary">
                           Saldo: {item.saldo.toFixed(2)} kg
                         </Typography>
+                        {item.estoqueAtual ? (
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            mt={0.8}
+                            flexWrap="wrap"
+                            useFlexGap
+                          >
+                            <StockStatusChip
+                              status={item.estoqueAtual.status_estoque}
+                              label={`Atual: ${item.estoqueAtual.status_label}`}
+                            />
+                            <StockStatusChip
+                              status={item.estoqueProjetado?.status_estoque}
+                              label={`Após OP: ${
+                                item.estoqueProjetado?.status_label ||
+                                "Sem faixa"
+                              }`}
+                            />
+                          </Stack>
+                        ) : null}
+                        {item.estoqueAtual ? (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
+                          >
+                            Cobertura:{" "}
+                            {item.estoqueAtual.percentual_estoque.toFixed(1)}%
+                            agora
+                            {" • "}
+                            {item.estoqueProjetado?.percentual_estoque?.toFixed(
+                              1,
+                            ) || "0.0"}
+                            % após a OP
+                          </Typography>
+                        ) : null}
                         {item.semSaldo ? (
-                          <Typography variant="caption" color="error.main" display="block">
+                          <Typography
+                            variant="caption"
+                            color="error.main"
+                            display="block"
+                          >
                             Estoque insuficiente
                           </Typography>
                         ) : null}
@@ -236,7 +308,9 @@ const ProducaoPage = () => {
                 <Button
                   variant="outlined"
                   startIcon={<AddIcon />}
-                  onClick={() => setDetalhes((prev) => [...prev, createDetalhe()])}
+                  onClick={() =>
+                    setDetalhes((prev) => [...prev, createDetalhe()])
+                  }
                 >
                   Adicionar insumo
                 </Button>
@@ -249,7 +323,11 @@ const ProducaoPage = () => {
                   rows={2}
                 />
 
-                <Button type="submit" variant="contained" disabled={!podeCriarProducao}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={!podeCriarProducao}
+                >
                   Criar produção (Pendente)
                 </Button>
               </Stack>
@@ -273,12 +351,16 @@ const ProducaoPage = () => {
                 ≈ {(retornoTeoricoKg / 23).toFixed(1)} sacos de 23kg
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Os produtos retornados serão definidos na tela de Retorno de Produção.
+                Os produtos retornados serão definidos na tela de Retorno de
+                Produção.
               </Typography>
               <Typography variant="body2" mt={2}>
-                Custo de envio: {" "}
+                Custo de envio:{" "}
                 {formatCurrency(
-                  detalhesComMetadados.reduce((acc, item) => acc + item.custoTotal, 0),
+                  detalhesComMetadados.reduce(
+                    (acc, item) => acc + item.custoTotal,
+                    0,
+                  ),
                 )}
               </Typography>
             </Stack>

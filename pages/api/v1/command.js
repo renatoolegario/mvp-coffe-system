@@ -2,6 +2,7 @@ import { query, withTransaction } from "../../../infra/database";
 import { decryptIfNeeded, encryptIfNeeded } from "../../../utils/crypto";
 import { toPerfilCode } from "../../../utils/profile";
 import { isValidCpfCnpj, normalizeCpfCnpj } from "../../../utils/document";
+import { normalizeImageBase64 } from "../../../utils/image";
 import { isAdmin, requireAuth } from "../../../infra/auth";
 import { randomUUID } from "crypto";
 
@@ -21,14 +22,18 @@ const getNumber = (value) => {
 };
 
 const normalizeContaPagarParcela = (parcela = {}, dataLancamento) => {
-  const statusRaw = String(parcela.status || "").trim().toUpperCase();
+  const statusRaw = String(parcela.status || "")
+    .trim()
+    .toUpperCase();
   const isPago = statusRaw === "PAGA" || statusRaw === "PAGO";
   return {
     ...parcela,
     vencimento: parcela.vencimento || dataLancamento,
     status: isPago ? "PAGA" : "ABERTA",
     data_pagamento: isPago ? parcela.data_pagamento || dataLancamento : null,
-    forma_pagamento: isPago ? parcela.forma_pagamento || "Entrada manual" : null,
+    forma_pagamento: isPago
+      ? parcela.forma_pagamento || "Entrada manual"
+      : null,
   };
 };
 
@@ -41,8 +46,7 @@ const normalizeProducaoResultado = (
   )
     .trim()
     .toUpperCase();
-  const tipoResultado =
-    tipoResultadoRaw === "EXTRA" ? "EXTRA" : "PROGRAMADO";
+  const tipoResultado = tipoResultadoRaw === "EXTRA" ? "EXTRA" : "PROGRAMADO";
 
   return {
     id: resultado.id || randomUUID(),
@@ -67,6 +71,25 @@ const normalizeEmail = (value) =>
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
+const normalizeDateOnly = (value) => {
+  const parsed = String(value || "").trim();
+  if (!parsed) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(parsed)) return null;
+
+  const [year, month, day] = parsed.split("-").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    utcDate.getUTCFullYear() !== year ||
+    utcDate.getUTCMonth() !== month - 1 ||
+    utcDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+};
+
 const findDuplicateInEncryptedColumn = async ({
   queryText,
   column,
@@ -81,25 +104,137 @@ const findDuplicateInEncryptedColumn = async ({
   );
 };
 
-const resolveUnidadeId = async (client, unidadeInput, fallbackCode = "KG") => {
-  const input = String(unidadeInput || "").trim().toUpperCase();
+const resolveUnidadeInfo = async (
+  client,
+  unidadeInput,
+  fallbackCode = "KG",
+) => {
+  const input = String(unidadeInput || "")
+    .trim()
+    .toUpperCase();
+
   if (/^\d+$/.test(input)) {
-    return Number(input);
+    const byId = await client.query(
+      "SELECT id, codigo, label FROM aux_unidade WHERE id = $1 LIMIT 1",
+      [Number(input)],
+    );
+    if (byId.rows[0]) {
+      return {
+        id: Number(byId.rows[0].id),
+        codigo: byId.rows[0].codigo,
+        label: byId.rows[0].label,
+      };
+    }
   }
 
   if (input) {
     const byCode = await client.query(
-      "SELECT id FROM aux_unidade WHERE codigo = $1 LIMIT 1",
+      "SELECT id, codigo, label FROM aux_unidade WHERE codigo = $1 LIMIT 1",
       [input],
     );
-    if (byCode.rows[0]) return Number(byCode.rows[0].id);
+    if (byCode.rows[0]) {
+      return {
+        id: Number(byCode.rows[0].id),
+        codigo: byCode.rows[0].codigo,
+        label: byCode.rows[0].label,
+      };
+    }
   }
 
   const fallback = await client.query(
-    "SELECT id FROM aux_unidade WHERE codigo = $1 LIMIT 1",
-    [fallbackCode],
+    "SELECT id, codigo, label FROM aux_unidade WHERE codigo = $1 LIMIT 1",
+    [
+      String(fallbackCode || "KG")
+        .trim()
+        .toUpperCase(),
+    ],
   );
-  return Number(fallback.rows[0]?.id || 1);
+
+  return {
+    id: Number(fallback.rows[0]?.id || 1),
+    codigo: fallback.rows[0]?.codigo || "KG",
+    label: fallback.rows[0]?.label || "Quilograma",
+  };
+};
+
+const resolveUnidadeId = async (client, unidadeInput, fallbackCode = "KG") => {
+  const unidadeInfo = await resolveUnidadeInfo(
+    client,
+    unidadeInput,
+    fallbackCode,
+  );
+  return unidadeInfo.id;
+};
+
+const normalizeInsumoPayload = (payload = {}, unidadeCodigo = "KG") => {
+  const nome = String(payload.nome || "").trim();
+  if (!nome) {
+    return { error: "Nome do insumo é obrigatório." };
+  }
+
+  const unidadeCodigoNormalizado = String(
+    unidadeCodigo || payload.unidade_codigo || payload.unidade || "KG",
+  )
+    .trim()
+    .toUpperCase();
+  const kgPorSaco =
+    unidadeCodigoNormalizado === "SACO" ? getNumber(payload.kg_por_saco) : 1;
+
+  if (unidadeCodigoNormalizado === "SACO" && kgPorSaco <= 0) {
+    return { error: "Informe quantos kg vêm em cada saco." };
+  }
+
+  const valorVenda = getNumber(payload.valor_venda);
+  if (valorVenda < 0) {
+    return { error: "O valor de venda não pode ser negativo." };
+  }
+
+  const descricao = String(payload.descricao || "").trim();
+  const imagemPaginaInicialBase64 = normalizeImageBase64(
+    payload.imagem_pagina_inicial_base64,
+  );
+
+  if (imagemPaginaInicialBase64 === null) {
+    return {
+      error:
+        "A imagem da página inicial precisa estar em formato base64 de imagem válido.",
+    };
+  }
+
+  const aparecerPaginaInicial = Boolean(payload.aparecer_pagina_inicial);
+  const podeSerVendido = aparecerPaginaInicial
+    ? true
+    : (payload.pode_ser_vendido ?? false);
+
+  if (aparecerPaginaInicial && !descricao) {
+    return {
+      error: "Informe uma descrição para exibir o produto na página inicial.",
+    };
+  }
+
+  if (aparecerPaginaInicial && valorVenda <= 0) {
+    return {
+      error:
+        "Informe um valor de venda maior que zero para exibir o produto na página inicial.",
+    };
+  }
+
+  return {
+    data: {
+      nome,
+      estoque_minimo: getNumber(payload.estoque_minimo),
+      kg_por_saco: kgPorSaco || 1,
+      ativo: payload.ativo,
+      criado_em: payload.criado_em,
+      pode_ser_insumo: payload.pode_ser_insumo ?? true,
+      pode_ser_produzivel: payload.pode_ser_produzivel ?? false,
+      pode_ser_vendido: podeSerVendido,
+      aparecer_pagina_inicial: aparecerPaginaInicial,
+      valor_venda: valorVenda,
+      imagem_pagina_inicial_base64: imagemPaginaInicialBase64 || "",
+      descricao,
+    },
+  };
 };
 
 export default async function handler(req, res) {
@@ -118,9 +253,9 @@ export default async function handler(req, res) {
       case "addUsuario":
         {
           if (!isAdmin(auth)) {
-            return res
-              .status(403)
-              .json({ error: "Apenas administradores podem cadastrar usuários." });
+            return res.status(403).json({
+              error: "Apenas administradores podem cadastrar usuários.",
+            });
           }
 
           const normalizedEmail = String(payload.email || "")
@@ -136,7 +271,7 @@ export default async function handler(req, res) {
           if (existingUserResult.rows[0]) {
             return res
               .status(409)
-              .json({ error: "Já existe um usuário com esse email." });
+              .json({ error: "Já existe um usuário com esse e-mail." });
           }
 
           await query(
@@ -171,25 +306,45 @@ export default async function handler(req, res) {
           const emailNormalizado = normalizeEmail(payload.email);
           const cpfCnpjRaw = String(payload.cpf_cnpj || "").trim();
           const cpfCnpjNormalizado = normalizeCpfCnpj(cpfCnpjRaw);
+          const dataAniversarioInput = String(
+            payload.data_aniversario || "",
+          ).trim();
+          const dataAniversario = normalizeDateOnly(dataAniversarioInput);
 
           if (!nome) {
-            return res.status(400).json({ error: "Nome do cliente é obrigatório." });
+            return res
+              .status(400)
+              .json({ error: "Nome do cliente é obrigatório." });
           }
           if (!emailNormalizado) {
-            return res.status(400).json({ error: "Email do cliente é obrigatório." });
+            return res
+              .status(400)
+              .json({ error: "E-mail do cliente é obrigatório." });
           }
           if (!isValidEmail(emailNormalizado)) {
-            return res.status(400).json({ error: "Email do cliente é inválido." });
+            return res
+              .status(400)
+              .json({ error: "E-mail do cliente é inválido." });
           }
           if (!cpfCnpjNormalizado) {
-            return res.status(400).json({ error: "CPF/CNPJ do cliente é obrigatório." });
+            return res
+              .status(400)
+              .json({ error: "CPF/CNPJ do cliente é obrigatório." });
           }
           if (!isValidCpfCnpj(cpfCnpjNormalizado)) {
-            return res.status(400).json({ error: "CPF/CNPJ do cliente é inválido." });
+            return res
+              .status(400)
+              .json({ error: "CPF/CNPJ do cliente é inválido." });
+          }
+          if (dataAniversarioInput && !dataAniversario) {
+            return res
+              .status(400)
+              .json({ error: "Data de aniversário do cliente é inválida." });
           }
 
           const emailJaExiste = await findDuplicateInEncryptedColumn({
-            queryText: "SELECT email FROM clientes WHERE COALESCE(email, '') <> ''",
+            queryText:
+              "SELECT email FROM clientes WHERE COALESCE(email, '') <> ''",
             column: "email",
             normalizedValue: emailNormalizado,
             normalizeValue: normalizeEmail,
@@ -197,7 +352,7 @@ export default async function handler(req, res) {
           if (emailJaExiste) {
             return res
               .status(409)
-              .json({ error: "Já existe um cliente com este email." });
+              .json({ error: "Já existe um cliente com este e-mail." });
           }
 
           const cpfCnpjJaExiste = await findDuplicateInEncryptedColumn({
@@ -214,7 +369,7 @@ export default async function handler(req, res) {
           }
 
           await query(
-            "INSERT INTO clientes (id, nome, email, cpf_cnpj, telefone, endereco, ativo, criado_em, protegido) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)",
+            "INSERT INTO clientes (id, nome, email, cpf_cnpj, telefone, endereco, data_aniversario, ativo, criado_em, protegido) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)",
             [
               payload.id,
               encryptIfNeeded(nome),
@@ -222,6 +377,7 @@ export default async function handler(req, res) {
               encryptIfNeeded(cpfCnpjRaw),
               encryptIfNeeded(payload.telefone),
               encryptIfNeeded(payload.endereco),
+              dataAniversario,
               payload.ativo,
               payload.criado_em,
             ],
@@ -230,25 +386,37 @@ export default async function handler(req, res) {
         break;
       case "updateCliente":
         {
+          const dataAniversarioInput = String(
+            payload.data_aniversario || "",
+          ).trim();
+          const dataAniversario = normalizeDateOnly(dataAniversarioInput);
+
           const clienteResult = await query(
             "SELECT protegido FROM clientes WHERE id = $1 LIMIT 1",
             [payload.id],
           );
           if (clienteResult.rows[0]?.protegido) {
             return res.status(403).json({
-              error: "Cliente Balcão é protegido e só pode ser alterado por migration.",
+              error:
+                "Cliente Balcão é protegido e só pode ser alterado por migration.",
             });
+          }
+          if (dataAniversarioInput && !dataAniversario) {
+            return res
+              .status(400)
+              .json({ error: "Data de aniversário do cliente é inválida." });
           }
         }
 
         await query(
-          "UPDATE clientes SET nome = $2, cpf_cnpj = $3, telefone = $4, endereco = $5 WHERE id = $1",
+          "UPDATE clientes SET nome = $2, cpf_cnpj = $3, telefone = $4, endereco = $5, data_aniversario = $6 WHERE id = $1",
           [
             payload.id,
             encryptIfNeeded(payload.nome),
             encryptIfNeeded(payload.cpf_cnpj),
             encryptIfNeeded(payload.telefone),
             encryptIfNeeded(payload.endereco),
+            normalizeDateOnly(payload.data_aniversario),
           ],
         );
         break;
@@ -258,6 +426,10 @@ export default async function handler(req, res) {
           const emailNormalizado = normalizeEmail(payload.email);
           const cpfCnpjRaw = String(payload.cpf_cnpj || "").trim();
           const cpfCnpjNormalizado = normalizeCpfCnpj(cpfCnpjRaw);
+          const dataAniversarioInput = String(
+            payload.data_aniversario || "",
+          ).trim();
+          const dataAniversario = normalizeDateOnly(dataAniversarioInput);
 
           if (!razaoSocial) {
             return res
@@ -267,12 +439,12 @@ export default async function handler(req, res) {
           if (!emailNormalizado) {
             return res
               .status(400)
-              .json({ error: "Email do fornecedor é obrigatório." });
+              .json({ error: "E-mail do fornecedor é obrigatório." });
           }
           if (!isValidEmail(emailNormalizado)) {
             return res
               .status(400)
-              .json({ error: "Email do fornecedor é inválido." });
+              .json({ error: "E-mail do fornecedor é inválido." });
           }
           if (!cpfCnpjNormalizado) {
             return res
@@ -284,9 +456,15 @@ export default async function handler(req, res) {
               .status(400)
               .json({ error: "CPF/CNPJ do fornecedor é inválido." });
           }
+          if (dataAniversarioInput && !dataAniversario) {
+            return res.status(400).json({
+              error: "Data de aniversário do fornecedor é inválida.",
+            });
+          }
 
           const emailJaExiste = await findDuplicateInEncryptedColumn({
-            queryText: "SELECT email FROM fornecedores WHERE COALESCE(email, '') <> ''",
+            queryText:
+              "SELECT email FROM fornecedores WHERE COALESCE(email, '') <> ''",
             column: "email",
             normalizedValue: emailNormalizado,
             normalizeValue: normalizeEmail,
@@ -294,7 +472,7 @@ export default async function handler(req, res) {
           if (emailJaExiste) {
             return res
               .status(409)
-              .json({ error: "Já existe um fornecedor com este email." });
+              .json({ error: "Já existe um fornecedor com este e-mail." });
           }
 
           const cpfCnpjJaExiste = await findDuplicateInEncryptedColumn({
@@ -311,7 +489,7 @@ export default async function handler(req, res) {
           }
 
           await query(
-            "INSERT INTO fornecedores (id, razao_social, email, cpf_cnpj, telefone, endereco, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            "INSERT INTO fornecedores (id, razao_social, email, cpf_cnpj, telefone, endereco, data_aniversario, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
             [
               payload.id,
               encryptIfNeeded(razaoSocial),
@@ -319,19 +497,30 @@ export default async function handler(req, res) {
               encryptIfNeeded(cpfCnpjRaw),
               encryptIfNeeded(payload.telefone),
               encryptIfNeeded(payload.endereco),
+              dataAniversario,
               payload.ativo,
               payload.criado_em,
             ],
           );
         }
         break;
-      case "addInsumo":
+      case "addInsumo": {
+        const unidadeInfo = await resolveUnidadeInfo(
+          { query },
+          payload.unidade_id || payload.unidade_codigo || payload.unidade,
+        );
+        const normalizedInsumo = normalizeInsumoPayload(
+          payload,
+          unidadeInfo.codigo,
+        );
+
+        if (normalizedInsumo.error) {
+          return res.status(400).json({ error: normalizedInsumo.error });
+        }
+
         await withTransaction(async (client) => {
-          const unidadeId = await resolveUnidadeId(
-            client,
-            payload.unidade_id || payload.unidade_codigo || payload.unidade,
-          );
-          const estoqueMinimoUnidadeId = unidadeId;
+          const unidadeId = unidadeInfo.id;
+          const estoqueMinimoUnidadeId = unidadeInfo.id;
 
           await client.query(
             `
@@ -345,33 +534,52 @@ export default async function handler(req, res) {
               pode_ser_insumo,
               pode_ser_produzivel,
               pode_ser_vendido,
+              aparecer_pagina_inicial,
+              valor_venda,
+              imagem_pagina_inicial_base64,
+              descricao,
               unidade_id,
               estoque_minimo_unidade_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             `,
             [
               payload.id,
-              payload.nome,
-              getNumber(payload.estoque_minimo),
-              getNumber(payload.kg_por_saco) || 1,
-              payload.ativo,
-              payload.criado_em,
-              payload.pode_ser_insumo ?? true,
-              payload.pode_ser_produzivel ?? false,
-              payload.pode_ser_vendido ?? false,
+              normalizedInsumo.data.nome,
+              normalizedInsumo.data.estoque_minimo,
+              normalizedInsumo.data.kg_por_saco,
+              normalizedInsumo.data.ativo,
+              normalizedInsumo.data.criado_em,
+              normalizedInsumo.data.pode_ser_insumo,
+              normalizedInsumo.data.pode_ser_produzivel,
+              normalizedInsumo.data.pode_ser_vendido,
+              normalizedInsumo.data.aparecer_pagina_inicial,
+              normalizedInsumo.data.valor_venda,
+              normalizedInsumo.data.imagem_pagina_inicial_base64,
+              normalizedInsumo.data.descricao,
               unidadeId,
               estoqueMinimoUnidadeId,
             ],
           );
         });
         break;
-      case "updateInsumo":
+      }
+      case "updateInsumo": {
+        const unidadeInfo = await resolveUnidadeInfo(
+          { query },
+          payload.unidade_id || payload.unidade_codigo || payload.unidade,
+        );
+        const normalizedInsumo = normalizeInsumoPayload(
+          payload,
+          unidadeInfo.codigo,
+        );
+
+        if (normalizedInsumo.error) {
+          return res.status(400).json({ error: normalizedInsumo.error });
+        }
+
         await withTransaction(async (client) => {
-          const unidadeId = await resolveUnidadeId(
-            client,
-            payload.unidade_id || payload.unidade_codigo || payload.unidade,
-          );
-          const estoqueMinimoUnidadeId = unidadeId;
+          const unidadeId = unidadeInfo.id;
+          const estoqueMinimoUnidadeId = unidadeInfo.id;
 
           await client.query(
             `
@@ -382,24 +590,33 @@ export default async function handler(req, res) {
                 pode_ser_insumo = $5,
                 pode_ser_produzivel = $6,
                 pode_ser_vendido = $7,
-                unidade_id = $8,
-                estoque_minimo_unidade_id = $9
+                aparecer_pagina_inicial = $8,
+                valor_venda = $9,
+                imagem_pagina_inicial_base64 = $10,
+                descricao = $11,
+                unidade_id = $12,
+                estoque_minimo_unidade_id = $13
             WHERE id = $1
             `,
             [
               payload.id,
-              payload.nome,
-              getNumber(payload.estoque_minimo),
-              getNumber(payload.kg_por_saco) || 1,
-              payload.pode_ser_insumo ?? true,
-              payload.pode_ser_produzivel ?? false,
-              payload.pode_ser_vendido ?? false,
+              normalizedInsumo.data.nome,
+              normalizedInsumo.data.estoque_minimo,
+              normalizedInsumo.data.kg_por_saco,
+              normalizedInsumo.data.pode_ser_insumo,
+              normalizedInsumo.data.pode_ser_produzivel,
+              normalizedInsumo.data.pode_ser_vendido,
+              normalizedInsumo.data.aparecer_pagina_inicial,
+              normalizedInsumo.data.valor_venda,
+              normalizedInsumo.data.imagem_pagina_inicial_base64,
+              normalizedInsumo.data.descricao,
               unidadeId,
               estoqueMinimoUnidadeId,
             ],
           );
         });
         break;
+      }
       case "addEntradaInsumos":
         await withTransaction(async (client) => {
           const dataLancamento =
@@ -407,13 +624,16 @@ export default async function handler(req, res) {
           const parcelasNormalizadas = (payload.parcelas || []).map((parcela) =>
             normalizeContaPagarParcela(parcela, dataLancamento),
           );
-          const parcelasPorConta = parcelasNormalizadas.reduce((acc, parcela) => {
-            const contaId = parcela.conta_pagar_id;
-            if (!contaId) return acc;
-            if (!acc.has(contaId)) acc.set(contaId, []);
-            acc.get(contaId).push(parcela);
-            return acc;
-          }, new Map());
+          const parcelasPorConta = parcelasNormalizadas.reduce(
+            (acc, parcela) => {
+              const contaId = parcela.conta_pagar_id;
+              if (!contaId) return acc;
+              if (!acc.has(contaId)) acc.set(contaId, []);
+              acc.get(contaId).push(parcela);
+              return acc;
+            },
+            new Map(),
+          );
 
           await insertRow(
             client,
@@ -654,21 +874,32 @@ export default async function handler(req, res) {
           const resultadosProcessados = [];
 
           for (const resultado of resultadosRetorno) {
-            const resultadoId = String(resultado.resultado_id || resultado.id || "");
+            const resultadoId = String(
+              resultado.resultado_id || resultado.id || "",
+            );
             const resultadoInsumoId = String(resultado.insumo_id || "");
             const podeTentarProgramado =
               resultado.tipo_resultado === "PROGRAMADO" ||
               Boolean(resultado.resultado_id);
 
             let programado = null;
-            if (podeTentarProgramado && resultadoId && programadoById.has(resultadoId)) {
+            if (
+              podeTentarProgramado &&
+              resultadoId &&
+              programadoById.has(resultadoId)
+            ) {
               programado = programadoById.get(resultadoId);
-            } else if (podeTentarProgramado && programadoByInsumo.has(resultadoInsumoId)) {
+            } else if (
+              podeTentarProgramado &&
+              programadoByInsumo.has(resultadoInsumoId)
+            ) {
               programado = programadoByInsumo.get(resultadoInsumoId);
             }
 
             if (programado) {
-              const quantidadePlanejadaAtual = getNumber(programado.quantidade_planejada_kg);
+              const quantidadePlanejadaAtual = getNumber(
+                programado.quantidade_planejada_kg,
+              );
               const quantidadePlanejadaEntrada = getNumber(
                 resultado.quantidade_planejada_kg,
               );
@@ -738,7 +969,8 @@ export default async function handler(req, res) {
 
           if (resultadosProgramados.length) {
             const pendentes = resultadosProgramados.filter(
-              (programado) => !programadosPreenchidos.has(String(programado.id)),
+              (programado) =>
+                !programadosPreenchidos.has(String(programado.id)),
             );
             if (pendentes.length) {
               throw new Error(
@@ -924,9 +1156,10 @@ export default async function handler(req, res) {
         break;
       case "cancelarProducao":
         await withTransaction(async (client) => {
-          await client.query("UPDATE producao SET status = 'CANCELADA' WHERE id = $1", [
-            payload.producao_id,
-          ]);
+          await client.query(
+            "UPDATE producao SET status = 'CANCELADA' WHERE id = $1",
+            [payload.producao_id],
+          );
           for (const estorno of payload.estornos || []) {
             await insertRow(
               client,
@@ -944,22 +1177,27 @@ export default async function handler(req, res) {
                 "producao_id",
                 "obs",
               ],
-              estorno
+              estorno,
             );
           }
         });
         break;
       case "addVenda":
         await withTransaction(async (client) => {
-          const clienteId = payload?.venda?.cliente_id || payload?.contaReceber?.cliente_id;
-          const tipoPagamento = String(payload?.venda?.tipo_pagamento || "A_VISTA").toUpperCase();
+          const clienteId =
+            payload?.venda?.cliente_id || payload?.contaReceber?.cliente_id;
+          const tipoPagamento = String(
+            payload?.venda?.tipo_pagamento || "A_VISTA",
+          ).toUpperCase();
           const clienteResult = await client.query(
             "SELECT protegido FROM clientes WHERE id = $1 LIMIT 1",
             [clienteId],
           );
           const clienteProtegido = Boolean(clienteResult.rows[0]?.protegido);
           if (clienteProtegido && tipoPagamento === "A_PRAZO") {
-            const error = new Error("Cliente Balcão só pode ser vendido à vista.");
+            const error = new Error(
+              "Cliente Balcão só pode ser vendido à vista.",
+            );
             error.statusCode = 400;
             throw error;
           }
@@ -1011,16 +1249,20 @@ export default async function handler(req, res) {
               "SELECT kg_por_saco FROM insumos WHERE id = $1 LIMIT 1",
               [item.insumo_id],
             );
-            const kgPorSacoInsumo = getNumber(insumoResult.rows[0]?.kg_por_saco) || 1;
+            const kgPorSacoInsumo =
+              getNumber(insumoResult.rows[0]?.kg_por_saco) || 1;
             const quantidadeInformada = getNumber(
               item.quantidade_informada ?? item.quantidade,
             );
-            const kgPorSacoItem = getNumber(item.kg_por_saco) || kgPorSacoInsumo;
+            const kgPorSacoItem =
+              getNumber(item.kg_por_saco) || kgPorSacoInsumo;
             const quantidadeKg =
               unidadeCodigo === "SACO"
                 ? quantidadeInformada * kgPorSacoItem
                 : quantidadeInformada;
-            const precoUnitario = getNumber(item.preco_unitario ?? item.preco_unit);
+            const precoUnitario = getNumber(
+              item.preco_unitario ?? item.preco_unit,
+            );
             const itemNormalizado = {
               ...item,
               unidade_id: unidadeId,
@@ -1028,7 +1270,9 @@ export default async function handler(req, res) {
               quantidade_informada: quantidadeInformada,
               kg_por_saco: unidadeCodigo === "SACO" ? kgPorSacoItem : null,
               preco_unitario: precoUnitario,
-              valor_total: Number((quantidadeInformada * precoUnitario).toFixed(2)),
+              valor_total: Number(
+                (quantidadeInformada * precoUnitario).toFixed(2),
+              ),
             };
             itensNormalizados.push(itemNormalizado);
 
@@ -1209,8 +1453,15 @@ export default async function handler(req, res) {
         break;
       case "marcarParcelaPaga":
         await withTransaction(async (client) => {
-          await client.query(
-            "UPDATE contas_pagar_parcelas SET status = $2, data_pagamento = $3, forma_pagamento = $4 WHERE id = $1",
+          const parcelaResult = await client.query(
+            `
+            UPDATE contas_pagar_parcelas
+            SET status = $2,
+                data_pagamento = $3,
+                forma_pagamento = $4
+            WHERE id = $1
+            RETURNING conta_pagar_id
+            `,
             [
               payload.id,
               payload.status,
@@ -1218,6 +1469,28 @@ export default async function handler(req, res) {
               payload.forma_pagamento,
             ],
           );
+
+          const contaPagarId =
+            parcelaResult.rows[0]?.conta_pagar_id || payload.conta_pagar_id;
+
+          if (contaPagarId) {
+            await client.query(
+              `
+              UPDATE contas_pagar cp
+              SET status = CASE
+                WHEN EXISTS (
+                  SELECT 1
+                  FROM contas_pagar_parcelas cpp
+                  WHERE cpp.conta_pagar_id = cp.id
+                    AND cpp.status = 'ABERTA'
+                ) THEN 'ABERTO'
+                ELSE 'PAGO'
+              END
+              WHERE cp.id = $1
+              `,
+              [contaPagarId],
+            );
+          }
 
           for (const contaPagar of payload.contasPagar || []) {
             await insertRow(
@@ -1262,7 +1535,9 @@ export default async function handler(req, res) {
           const valorRecebido = getNumber(payload.valor_recebido);
           const valorProgramado =
             getNumber(payload.valor_programado) || getNumber(payload.valor);
-          const diferenca = Number((valorProgramado - valorRecebido).toFixed(2));
+          const diferenca = Number(
+            (valorProgramado - valorRecebido).toFixed(2),
+          );
 
           await client.query(
             `
@@ -1348,10 +1623,7 @@ export default async function handler(req, res) {
                     valor_programado = $2
                 WHERE id = $1
                 `,
-                [
-                  proximaParcela.id,
-                  Number((baseValor + diferenca).toFixed(2)),
-                ],
+                [proximaParcela.id, Number((baseValor + diferenca).toFixed(2))],
               );
             }
           }
@@ -1497,7 +1769,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   } catch (error) {
     if (error?.statusCode) {
-      return res.status(error.statusCode).json({ error: error.message || "Requisição inválida." });
+      return res
+        .status(error.statusCode)
+        .json({ error: error.message || "Requisição inválida." });
     }
     if (error?.code === "23505") {
       return res.status(409).json({ error: "Registro duplicado." });

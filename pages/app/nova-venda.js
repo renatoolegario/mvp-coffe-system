@@ -11,6 +11,7 @@ import {
   MenuItem,
   Paper,
   Popover,
+  Snackbar,
   Stack,
   Switch,
   TextField,
@@ -24,7 +25,9 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
+import StockStatusChip from "../../components/atomic/StockStatusChip";
 import { useDataStore } from "../../hooks/useDataStore";
+import { authenticatedFetch } from "../../hooks/useSession";
 import { formatCurrency, formatDate } from "../../utils/format";
 
 const LOCAL_SALE_MARKER = "Venda local";
@@ -63,6 +66,14 @@ const createItem = () => ({
   preco_unit: "",
 });
 
+const readApiBody = async (response) => {
+  try {
+    return await response.json();
+  } catch (error) {
+    return {};
+  }
+};
+
 const escapeHtml = (value) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -75,8 +86,8 @@ const buildVendaA4Html = ({ resumo, logoUrl }) => {
   const venda = resumo.venda;
   const itensRows = resumo.itens.length
     ? resumo.itens
-      .map(
-        (item) => `
+        .map(
+          (item) => `
       <tr>
         <td>${escapeHtml(item.nome)}</td>
         <td>${escapeHtml(item.unidadeLabel)}</td>
@@ -85,14 +96,14 @@ const buildVendaA4Html = ({ resumo, logoUrl }) => {
         <td>${escapeHtml(formatCurrency(item.total))}</td>
       </tr>
     `,
-      )
-      .join("")
+        )
+        .join("")
     : '<tr><td colspan="5">Nenhum item registrado.</td></tr>';
 
   const parcelasRows = resumo.parcelas.length
     ? resumo.parcelas
-      .map(
-        (parcela) => `
+        .map(
+          (parcela) => `
       <tr>
         <td>${escapeHtml(String(parcela.parcela_num))}</td>
         <td>${escapeHtml(formatDate(parcela.vencimento))}</td>
@@ -101,14 +112,14 @@ const buildVendaA4Html = ({ resumo, logoUrl }) => {
         <td>${escapeHtml(parcela.status || "-")}</td>
       </tr>
     `,
-      )
-      .join("")
+        )
+        .join("")
     : '<tr><td colspan="5">Sem parcelas registradas.</td></tr>';
 
   const ajustesRows = resumo.ajustes.length
     ? resumo.ajustes
-      .map(
-        (ajuste) => `
+        .map(
+          (ajuste) => `
       <tr>
         <td>${escapeHtml(ajuste.tipo)}</td>
         <td>${escapeHtml(ajuste.descricao)}</td>
@@ -116,8 +127,8 @@ const buildVendaA4Html = ({ resumo, logoUrl }) => {
         <td>${escapeHtml(formatDate(ajuste.data_evento || venda.data_venda))}</td>
       </tr>
     `,
-      )
-      .join("")
+        )
+        .join("")
     : '<tr><td colspan="4">Sem ajustes comerciais registrados.</td></tr>';
 
   return `
@@ -245,13 +256,21 @@ const NovaVendaPage = () => {
   const vendas = useDataStore((state) => state.vendas);
   const vendaItens = useDataStore((state) => state.vendaItens);
   const contasReceber = useDataStore((state) => state.contasReceber);
-  const contasReceberParcelas = useDataStore((state) => state.contasReceberParcelas);
+  const contasReceberParcelas = useDataStore(
+    (state) => state.contasReceberParcelas,
+  );
   const vendaDetalhes = useDataStore((state) => state.vendaDetalhes);
   const addVenda = useDataStore((state) => state.addVenda);
-  const confirmarEntregaVenda = useDataStore((state) => state.confirmarEntregaVenda);
+  const confirmarEntregaVenda = useDataStore(
+    (state) => state.confirmarEntregaVenda,
+  );
+  const getInsumoEstoqueStatus = useDataStore(
+    (state) => state.getInsumoEstoqueStatus,
+  );
 
   const [clienteId, setClienteId] = useState("");
-  const [dataProgramadaEntrega, setDataProgramadaEntrega] = useState(todayDate());
+  const [dataProgramadaEntrega, setDataProgramadaEntrega] =
+    useState(todayDate());
   const [obs, setObs] = useState("");
   const [vendaLocal, setVendaLocal] = useState(false);
 
@@ -273,19 +292,27 @@ const NovaVendaPage = () => {
   const [historicoOpen, setHistoricoOpen] = useState(false);
   const [infoAnchorEl, setInfoAnchorEl] = useState(null);
   const [infoItemId, setInfoItemId] = useState(null);
+  const [asaasDisponivel, setAsaasDisponivel] = useState(false);
+  const [asaasBillingType, setAsaasBillingType] = useState("BOLETO");
+  const [submitMode, setSubmitMode] = useState("");
+  const [feedback, setFeedback] = useState({
+    open: false,
+    severity: "success",
+    message: "",
+  });
 
   const formasPagamento = useMemo(
     () =>
       auxFormasPagamento.length
         ? auxFormasPagamento
         : [
-          { codigo: "CHEQUE", label: "Cheque" },
-          { codigo: "TRANSFERENCIA", label: "Transferência" },
-          { codigo: "DINHEIRO", label: "Dinheiro" },
-          { codigo: "PIX", label: "Pix" },
-          { codigo: "CREDITO", label: "Crédito" },
-          { codigo: "DEBITO", label: "Débito" },
-        ],
+            { codigo: "CHEQUE", label: "Cheque" },
+            { codigo: "TRANSFERENCIA", label: "Transferência" },
+            { codigo: "DINHEIRO", label: "Dinheiro" },
+            { codigo: "PIX", label: "Pix" },
+            { codigo: "CREDITO", label: "Crédito" },
+            { codigo: "DEBITO", label: "Débito" },
+          ],
     [auxFormasPagamento],
   );
 
@@ -294,9 +321,9 @@ const NovaVendaPage = () => {
       auxUnidades.length
         ? auxUnidades
         : [
-          { codigo: "KG", label: "Quilograma" },
-          { codigo: "SACO", label: "Saco" },
-        ],
+            { codigo: "KG", label: "Quilograma" },
+            { codigo: "SACO", label: "Saco" },
+          ],
     [auxUnidades],
   );
 
@@ -329,26 +356,48 @@ const NovaVendaPage = () => {
 
   const itemComCalculo = useMemo(
     () =>
-      itens.map((item) => {
-        const insumo = insumos.find((i) => i.id === item.insumo_id);
-        const quantidadeInformada = toNumber(item.quantidade);
-        const kgPorSaco = toNumber(item.kg_por_saco) || toNumber(insumo?.kg_por_saco) || 1;
-        const quantidadeKg =
-          item.unidade_codigo === "SACO"
-            ? quantidadeInformada * kgPorSaco
-            : quantidadeInformada;
-        const precoUnit = toNumber(item.preco_unit);
+      itens
+        .map((item) => {
+          const insumo = insumos.find((i) => i.id === item.insumo_id);
+          const quantidadeInformada = toNumber(item.quantidade);
+          const kgPorSaco =
+            toNumber(item.kg_por_saco) || toNumber(insumo?.kg_por_saco) || 1;
+          const quantidadeKg =
+            item.unidade_codigo === "SACO"
+              ? quantidadeInformada * kgPorSaco
+              : quantidadeInformada;
+          const precoUnit = toNumber(item.preco_unit);
 
-        return {
-          ...item,
-          insumo,
-          quantidadeInformada,
-          quantidadeKg,
-          precoUnit,
-          total: quantidadeInformada * precoUnit,
-        };
-      }),
-    [itens, insumos],
+          return {
+            ...item,
+            insumo,
+            quantidadeInformada,
+            quantidadeKg,
+            saldoAtualKg: insumo
+              ? toNumber(getInsumoEstoqueStatus(insumo.id).saldo_kg)
+              : 0,
+            precoUnit,
+            total: quantidadeInformada * precoUnit,
+          };
+        })
+        .map((item) => {
+          const estoqueStatusAtual = item.insumo
+            ? getInsumoEstoqueStatus(item.insumo.id, item.saldoAtualKg)
+            : null;
+          const saldoProjetadoKg = item.saldoAtualKg - item.quantidadeKg;
+          const estoqueStatusProjetado = item.insumo
+            ? getInsumoEstoqueStatus(item.insumo.id, saldoProjetadoKg)
+            : null;
+
+          return {
+            ...item,
+            saldoProjetadoKg,
+            estoqueStatusAtual,
+            estoqueStatusProjetado,
+            semSaldo: item.quantidadeKg > item.saldoAtualKg,
+          };
+        }),
+    [getInsumoEstoqueStatus, itens, insumos],
   );
 
   const subtotal = useMemo(
@@ -394,7 +443,9 @@ const NovaVendaPage = () => {
     }
 
     const quantidade = Math.max(1, Number(parcelasQtd) || 1);
-    const valorBase = quantidade ? Number((totalFinal / quantidade).toFixed(2)) : 0;
+    const valorBase = quantidade
+      ? Number((totalFinal / quantidade).toFixed(2))
+      : 0;
     const base = Array.from({ length: quantidade }, (_, index) => ({
       parcela_num: index + 1,
       valor:
@@ -416,7 +467,9 @@ const NovaVendaPage = () => {
 
         if (field === "insumo_id") {
           const insumo = insumos.find((i) => i.id === value);
-          const unidadeCodigo = String(insumo?.unidade_codigo || "KG").toUpperCase();
+          const unidadeCodigo = String(
+            insumo?.unidade_codigo || "KG",
+          ).toUpperCase();
           const kgPorSaco = String(toNumber(insumo?.kg_por_saco) || 23);
 
           return {
@@ -486,50 +539,63 @@ const NovaVendaPage = () => {
       [...vendas]
         .sort(
           (a, b) =>
-            new Date(b.data_venda || 0).getTime() - new Date(a.data_venda || 0).getTime(),
+            new Date(b.data_venda || 0).getTime() -
+            new Date(a.data_venda || 0).getTime(),
         )
         .map((venda) => {
-          const itensVenda = (itensByVendaId.get(venda.id) || []).map((item) => {
-            const insumo = insumosById.get(item.insumo_id);
-            const unidade = unidadesById.get(String(item.unidade_id));
-            const quantidadeInformada = toNumber(item.quantidade_informada);
-            const precoUnitario = toNumber(item.preco_unitario);
-            return {
-              ...item,
-              nome: insumo?.nome || "Produto removido",
-              unidadeLabel:
-                unidade?.label || (toNumber(item.kg_por_saco) > 0 ? "Saco" : "Quilograma"),
-              quantidadeInformada,
-              precoUnitario,
-              total: quantidadeInformada * precoUnitario,
-            };
-          });
+          const itensVenda = (itensByVendaId.get(venda.id) || []).map(
+            (item) => {
+              const insumo = insumosById.get(item.insumo_id);
+              const unidade = unidadesById.get(String(item.unidade_id));
+              const quantidadeInformada = toNumber(item.quantidade_informada);
+              const precoUnitario = toNumber(item.preco_unitario);
+              return {
+                ...item,
+                nome: insumo?.nome || "Produto removido",
+                unidadeLabel:
+                  unidade?.label ||
+                  (toNumber(item.kg_por_saco) > 0 ? "Saco" : "Quilograma"),
+                quantidadeInformada,
+                precoUnitario,
+                total: quantidadeInformada * precoUnitario,
+              };
+            },
+          );
 
           const contaReceber = contaReceberByVendaId.get(venda.id);
-          const parcelasVenda = (parcelasByContaId.get(contaReceber?.id) || []).sort(
-            (a, b) => (Number(a.parcela_num) || 0) - (Number(b.parcela_num) || 0),
+          const parcelasVenda = (
+            parcelasByContaId.get(contaReceber?.id) || []
+          ).sort(
+            (a, b) =>
+              (Number(a.parcela_num) || 0) - (Number(b.parcela_num) || 0),
           );
 
           const ajustes = [
             ...(toNumber(venda.desconto_valor) > 0
               ? [
-                {
-                  tipo: "Desconto",
-                  descricao: venda.desconto_descricao || venda.desconto_tipo || "Sem descrição",
-                  valor: toNumber(venda.desconto_valor) * -1,
-                  data_evento: venda.data_venda,
-                },
-              ]
+                  {
+                    tipo: "Desconto",
+                    descricao:
+                      venda.desconto_descricao ||
+                      venda.desconto_tipo ||
+                      "Sem descrição",
+                    valor: toNumber(venda.desconto_valor) * -1,
+                    data_evento: venda.data_venda,
+                  },
+                ]
               : []),
             ...(toNumber(venda.acrescimo_valor) > 0
               ? [
-                {
-                  tipo: "Valor adicional",
-                  descricao: venda.acrescimo_descricao || venda.acrescimo_tipo || "Sem descrição",
-                  valor: toNumber(venda.acrescimo_valor),
-                  data_evento: venda.data_venda,
-                },
-              ]
+                  {
+                    tipo: "Valor adicional",
+                    descricao:
+                      venda.acrescimo_descricao ||
+                      venda.acrescimo_tipo ||
+                      "Sem descrição",
+                    valor: toNumber(venda.acrescimo_valor),
+                    data_evento: venda.data_venda,
+                  },
+                ]
               : []),
             ...(detalhesByVendaId.get(venda.id) || []).map((detalhe) => ({
               tipo: detalhe.tipo_evento || "Evento",
@@ -539,11 +605,16 @@ const NovaVendaPage = () => {
             })),
           ];
 
-          const subtotalVenda = itensVenda.reduce((acc, item) => acc + item.total, 0);
+          const subtotalVenda = itensVenda.reduce(
+            (acc, item) => acc + item.total,
+            0,
+          );
 
           return {
             venda,
-            orderCode: String(venda.id || "").slice(0, 8).toUpperCase(),
+            orderCode: String(venda.id || "")
+              .slice(0, 8)
+              .toUpperCase(),
             clienteNome: clientesById.get(venda.cliente_id)?.nome || "-",
             itens: itensVenda,
             parcelas: parcelasVenda,
@@ -576,14 +647,20 @@ const NovaVendaPage = () => {
     Boolean(clienteId) &&
     !(clienteBalcao && tipoPagamento === "A_PRAZO") &&
     itemComCalculo.every(
-      (item) => item.insumo_id && item.quantidadeInformada > 0 && item.precoUnit > 0,
+      (item) =>
+        item.insumo_id && item.quantidadeInformada > 0 && item.precoUnit > 0,
     ) &&
-    (tipoPagamento !== "A_PRAZO" || parcelas.every((parcela) => toNumber(parcela.valor) > 0));
+    (tipoPagamento !== "A_PRAZO" ||
+      parcelas.every((parcela) => toNumber(parcela.valor) > 0));
 
   const handleGenerateA4 = (resumo) => {
     if (typeof window === "undefined") return;
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1000,height=780");
+    const printWindow = window.open(
+      "",
+      "_blank",
+      "noopener,noreferrer,width=1000,height=780",
+    );
     if (!printWindow) return;
 
     const html = buildVendaA4Html({
@@ -596,68 +673,27 @@ const NovaVendaPage = () => {
     printWindow.document.close();
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!canSubmit) return;
+  useEffect(() => {
+    const loadIntegracaoAsaas = async () => {
+      try {
+        const response = await authenticatedFetch(
+          "/api/v1/configuracao-empresa/integracoes",
+        );
+        const data = await readApiBody(response);
+        if (!response.ok) return;
+        const asaas = (data.integracoes || []).find(
+          (item) => item.provedor === "asaas",
+        );
+        setAsaasDisponivel(Boolean(asaas?.configurado));
+      } catch (error) {
+        setAsaasDisponivel(false);
+      }
+    };
 
-    const dataEntrega = vendaLocal ? todayDate() : dataProgramadaEntrega || todayDate();
-    const obsLimpa = String(obs || "").trim();
-    const hasLocalMarker = obsLimpa.toLowerCase().includes(LOCAL_SALE_MARKER.toLowerCase());
-    const obsFinal =
-      vendaLocal && !hasLocalMarker
-        ? [LOCAL_SALE_MARKER, obsLimpa].filter(Boolean).join(" | ")
-        : obsLimpa;
+    loadIntegracaoAsaas();
+  }, []);
 
-    const resultado = await addVenda({
-      cliente_id: clienteId,
-      itens: itemComCalculo.map((item) => ({
-        insumo_id: item.insumo_id,
-        quantidade: item.quantidadeInformada,
-        unidade_codigo: item.unidade_codigo,
-        kg_por_saco: toNumber(item.kg_por_saco) || toNumber(item.insumo?.kg_por_saco) || 23,
-        preco_unit: item.precoUnit,
-      })),
-      parcelas_qtd: tipoPagamento === "A_PRAZO" ? parcelasQtd : 1,
-      obs: obsFinal,
-      data_programada_entrega: dataEntrega,
-      tipo_pagamento: tipoPagamento,
-      forma_pagamento: formaPagamentoVista,
-      desconto:
-        toNumber(descontoValor) > 0
-          ? {
-            tipo: descontoTipo,
-            valor: toNumber(descontoValor),
-            descricao: descontoDescricao,
-          }
-          : null,
-      acrescimo:
-        toNumber(acrescimoValor) > 0
-          ? {
-            tipo: acrescimoTipo,
-            valor: toNumber(acrescimoValor),
-            descricao: acrescimoDescricao,
-          }
-          : null,
-      parcelas_custom:
-        tipoPagamento === "A_PRAZO"
-          ? parcelas.map((parcela) => ({
-            ...parcela,
-            valor: toNumber(parcela.valor),
-            vencimento: `${parcela.vencimento} 00:00:00`,
-          }))
-          : [],
-    });
-
-    if (!resultado?.vendaId) return;
-
-    if (vendaLocal) {
-      await confirmarEntregaVenda({
-        venda_id: resultado.vendaId,
-        data_entrega: dataEntrega,
-        custos_extras: [],
-      });
-    }
-
+  const resetForm = () => {
     setClienteId("");
     setDataProgramadaEntrega(todayDate());
     setObs("");
@@ -675,11 +711,163 @@ const NovaVendaPage = () => {
     setParcelas([]);
   };
 
-  const infoSaldoKg = toNumber(infoInsumo?.saldo_kg);
+  const createAsaasChargesForSale = async ({
+    clienteId,
+    vendaId,
+    contaReceberId,
+    parcelasCriadas,
+  }) => {
+    const response = await authenticatedFetch(
+      "/api/v1/integracoes/asaas/cobrancas",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cobrancas: (parcelasCriadas || []).map((parcela) => ({
+            cliente_id: clienteId,
+            venda_id: vendaId,
+            conta_receber_id: contaReceberId,
+            conta_receber_parcela_id: parcela.id,
+            billing_type: asaasBillingType,
+            due_date: String(parcela.vencimento || "").slice(0, 10),
+            value: parcela.valor,
+            origem_tipo: "VENDA",
+          })),
+        }),
+      },
+    );
+    const data = await readApiBody(response);
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Não foi possível criar a cobrança via ASAAS.",
+      );
+    }
+
+    if (Array.isArray(data.errors) && data.errors.length) {
+      throw new Error(
+        `Venda salva, mas ${data.errors.length} cobrança(s) ASAAS falharam.`,
+      );
+    }
+
+    return data;
+  };
+
+  const handleSubmit = async (mode = "sale_only") => {
+    if (!canSubmit || submitMode) return;
+    setSubmitMode(mode);
+
+    const dataEntrega = vendaLocal
+      ? todayDate()
+      : dataProgramadaEntrega || todayDate();
+    const obsLimpa = String(obs || "").trim();
+    const hasLocalMarker = obsLimpa
+      .toLowerCase()
+      .includes(LOCAL_SALE_MARKER.toLowerCase());
+    const obsFinal =
+      vendaLocal && !hasLocalMarker
+        ? [LOCAL_SALE_MARKER, obsLimpa].filter(Boolean).join(" | ")
+        : obsLimpa;
+
+    try {
+      const resultado = await addVenda({
+        cliente_id: clienteId,
+        itens: itemComCalculo.map((item) => ({
+          insumo_id: item.insumo_id,
+          quantidade: item.quantidadeInformada,
+          unidade_codigo: item.unidade_codigo,
+          kg_por_saco:
+            toNumber(item.kg_por_saco) ||
+            toNumber(item.insumo?.kg_por_saco) ||
+            23,
+          preco_unit: item.precoUnit,
+        })),
+        parcelas_qtd: tipoPagamento === "A_PRAZO" ? parcelasQtd : 1,
+        obs: obsFinal,
+        data_programada_entrega: dataEntrega,
+        tipo_pagamento: tipoPagamento,
+        forma_pagamento: formaPagamentoVista,
+        desconto:
+          toNumber(descontoValor) > 0
+            ? {
+                tipo: descontoTipo,
+                valor: toNumber(descontoValor),
+                descricao: descontoDescricao,
+              }
+            : null,
+        acrescimo:
+          toNumber(acrescimoValor) > 0
+            ? {
+                tipo: acrescimoTipo,
+                valor: toNumber(acrescimoValor),
+                descricao: acrescimoDescricao,
+              }
+            : null,
+        parcelas_custom:
+          tipoPagamento === "A_PRAZO"
+            ? parcelas.map((parcela) => ({
+                ...parcela,
+                valor: toNumber(parcela.valor),
+                vencimento: `${parcela.vencimento} 00:00:00`,
+              }))
+            : [],
+      });
+
+      if (!resultado?.ok || !resultado?.vendaId) {
+        setFeedback({
+          open: true,
+          severity: "error",
+          message: resultado?.error || "Não foi possível registrar a venda.",
+        });
+        return;
+      }
+
+      if (mode === "sale_and_charge") {
+        await createAsaasChargesForSale({
+          clienteId,
+          vendaId: resultado.vendaId,
+          contaReceberId: resultado.contaReceberId,
+          parcelasCriadas: resultado.parcelas,
+        });
+      }
+
+      if (vendaLocal) {
+        await confirmarEntregaVenda({
+          venda_id: resultado.vendaId,
+          data_entrega: dataEntrega,
+          custos_extras: [],
+        });
+      }
+
+      resetForm();
+      setFeedback({
+        open: true,
+        severity: "success",
+        message:
+          mode === "sale_and_charge"
+            ? "Venda registrada e cobrança ASAAS criada com sucesso."
+            : "Venda registrada com sucesso.",
+      });
+    } catch (error) {
+      setFeedback({
+        open: true,
+        severity: mode === "sale_and_charge" ? "warning" : "error",
+        message: error.message || "Ocorreu um erro ao registrar a venda.",
+      });
+    } finally {
+      setSubmitMode("");
+    }
+  };
+
+  const infoSaldoKg = toNumber(infoItem?.saldoAtualKg);
   const infoKgPorSaco = toNumber(infoInsumo?.kg_por_saco) || 1;
   const infoSaldoSaco = infoKgPorSaco ? infoSaldoKg / infoKgPorSaco : 0;
   const infoCustoKg = toNumber(infoInsumo?.custo_medio_kg);
   const infoCustoSaco = infoCustoKg * infoKgPorSaco;
+  const infoSaldoProjetadoKg = toNumber(infoItem?.saldoProjetadoKg);
+  const infoSaldoProjetadoSaco = infoKgPorSaco
+    ? infoSaldoProjetadoKg / infoKgPorSaco
+    : 0;
 
   return (
     <AppLayout>
@@ -697,7 +885,13 @@ const NovaVendaPage = () => {
         }
       />
 
-      <Box component="form" onSubmit={handleSubmit}>
+      <Box
+        component="form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSubmit("sale_only");
+        }}
+      >
         <Grid container spacing={3} alignItems="flex-start">
           <Grid item xs={12} md={5}>
             <Stack spacing={2}>
@@ -727,7 +921,9 @@ const NovaVendaPage = () => {
                       label="Data programada de entrega"
                       type="date"
                       value={dataProgramadaEntrega}
-                      onChange={(event) => setDataProgramadaEntrega(event.target.value)}
+                      onChange={(event) =>
+                        setDataProgramadaEntrega(event.target.value)
+                      }
                       disabled={vendaLocal}
                       fullWidth
                       InputLabelProps={{ shrink: true }}
@@ -738,7 +934,9 @@ const NovaVendaPage = () => {
                       control={
                         <Switch
                           checked={vendaLocal}
-                          onChange={(event) => setVendaLocal(event.target.checked)}
+                          onChange={(event) =>
+                            setVendaLocal(event.target.checked)
+                          }
                         />
                       }
                       label="Venda local"
@@ -759,7 +957,8 @@ const NovaVendaPage = () => {
                 </Grid>
                 {vendaLocal ? (
                   <Alert sx={{ mt: 2 }} severity="info">
-                    Venda local ativa: entrega programada para hoje e confirmação automática de entregue.
+                    Venda local ativa: entrega programada para hoje e
+                    confirmação automática de entregue.
                   </Alert>
                 ) : null}
               </Paper>
@@ -792,7 +991,9 @@ const NovaVendaPage = () => {
                       select
                       label="Forma"
                       value={formaPagamentoVista}
-                      onChange={(event) => setFormaPagamentoVista(event.target.value)}
+                      onChange={(event) =>
+                        setFormaPagamentoVista(event.target.value)
+                      }
                     >
                       {formasPagamento.map((forma) => (
                         <MenuItem key={forma.codigo} value={forma.codigo}>
@@ -807,12 +1008,18 @@ const NovaVendaPage = () => {
                         type="number"
                         value={parcelasQtd}
                         onChange={(event) =>
-                          setParcelasQtd(Math.max(1, Number(event.target.value) || 1))
+                          setParcelasQtd(
+                            Math.max(1, Number(event.target.value) || 1),
+                          )
                         }
                       />
                       <Stack spacing={1}>
                         {parcelas.map((parcela, index) => (
-                          <Grid container spacing={1} key={`parcela-${parcela.parcela_num}`}>
+                          <Grid
+                            container
+                            spacing={1}
+                            key={`parcela-${parcela.parcela_num}`}
+                          >
                             <Grid item xs={12} sm={2}>
                               <TextField
                                 label="Nº"
@@ -827,7 +1034,11 @@ const NovaVendaPage = () => {
                                 type="date"
                                 value={parcela.vencimento}
                                 onChange={(event) =>
-                                  handleParcelaChange(index, "vencimento", event.target.value)
+                                  handleParcelaChange(
+                                    index,
+                                    "vencimento",
+                                    event.target.value,
+                                  )
                                 }
                                 InputLabelProps={{ shrink: true }}
                                 fullWidth
@@ -839,7 +1050,11 @@ const NovaVendaPage = () => {
                                 type="number"
                                 value={parcela.valor}
                                 onChange={(event) =>
-                                  handleParcelaChange(index, "valor", event.target.value)
+                                  handleParcelaChange(
+                                    index,
+                                    "valor",
+                                    event.target.value,
+                                  )
                                 }
                                 fullWidth
                               />
@@ -850,12 +1065,19 @@ const NovaVendaPage = () => {
                                 label="Forma"
                                 value={parcela.forma_pagamento}
                                 onChange={(event) =>
-                                  handleParcelaChange(index, "forma_pagamento", event.target.value)
+                                  handleParcelaChange(
+                                    index,
+                                    "forma_pagamento",
+                                    event.target.value,
+                                  )
                                 }
                                 fullWidth
                               >
                                 {formasPagamento.map((forma) => (
-                                  <MenuItem key={forma.codigo} value={forma.codigo}>
+                                  <MenuItem
+                                    key={forma.codigo}
+                                    value={forma.codigo}
+                                  >
                                     {forma.label}
                                   </MenuItem>
                                 ))}
@@ -888,7 +1110,9 @@ const NovaVendaPage = () => {
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField
-                      label={descontoTipo === "PERCENTUAL" ? "Percentual" : "Valor"}
+                      label={
+                        descontoTipo === "PERCENTUAL" ? "Percentual" : "Valor"
+                      }
                       type="number"
                       value={descontoValor}
                       onChange={(event) => setDescontoValor(event.target.value)}
@@ -899,7 +1123,9 @@ const NovaVendaPage = () => {
                     <TextField
                       label="Descrição"
                       value={descontoDescricao}
-                      onChange={(event) => setDescontoDescricao(event.target.value)}
+                      onChange={(event) =>
+                        setDescontoDescricao(event.target.value)
+                      }
                       fullWidth
                     />
                   </Grid>
@@ -925,10 +1151,14 @@ const NovaVendaPage = () => {
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField
-                      label={acrescimoTipo === "PERCENTUAL" ? "Percentual" : "Valor"}
+                      label={
+                        acrescimoTipo === "PERCENTUAL" ? "Percentual" : "Valor"
+                      }
                       type="number"
                       value={acrescimoValor}
-                      onChange={(event) => setAcrescimoValor(event.target.value)}
+                      onChange={(event) =>
+                        setAcrescimoValor(event.target.value)
+                      }
                       fullWidth
                     />
                   </Grid>
@@ -936,7 +1166,9 @@ const NovaVendaPage = () => {
                     <TextField
                       label="Descrição"
                       value={acrescimoDescricao}
-                      onChange={(event) => setAcrescimoDescricao(event.target.value)}
+                      onChange={(event) =>
+                        setAcrescimoDescricao(event.target.value)
+                      }
                       fullWidth
                     />
                   </Grid>
@@ -948,31 +1180,76 @@ const NovaVendaPage = () => {
                   Resumo da Venda
                 </Typography>
                 <Stack spacing={0.8}>
-                  <Typography variant="body2">Subtotal: {formatCurrency(subtotal)}</Typography>
-                  <Typography variant="body2">Desconto: {formatCurrency(descontoAbs)}</Typography>
-                  <Typography variant="body2">Adicional: {formatCurrency(acrescimoAbs)}</Typography>
+                  <Typography variant="body2">
+                    Subtotal: {formatCurrency(subtotal)}
+                  </Typography>
+                  <Typography variant="body2">
+                    Desconto: {formatCurrency(descontoAbs)}
+                  </Typography>
+                  <Typography variant="body2">
+                    Adicional: {formatCurrency(acrescimoAbs)}
+                  </Typography>
                   <Divider sx={{ my: 0.8 }} />
                   <Typography variant="h6" color="primary">
                     Total final: {formatCurrency(totalFinal)}
                   </Typography>
                 </Stack>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  size="large"
-                  fullWidth
-                  disabled={!canSubmit}
-                  sx={{ mt: 2 }}
-                >
-                  Registrar venda ({formatCurrency(totalFinal)})
-                </Button>
+                {asaasDisponivel ? (
+                  <TextField
+                    sx={{ mt: 2 }}
+                    select
+                    label="Cobrança ASAAS"
+                    value={asaasBillingType}
+                    onChange={(event) =>
+                      setAsaasBillingType(event.target.value)
+                    }
+                    fullWidth
+                  >
+                    <MenuItem value="BOLETO">Boleto</MenuItem>
+                    <MenuItem value="PIX">Pix</MenuItem>
+                    <MenuItem value="UNDEFINED">A definir</MenuItem>
+                  </TextField>
+                ) : (
+                  <Alert sx={{ mt: 2 }} severity="info">
+                    Configure a chave do ASAAS em Configuração da Empresa para
+                    habilitar a geração da cobrança junto da venda.
+                  </Alert>
+                )}
+                <Stack spacing={1.2} sx={{ mt: 2 }}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    disabled={!canSubmit || Boolean(submitMode)}
+                  >
+                    Registrar venda ({formatCurrency(totalFinal)})
+                  </Button>
+                  {asaasDisponivel ? (
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      size="large"
+                      fullWidth
+                      disabled={!canSubmit || Boolean(submitMode)}
+                      onClick={() => handleSubmit("sale_and_charge")}
+                    >
+                      Gerar cobrança via ASAAS
+                    </Button>
+                  ) : null}
+                </Stack>
               </Paper>
             </Stack>
           </Grid>
 
           <Grid item xs={12} md={7}>
             <Paper sx={{ p: 3 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+                mb={2}
+              >
                 <Typography variant="h6">Itens da Venda</Typography>
                 <Button
                   variant="outlined"
@@ -1011,7 +1288,11 @@ const NovaVendaPage = () => {
                             label="Produto"
                             value={item.insumo_id}
                             onChange={(event) =>
-                              handleItemChange(item.id, "insumo_id", event.target.value)
+                              handleItemChange(
+                                item.id,
+                                "insumo_id",
+                                event.target.value,
+                              )
                             }
                             fullWidth
                           >
@@ -1030,12 +1311,19 @@ const NovaVendaPage = () => {
                           label="Unidade"
                           value={item.unidade_codigo}
                           onChange={(event) =>
-                            handleItemChange(item.id, "unidade_codigo", event.target.value)
+                            handleItemChange(
+                              item.id,
+                              "unidade_codigo",
+                              event.target.value,
+                            )
                           }
                           fullWidth
                         >
                           {unidades.map((unidade) => (
-                            <MenuItem key={unidade.codigo} value={unidade.codigo}>
+                            <MenuItem
+                              key={unidade.codigo}
+                              value={unidade.codigo}
+                            >
                               {unidade.label}
                             </MenuItem>
                           ))}
@@ -1048,7 +1336,11 @@ const NovaVendaPage = () => {
                           type="number"
                           value={item.quantidade}
                           onChange={(event) =>
-                            handleItemChange(item.id, "quantidade", event.target.value)
+                            handleItemChange(
+                              item.id,
+                              "quantidade",
+                              event.target.value,
+                            )
                           }
                           fullWidth
                         />
@@ -1056,25 +1348,38 @@ const NovaVendaPage = () => {
 
                       <Grid item xs={12} md={2}>
                         <TextField
-                          label={item.unidade_codigo === "SACO" ? "Preço por saco" : "Preço por kg"}
+                          label={
+                            item.unidade_codigo === "SACO"
+                              ? "Preço por saco"
+                              : "Preço por kg"
+                          }
                           type="number"
                           value={item.preco_unit}
                           onChange={(event) =>
-                            handleItemChange(item.id, "preco_unit", event.target.value)
+                            handleItemChange(
+                              item.id,
+                              "preco_unit",
+                              event.target.value,
+                            )
                           }
                           fullWidth
                         />
                       </Grid>
 
                       <Grid item xs={8} md={1}>
-                        <Stack spacing={0.6} alignItems={{ xs: "flex-start", md: "flex-end" }}>
+                        <Stack
+                          spacing={0.6}
+                          alignItems={{ xs: "flex-start", md: "flex-end" }}
+                        >
                           <Typography variant="body2" fontWeight={700}>
                             {formatCurrency(item.total)}
                           </Typography>
                           <IconButton
                             onClick={() =>
                               setItens((prev) =>
-                                prev.length > 1 ? prev.filter((row) => row.id !== item.id) : prev,
+                                prev.length > 1
+                                  ? prev.filter((row) => row.id !== item.id)
+                                  : prev,
                               )
                             }
                             disabled={itens.length <= 1}
@@ -1083,6 +1388,65 @@ const NovaVendaPage = () => {
                           </IconButton>
                         </Stack>
                       </Grid>
+
+                      {item.insumo ? (
+                        <Grid item xs={12}>
+                          <Stack
+                            direction={{ xs: "column", md: "row" }}
+                            spacing={1}
+                            alignItems={{ xs: "flex-start", md: "center" }}
+                            useFlexGap
+                          >
+                            <StockStatusChip
+                              status={item.estoqueStatusAtual?.status_estoque}
+                              label={`Atual: ${
+                                item.estoqueStatusAtual?.status_label ||
+                                "Sem faixa"
+                              }`}
+                            />
+                            <StockStatusChip
+                              status={
+                                item.estoqueStatusProjetado?.status_estoque
+                              }
+                              label={`Após item: ${
+                                item.estoqueStatusProjetado?.status_label ||
+                                "Sem faixa"
+                              }`}
+                            />
+                            <Typography
+                              variant="caption"
+                              color={
+                                item.semSaldo ? "error.main" : "text.secondary"
+                              }
+                            >
+                              Saldo atual: {item.saldoAtualKg.toFixed(2)} kg •
+                              saldo após item:{" "}
+                              {item.saldoProjetadoKg.toFixed(2)} kg
+                            </Typography>
+                          </Stack>
+                          <Typography
+                            variant="caption"
+                            color={
+                              item.semSaldo ? "error.main" : "text.secondary"
+                            }
+                            display="block"
+                          >
+                            Cobertura do mínimo:{" "}
+                            {item.estoqueStatusAtual?.percentual_estoque?.toFixed(
+                              1,
+                            ) || "0.0"}
+                            % agora
+                            {" • "}
+                            {item.estoqueStatusProjetado?.percentual_estoque?.toFixed(
+                              1,
+                            ) || "0.0"}
+                            % após a venda
+                            {item.semSaldo
+                              ? " • A quantidade informada ultrapassa o saldo disponível."
+                              : ""}
+                          </Typography>
+                        </Grid>
+                      ) : null}
                     </Grid>
                   </Paper>
                 ))}
@@ -1109,14 +1473,52 @@ const NovaVendaPage = () => {
             <Typography variant="subtitle2" fontWeight={700}>
               {infoInsumo.nome}
             </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <StockStatusChip
+                status={infoItem?.estoqueStatusAtual?.status_estoque}
+                label={`Atual: ${
+                  infoItem?.estoqueStatusAtual?.status_label || "Sem faixa"
+                }`}
+              />
+              <StockStatusChip
+                status={infoItem?.estoqueStatusProjetado?.status_estoque}
+                label={`Após item: ${
+                  infoItem?.estoqueStatusProjetado?.status_label || "Sem faixa"
+                }`}
+              />
+            </Stack>
             <Typography variant="body2">
-              Estoque Atual Kg: {infoSaldoKg.toFixed(2)} | Custo por Kg: {formatCurrency(infoCustoKg)}
+              Estoque Atual Kg: {infoSaldoKg.toFixed(2)} | Custo por Kg:{" "}
+              {formatCurrency(infoCustoKg)}
             </Typography>
             <Typography variant="body2">
-              Estoque Atual Saco: {infoSaldoSaco.toFixed(2)} | Custo por Saco: {formatCurrency(infoCustoSaco)}
+              Estoque Atual Saco: {infoSaldoSaco.toFixed(2)} | Custo por Saco:{" "}
+              {formatCurrency(infoCustoSaco)}
             </Typography>
             <Typography variant="body2">
-              Unidade Padrão: {unidades.find((u) => u.codigo === infoInsumo.unidade_codigo)?.label || infoInsumo.unidade_codigo || "-"}
+              Saldo projetado após item: {infoSaldoProjetadoKg.toFixed(2)} kg |{" "}
+              {infoSaldoProjetadoSaco.toFixed(2)} saco(s)
+            </Typography>
+            <Typography
+              variant="body2"
+              color={infoItem?.semSaldo ? "error.main" : "text.secondary"}
+            >
+              Cobertura do mínimo:{" "}
+              {infoItem?.estoqueStatusAtual?.percentual_estoque?.toFixed(1) ||
+                "0.0"}
+              % agora
+              {" • "}
+              {infoItem?.estoqueStatusProjetado?.percentual_estoque?.toFixed(
+                1,
+              ) || "0.0"}
+              % após a venda
+            </Typography>
+            <Typography variant="body2">
+              Unidade Padrão:{" "}
+              {unidades.find((u) => u.codigo === infoInsumo.unidade_codigo)
+                ?.label ||
+                infoInsumo.unidade_codigo ||
+                "-"}
             </Typography>
           </Stack>
         ) : null}
@@ -1147,17 +1549,33 @@ const NovaVendaPage = () => {
           {historicoVendas.map((resumo) => (
             <Paper key={resumo.venda.id} variant="outlined" sx={{ p: 1.5 }}>
               <Stack spacing={1}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography fontWeight={700}>Ordem #{resumo.orderCode}</Typography>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Typography fontWeight={700}>
+                    Ordem #{resumo.orderCode}
+                  </Typography>
                   <Chip
                     size="small"
                     label={resumo.venda.status_entrega || "PENDENTE"}
-                    color={resumo.venda.status_entrega === "ENTREGUE" ? "success" : "warning"}
+                    color={
+                      resumo.venda.status_entrega === "ENTREGUE"
+                        ? "success"
+                        : "warning"
+                    }
                   />
                 </Stack>
-                <Typography variant="body2">Cliente: {resumo.clienteNome}</Typography>
-                <Typography variant="body2">Data: {formatDate(resumo.venda.data_venda)}</Typography>
-                <Typography variant="body2">Total: {formatCurrency(resumo.venda.valor_total)}</Typography>
+                <Typography variant="body2">
+                  Cliente: {resumo.clienteNome}
+                </Typography>
+                <Typography variant="body2">
+                  Data: {formatDate(resumo.venda.data_venda)}
+                </Typography>
+                <Typography variant="body2">
+                  Total: {formatCurrency(resumo.venda.valor_total)}
+                </Typography>
                 <Typography variant="body2">
                   Pagamento: {resumo.venda.tipo_pagamento || "A_VISTA"}
                 </Typography>
@@ -1181,6 +1599,20 @@ const NovaVendaPage = () => {
           ) : null}
         </Stack>
       </Drawer>
+
+      <Snackbar
+        open={feedback.open}
+        autoHideDuration={4500}
+        onClose={() => setFeedback((prev) => ({ ...prev, open: false }))}
+      >
+        <Alert
+          severity={feedback.severity}
+          onClose={() => setFeedback((prev) => ({ ...prev, open: false }))}
+          variant="filled"
+        >
+          {feedback.message}
+        </Alert>
+      </Snackbar>
     </AppLayout>
   );
 };

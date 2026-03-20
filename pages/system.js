@@ -16,31 +16,56 @@ import { authenticatedFetch, getSession } from "../hooks/useSession";
 const SystemPage = () => {
   const router = useRouter();
   const loadData = useDataStore((state) => state.loadData);
+  const adminParam = router.query?.admin;
+  const isAdminMode = Array.isArray(adminParam)
+    ? adminParam.includes("1")
+    : adminParam === "1";
 
   const [status, setStatus] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
   const [databaseJson, setDatabaseJson] = useState("");
 
   useEffect(() => {
-    if (!getSession()) {
+    if (!router.isReady) return;
+
+    if (!isAdminMode && !getSession()) {
       router.replace("/login");
     }
-  }, [router]);
+  }, [isAdminMode, router]);
+
+  const buildApiUrl = (path) =>
+    isAdminMode ? `${path}${path.includes("?") ? "&" : "?"}admin=1` : path;
+
+  const getErrorMessage = async (response, fallbackMessage) => {
+    try {
+      const payload = await response.json();
+      return payload?.error || fallbackMessage;
+    } catch {
+      return fallbackMessage;
+    }
+  };
 
   const handleSeedDatabase = async () => {
     setLoadingSeed(true);
     setStatus(null);
 
     try {
-      const response = await authenticatedFetch("/api/v1/system/seed", {
-        method: "POST",
-      });
+      const response = await authenticatedFetch(
+        buildApiUrl("/api/v1/system/seed"),
+        {
+          method: "POST",
+        },
+      );
 
       if (!response.ok) {
-        throw new Error("Erro ao alimentar o banco.");
+        throw new Error(
+          await getErrorMessage(response, "Erro ao alimentar o banco."),
+        );
       }
 
-      await loadData();
+      if (getSession()) {
+        await loadData();
+      }
 
       setStatus({
         severity: "success",
@@ -61,9 +86,11 @@ const SystemPage = () => {
     setStatus(null);
 
     try {
-      const response = await authenticatedFetch("/api/v1/data");
+      const response = await authenticatedFetch(buildApiUrl("/api/v1/data"));
       if (!response.ok) {
-        throw new Error("Erro ao buscar dados.");
+        throw new Error(
+          await getErrorMessage(response, "Erro ao buscar dados."),
+        );
       }
       const dataSnapshot = await response.json();
       const seedData = serializeSeedData(dataSnapshot);
@@ -95,9 +122,11 @@ const SystemPage = () => {
     setStatus(null);
 
     try {
-      const response = await authenticatedFetch("/api/v1/data");
+      const response = await authenticatedFetch(buildApiUrl("/api/v1/data"));
       if (!response.ok) {
-        throw new Error("Erro ao buscar dados.");
+        throw new Error(
+          await getErrorMessage(response, "Erro ao buscar dados."),
+        );
       }
       const dataSnapshot = await response.json();
       setDatabaseJson(JSON.stringify(dataSnapshot, null, 2));
@@ -125,6 +154,13 @@ const SystemPage = () => {
                 exportação.
               </Typography>
             </Box>
+
+            {isAdminMode ? (
+              <Alert severity="warning">
+                Modo admin ativo por query string (`admin=1`) sem exigir sessão
+                autenticada.
+              </Alert>
+            ) : null}
 
             {status && (
               <Alert severity={status.severity}>{status.message}</Alert>

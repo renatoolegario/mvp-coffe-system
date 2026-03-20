@@ -24,12 +24,14 @@ Quando a parcela estiver em aberto, o botão de confirmação redireciona para `
 
 - Filtragem dinâmica de clientes por nome/CPF-CNPJ/telefone.
 - Abertura de drawers de ação por cliente.
+- Edição e exportação da data de aniversário do cliente.
 - Exportações XLSX de clientes, histórico e parcelas.
 - Redirecionamento para confirmação financeira em `Contas a Receber` com query string.
 
 ## Resultado esperado
 
 - Listagem de clientes em tabela (sem select de cliente).
+- Coluna de data de aniversário disponível na tabela e no drawer de edição.
 - Ações por linha de cliente para cadastro/histórico/parcelas.
 - Botão de download no cabeçalho para exportar dados cadastrais de todos os clientes.
 - Botão de download no drawer de histórico.

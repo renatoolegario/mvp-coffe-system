@@ -397,7 +397,10 @@ exports.up = async (pgm) => {
   const usuariosAfterResult = await pgm.db.query("SELECT email FROM usuarios");
   const hasAdmin = usuariosAfterResult.rows.some((row) => {
     const plainEmail = isEncryptedText(row.email) ? decrypt(row.email) : row.email;
-    return String(plainEmail || "").trim().toLowerCase() === "admin@cafemvp.com";
+    return (
+      String(plainEmail || "").trim().toLowerCase() ===
+      "admin@essenciasdobrasil.local"
+    );
   });
 
   if (!hasAdmin) {
@@ -408,8 +411,8 @@ exports.up = async (pgm) => {
       `,
       [
         encrypt("Administrador"),
-        encrypt("admin@cafemvp.com"),
-        encrypt("mvp_admin_123"),
+        encrypt("admin@essenciasdobrasil.local"),
+        encrypt("Admin@123"),
         toLocalDateTime(),
       ],
     );
