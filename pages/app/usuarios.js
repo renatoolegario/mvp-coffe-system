@@ -15,7 +15,6 @@ import {
 import { Close, Edit, PersonAdd } from "@mui/icons-material";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import SearchableSelect from "../../components/atomic/SearchableSelect";
 import AppLayout from "../../components/template/AppLayout";
 import PageHeader from "../../components/atomic/PageHeader";
 import { useDataStore } from "../../hooks/useDataStore";
@@ -376,15 +375,19 @@ const UsuariosPage = () => {
               helperText={errors.senha || "Mínimo 5 caracteres."}
               required
             />
-            <SearchableSelect
-              label="Perfil"
-              disabled={!isAdmin}
+            <TextField
+              select
+              label="Tipo de usuário"
               value={form.perfil}
               onChange={handleChange("perfil")}
+              helperText="Escolha entre os perfis Adm e Comum."
+              disabled={!isAdmin}
+              required
+              fullWidth
             >
               <MenuItem value={PERFIS.ADMIN}>Admin</MenuItem>
               <MenuItem value={PERFIS.COMUM}>Comum</MenuItem>
-            </SearchableSelect>
+            </TextField>
             <Button
               type="submit"
               variant="contained"

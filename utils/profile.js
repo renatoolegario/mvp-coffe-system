@@ -18,9 +18,9 @@ const CODE_BY_ROLE = {
   comum: PERFIS.COMUM,
 };
 
-export const toPerfilCode = (value) => {
+export const parsePerfilCode = (value) => {
   if (value === null || value === undefined || value === "") {
-    return PERFIS.COMUM;
+    return null;
   }
 
   const numeric = Number(value);
@@ -29,7 +29,11 @@ export const toPerfilCode = (value) => {
   }
 
   const role = String(value).trim().toLowerCase();
-  return CODE_BY_ROLE[role] || PERFIS.COMUM;
+  return CODE_BY_ROLE[role] || null;
+};
+
+export const toPerfilCode = (value) => {
+  return parsePerfilCode(value) || PERFIS.COMUM;
 };
 
 export const toPerfilRole = (value) => ROLE_BY_CODE[toPerfilCode(value)];

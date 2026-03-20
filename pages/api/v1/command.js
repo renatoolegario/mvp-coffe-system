@@ -5,7 +5,7 @@ import {
   isValidClienteEmail,
   normalizeClienteEmail,
 } from "../../../utils/cliente";
-import { toPerfilCode } from "../../../utils/profile";
+import { parsePerfilCode, PERFIS } from "../../../utils/profile";
 import { isValidCpfCnpj, normalizeCpfCnpj } from "../../../utils/document";
 import { normalizeImageBase64 } from "../../../utils/image";
 import { isAdmin, requireAuth } from "../../../infra/auth";
@@ -285,6 +285,7 @@ export default async function handler(req, res) {
           const nome = String(payload.nome || "").trim();
           const normalizedEmail = normalizeEmail(payload.email);
           const senha = normalizeUsuarioPassword(payload.senha);
+          const perfil = parsePerfilCode(payload.perfil);
 
           if (!nome) {
             return res
@@ -310,6 +311,13 @@ export default async function handler(req, res) {
             });
           }
 
+          if (![PERFIS.ADMIN, PERFIS.COMUM].includes(perfil)) {
+            return res.status(400).json({
+              error:
+                "Tipo de usuário inválido. Use apenas Admin ou Comum.",
+            });
+          }
+
           const encryptedEmail = encryptIfNeeded(normalizedEmail);
 
           const existingUserResult = await query(
@@ -330,7 +338,7 @@ export default async function handler(req, res) {
               encryptIfNeeded(nome),
               encryptedEmail,
               encryptIfNeeded(senha),
-              toPerfilCode(payload.perfil),
+              perfil,
               payload.ativo !== false,
               payload.criado_em,
             ],
