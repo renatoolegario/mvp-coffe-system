@@ -91,6 +91,25 @@ const normalizeDateOnly = (value) => {
   return parsed;
 };
 
+const normalizeUsuarioPassword = (value) => String(value || "").trim();
+
+const isValidUsuarioPassword = (value) =>
+  normalizeUsuarioPassword(value).length >= 5;
+
+const revokeUsuarioTokens = async (client, usuarioId) => {
+  if (!usuarioId) return;
+
+  await client.query(
+    `
+    UPDATE auth_tokens
+    SET revogado_em = COALESCE(revogado_em, now()::timestamp)
+    WHERE usuario_id = $1
+      AND revogado_em IS NULL
+    `,
+    [usuarioId],
+  );
+};
+
 const findDuplicateInEncryptedColumn = async ({
   queryText,
   column,
@@ -263,9 +282,34 @@ export default async function handler(req, res) {
             });
           }
 
-          const normalizedEmail = String(payload.email || "")
-            .trim()
-            .toLowerCase();
+          const nome = String(payload.nome || "").trim();
+          const normalizedEmail = normalizeEmail(payload.email);
+          const senha = normalizeUsuarioPassword(payload.senha);
+
+          if (!nome) {
+            return res
+              .status(400)
+              .json({ error: "Nome do usuário é obrigatório." });
+          }
+
+          if (!normalizedEmail) {
+            return res
+              .status(400)
+              .json({ error: "E-mail do usuário é obrigatório." });
+          }
+
+          if (!isValidEmail(normalizedEmail)) {
+            return res
+              .status(400)
+              .json({ error: "E-mail do usuário é inválido." });
+          }
+
+          if (!isValidUsuarioPassword(senha)) {
+            return res.status(400).json({
+              error: "A senha precisa ter no mínimo 5 caracteres.",
+            });
+          }
+
           const encryptedEmail = encryptIfNeeded(normalizedEmail);
 
           const existingUserResult = await query(
@@ -282,28 +326,90 @@ export default async function handler(req, res) {
           await query(
             "INSERT INTO usuarios (id, nome, email, senha, perfil, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7)",
             [
-              payload.id,
-              encryptIfNeeded(payload.nome),
+              payload.id || randomUUID(),
+              encryptIfNeeded(nome),
               encryptedEmail,
-              encryptIfNeeded(payload.senha),
+              encryptIfNeeded(senha),
               toPerfilCode(payload.perfil),
-              payload.ativo,
+              payload.ativo !== false,
               payload.criado_em,
             ],
           );
         }
         break;
       case "toggleUsuario":
-        if (!isAdmin(auth)) {
-          return res
-            .status(403)
-            .json({ error: "Apenas administradores podem alterar usuários." });
-        }
+        {
+          if (!isAdmin(auth)) {
+            return res.status(403).json({
+              error: "Apenas administradores podem alterar usuários.",
+            });
+          }
 
-        await query("UPDATE usuarios SET ativo = $2 WHERE id = $1", [
-          payload.id,
-          payload.ativo,
-        ]);
+          if (!payload?.id) {
+            return res
+              .status(400)
+              .json({ error: "Usuário inválido para alteração." });
+          }
+
+          const usuarioResult = await query(
+            "SELECT id FROM usuarios WHERE id = $1 LIMIT 1",
+            [payload.id],
+          );
+
+          if (!usuarioResult.rows[0]) {
+            return res.status(404).json({ error: "Usuário não encontrado." });
+          }
+
+          await withTransaction(async (client) => {
+            await client.query("UPDATE usuarios SET ativo = $2 WHERE id = $1", [
+              payload.id,
+              payload.ativo !== false,
+            ]);
+
+            if (payload.ativo === false) {
+              await revokeUsuarioTokens(client, payload.id);
+            }
+          });
+        }
+        break;
+      case "updateUsuarioSenha":
+        {
+          if (!isAdmin(auth)) {
+            return res.status(403).json({
+              error: "Apenas administradores podem alterar usuários.",
+            });
+          }
+
+          if (!payload?.id) {
+            return res
+              .status(400)
+              .json({ error: "Usuário inválido para alteração." });
+          }
+
+          const senha = normalizeUsuarioPassword(payload.senha);
+          if (!isValidUsuarioPassword(senha)) {
+            return res.status(400).json({
+              error: "A senha precisa ter no mínimo 5 caracteres.",
+            });
+          }
+
+          const usuarioResult = await query(
+            "SELECT id FROM usuarios WHERE id = $1 LIMIT 1",
+            [payload.id],
+          );
+
+          if (!usuarioResult.rows[0]) {
+            return res.status(404).json({ error: "Usuário não encontrado." });
+          }
+
+          await withTransaction(async (client) => {
+            await client.query("UPDATE usuarios SET senha = $2 WHERE id = $1", [
+              payload.id,
+              encryptIfNeeded(senha),
+            ]);
+            await revokeUsuarioTokens(client, payload.id);
+          });
+        }
         break;
       case "addCliente":
         {

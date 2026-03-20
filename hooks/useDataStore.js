@@ -5,7 +5,7 @@ import {
   getParcelas,
   getSaldoMovimentosKg,
 } from "../utils/stock";
-import { getAuthHeaders } from "./useSession";
+import { getAuthHeaders, handleUnauthorizedSession } from "./useSession";
 import { addDaysLocalDateTime, toLocalDateTime } from "../utils/datetime";
 import { normalizeClienteEmail } from "../utils/cliente";
 import { toPerfilCode } from "../utils/profile";
@@ -48,6 +48,11 @@ const apiFetch = async (path, options) => {
       ...customHeaders,
     },
   });
+
+  if (response.status === 401) {
+    handleUnauthorizedSession();
+    throw new Error("Sua sessão expirou ou foi revogada. Faça login novamente.");
+  }
 
   if (!response.ok) {
     let errorMessage = "Erro ao comunicar com a API.";
@@ -194,7 +199,9 @@ export const useDataStore = create((set, get) => ({
   },
   toggleUsuario: async (id) => {
     const current = get().usuarios.find((usuario) => usuario.id === id);
-    if (!current) return;
+    if (!current) {
+      return { ok: false, error: "Usuário não encontrado." };
+    }
     const updated = { ...current, ativo: !current.ativo };
     try {
       await sendCommand("toggleUsuario", updated);
@@ -203,8 +210,17 @@ export const useDataStore = create((set, get) => ({
           usuario.id === id ? updated : usuario,
         ),
       }));
+      return { ok: true, data: updated };
     } catch (error) {
-      return;
+      return { ok: false, error: error.message };
+    }
+  },
+  updateUsuarioSenha: async ({ id, senha }) => {
+    try {
+      await sendCommand("updateUsuarioSenha", { id, senha });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message };
     }
   },
   addCliente: async (payload) => {

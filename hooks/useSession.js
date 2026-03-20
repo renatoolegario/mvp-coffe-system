@@ -42,6 +42,16 @@ export const clearSession = () => {
   window.localStorage.removeItem(SESSION_KEY);
 };
 
+export const handleUnauthorizedSession = () => {
+  clearSession();
+
+  if (typeof window === "undefined") return;
+
+  if (window.location.pathname !== "/login") {
+    window.location.replace("/login");
+  }
+};
+
 export const getAuthToken = () => {
   const session = getSession();
   return session?.token || "";
@@ -53,14 +63,21 @@ export const getAuthHeaders = () => {
   return { Authorization: `Bearer ${token}` };
 };
 
-export const authenticatedFetch = (path, options = {}) =>
-  fetch(path, {
+export const authenticatedFetch = async (path, options = {}) => {
+  const response = await fetch(path, {
     ...options,
     headers: {
       ...getAuthHeaders(),
       ...(options.headers || {}),
     },
   });
+
+  if (response.status === 401) {
+    handleUnauthorizedSession();
+  }
+
+  return response;
+};
 
 export const useSession = () => {
   const [session, setSession] = useState(null);
